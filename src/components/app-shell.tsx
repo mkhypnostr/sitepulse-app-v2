@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
-import { LogOut, HardHat } from "lucide-react";
+import { LogOut } from "lucide-react";
 import type { ReactNode } from "react";
 import { roleLabels } from "@/lib/domain";
 
@@ -39,9 +39,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-40 border-b border-border bg-sidebar/95 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 h-16 flex items-center gap-4">
           <Link to="/dashboard" className="flex items-center gap-2 shrink-0">
-            <div className="h-9 w-9 rounded-md bg-primary flex items-center justify-center">
-              <HardHat className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <img
+              src="/app-icon.svg"
+              alt="NES Enerji"
+              className="h-9 w-9 rounded-md bg-white object-cover"
+            />
             <div className="leading-tight">
               <div className="text-sm font-bold tracking-wide text-foreground">NES ENERJİ</div>
               <div className="text-[10px] uppercase tracking-widest text-muted-foreground">

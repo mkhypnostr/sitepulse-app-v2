@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Eye, EyeOff, HardHat } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/")({
@@ -54,10 +54,12 @@ function IndexComponent() {
     <div className="min-h-screen bg-neutral-950 flex flex-col justify-center items-center p-6">
       <Card className="w-full max-w-md bg-neutral-900 border-neutral-800">
         <CardHeader className="text-center space-y-2">
-          <div className="flex justify-center mb-4">
-            <div className="bg-yellow-400 p-3 rounded-lg flex items-center justify-center">
-              <HardHat className="w-8 h-8 text-black" />
-            </div>
+          <div className="mb-4 flex justify-center">
+            <img
+              src="/app-icon.svg"
+              alt="NES Enerji"
+              className="h-16 w-16 rounded-xl bg-white object-cover"
+            />
           </div>
           <CardTitle className="text-2xl font-black text-white tracking-tight">
             NES ENERJİ
