@@ -1,0 +1,12 @@
+{
+  "name": "NES Enerji İş Takip",
+  "short_name": "NES İş Takip",
+  "description": "Saha, taşeron ve müşteri yönetim platformu",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [{ "src": "/favicon.ico", "sizes": "64x64", "type": "image/x-icon" }]
+}
