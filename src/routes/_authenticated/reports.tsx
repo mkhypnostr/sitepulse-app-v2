@@ -10,7 +10,13 @@ import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -24,22 +30,49 @@ export const Route = createFileRoute("/_authenticated/reports")({
   component: ReportsPage,
 });
 
-function monthBoundaries(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
+const monthOptions = [
+  { value: "all", label: "Tüm Aylar" },
+  { value: "01", label: "Ocak" },
+  { value: "02", label: "Şubat" },
+  { value: "03", label: "Mart" },
+  { value: "04", label: "Nisan" },
+  { value: "05", label: "Mayıs" },
+  { value: "06", label: "Haziran" },
+  { value: "07", label: "Temmuz" },
+  { value: "08", label: "Ağustos" },
+  { value: "09", label: "Eylül" },
+  { value: "10", label: "Ekim" },
+  { value: "11", label: "Kasım" },
+  { value: "12", label: "Aralık" },
+];
+
+function periodBoundaries(year: string, month: string) {
+  const yearNumber = Number(year);
+  const monthNumber = month === "all" ? 0 : Number(month) - 1;
   return {
-    start: new Date(Date.UTC(year, monthNumber - 1, 1)).toISOString(),
-    end: new Date(Date.UTC(year, monthNumber, 1)).toISOString(),
+    start: new Date(Date.UTC(yearNumber, monthNumber, 1)).toISOString(),
+    end:
+      month === "all"
+        ? new Date(Date.UTC(yearNumber + 1, 0, 1)).toISOString()
+        : new Date(Date.UTC(yearNumber, monthNumber + 1, 1)).toISOString(),
   };
 }
 
 function ReportsPage() {
   const { role } = useAuth();
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const now = new Date();
+  const [year, setYear] = useState(String(now.getFullYear()));
+  const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, "0"));
+  const yearOptions = Array.from({ length: 8 }, (_, index) => now.getFullYear() + 1 - index);
+  const periodLabel =
+    month === "all"
+      ? `${year} Yılı`
+      : `${monthOptions.find((item) => item.value === month)?.label ?? month} ${year}`;
   const reportQuery = useQuery({
-    queryKey: ["monthly-report", month],
-    enabled: role === "admin" && Boolean(month),
+    queryKey: ["period-report", year, month],
+    enabled: role === "admin" && Boolean(year) && Boolean(month),
     queryFn: async () => {
-      const { start, end } = monthBoundaries(month);
+      const { start, end } = periodBoundaries(year, month);
       const [materialsResult, approvalsResult] = await Promise.all([
         supabase
           .from("work_order_materials")
@@ -72,8 +105,8 @@ function ReportsPage() {
   const approvedTotal = approvals.reduce((sum, item) => sum + item.approved_amount, 0);
 
   function exportReport() {
-    downloadCsv(`nes-aylik-rapor-${month}.csv`, [
-      ["NES ENERJİ AYLIK MALZEME VE HAKEDİŞ RAPORU", month],
+    downloadCsv(`nes-kullanim-hakedis-raporu-${year}-${month}.csv`, [
+      ["NES ENERJİ MALZEME VE HAKEDİŞ RAPORU", periodLabel],
       [],
       ["MALZEME KULLANIMLARI"],
       ["Tarih", "İş Emri No", "İş", "Müşteri", "Kaynak", "Kod", "Malzeme", "Miktar", "Birim"],
@@ -105,16 +138,34 @@ function ReportsPage() {
   return (
     <>
       <PageHeader
-        title="Aylık Kullanım ve Hakediş Raporu"
+        title="Kullanım ve Hakediş Raporu"
         description="NES stoğu, taşeron malzemeleri ve onaylanan hakedişler tek çıktıda."
         actions={
-          <div className="flex gap-2">
-            <Input
-              type="month"
-              value={month}
-              onChange={(event) => setMonth(event.target.value)}
-              className="h-12 w-44"
-            />
+          <div className="flex flex-wrap gap-2">
+            <Select value={year} onValueChange={setYear}>
+              <SelectTrigger className="h-12 w-28" aria-label="Rapor yılı">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((option) => (
+                  <SelectItem key={option} value={String(option)}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="h-12 w-36" aria-label="Rapor ayı">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button className="h-12" onClick={exportReport}>
               <Download className="mr-2 h-4 w-4" /> CSV / Excel Çıktısı
             </Button>
@@ -145,7 +196,7 @@ function ReportsPage() {
 
       <h2 className="mb-3 text-xl font-black">Malzeme Kullanımları</h2>
       {materials.length === 0 ? (
-        <EmptyState title="Bu ay malzeme kullanımı yok" />
+        <EmptyState title={`${periodLabel} döneminde malzeme kullanımı yok`} />
       ) : (
         <div className="surface-panel overflow-hidden">
           <Table>
@@ -185,7 +236,7 @@ function ReportsPage() {
 
       <h2 className="mb-3 mt-7 text-xl font-black">Hakediş Onayları</h2>
       {approvals.length === 0 ? (
-        <EmptyState title="Bu ay hakediş onayı yok" />
+        <EmptyState title={`${periodLabel} döneminde hakediş onayı yok`} />
       ) : (
         <div className="surface-panel overflow-hidden">
           <Table>

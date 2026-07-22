@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage, statusLabels } from "@/lib/domain";
 import { formatDate, formatTRY, halfHourOptions } from "@/lib/format";
+import { safeHttpsMapUrl } from "@/lib/map-location";
+import { MapPreview } from "@/components/map-preview";
 import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,7 +51,7 @@ function WorkOrdersPage() {
     customerId: "",
     title: "",
     description: "",
-    location: "",
+    locationUrl: "",
     date: new Date().toISOString().slice(0, 10),
     time: "08:00",
     amount: "0",
@@ -101,12 +103,15 @@ function WorkOrdersPage() {
     mutationFn: async () => {
       const amount = Number(form.amount.replace(",", "."));
       if (!Number.isFinite(amount) || amount < 0) throw new Error("İş bedelini kontrol edin");
+      const locationUrl = safeHttpsMapUrl(form.locationUrl);
+      if (!locationUrl) throw new Error("Google Maps'ten geçerli bir konum bağlantısı girin");
       const scheduledAt = new Date(`${form.date}T${form.time}:00`).toISOString();
       const { error } = await supabase.rpc("create_work_order", {
         target_customer_id: form.customerId,
         order_title: form.title,
         order_description: form.description,
-        order_location: form.location,
+        order_location: "",
+        order_location_url: locationUrl,
         order_scheduled_at: scheduledAt,
         order_total_amount: amount,
         visible_to_customer: form.showToCustomer,
@@ -122,7 +127,7 @@ function WorkOrdersPage() {
         customerId: "",
         title: "",
         description: "",
-        location: "",
+        locationUrl: "",
         date: new Date().toISOString().slice(0, 10),
         time: "08:00",
         amount: "0",
@@ -165,6 +170,7 @@ function WorkOrdersPage() {
         order.title,
         order.customers?.name,
         order.location,
+        order.location_url,
         contractor?.full_name,
       ]
         .filter(Boolean)
@@ -240,12 +246,19 @@ function WorkOrdersPage() {
             />
           </label>
           <label className="grid gap-1 text-sm sm:col-span-2">
-            Lokasyon / Adres
+            Google Maps Konumu <span className="text-destructive">*</span>
             <Input
-              value={form.location}
-              onChange={(event) => setForm({ ...form, location: event.target.value })}
+              value={form.locationUrl}
+              onChange={(event) => setForm({ ...form, locationUrl: event.target.value })}
+              placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
             />
+            <span className="text-xs text-muted-foreground">
+              Düz adres yerine haritadaki yerin paylaşım bağlantısını yapıştırın.
+            </span>
           </label>
+          {safeHttpsMapUrl(form.locationUrl) ? (
+            <MapPreview mapUrl={form.locationUrl} compact className="sm:col-span-2" />
+          ) : null}
           <label className="grid gap-1 text-sm">
             Planlanan Tarih
             <Input
@@ -288,7 +301,13 @@ function WorkOrdersPage() {
         <DialogFooter>
           <Button
             onClick={() => createOrder.mutate()}
-            disabled={!form.customerId || !form.title.trim() || !form.date || createOrder.isPending}
+            disabled={
+              !form.customerId ||
+              !form.title.trim() ||
+              !safeHttpsMapUrl(form.locationUrl) ||
+              !form.date ||
+              createOrder.isPending
+            }
           >
             {createOrder.isPending ? "Oluşturuluyor..." : "İş Emrini Oluştur"}
           </Button>
@@ -364,7 +383,8 @@ function WorkOrdersPage() {
                     <h2 className="mt-2 text-lg font-black">{order.title}</h2>
                     <p className="text-sm text-muted-foreground">
                       {order.customers?.name} · {formatDate(order.scheduled_at)} ·{" "}
-                      {order.location || "Lokasyon yok"}
+                      {order.location ||
+                        (order.location_url ? "Harita konumu eklendi" : "Konum yok")}
                     </p>
                     <p className="mt-1 text-sm">
                       Taşeron:{" "}

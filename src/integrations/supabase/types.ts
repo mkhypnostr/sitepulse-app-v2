@@ -725,6 +725,7 @@ export type Database = {
           description: string | null
           id: string
           location: string | null
+          location_url: string | null
           progress_pct: number
           scheduled_at: string
           show_to_customer: boolean
@@ -740,6 +741,7 @@ export type Database = {
           description?: string | null
           id?: string
           location?: string | null
+          location_url?: string | null
           progress_pct?: number
           scheduled_at: string
           show_to_customer?: boolean
@@ -755,6 +757,7 @@ export type Database = {
           description?: string | null
           id?: string
           location?: string | null
+          location_url?: string | null
           progress_pct?: number
           scheduled_at?: string
           show_to_customer?: boolean
@@ -865,6 +868,7 @@ export type Database = {
           assigned_contractor_id?: string
           order_description: string
           order_location: string
+          order_location_url?: string
           order_scheduled_at: string
           order_title: string
           order_total_amount: number
@@ -1067,4 +1071,5 @@ export const Constants = {
     },
   },
 } as const
+
 

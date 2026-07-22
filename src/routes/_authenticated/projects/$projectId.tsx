@@ -6,8 +6,6 @@ import {
   Building2,
   CalendarDays,
   Camera,
-  CheckCircle2,
-  ExternalLink,
   FileText,
   MapPin,
   Save,
@@ -29,6 +27,7 @@ import {
   type ProjectTaskStatus,
 } from "@/lib/projects";
 import { AccessDenied, LoadingState, PageHeader } from "@/components/page-states";
+import { MapPreview } from "@/components/map-preview";
 import {
   Accordion,
   AccordionContent,
@@ -54,16 +53,6 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 
 type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
 type Manager = Pick<Database["public"]["Tables"]["profiles"]["Row"], "id" | "full_name">;
-
-function safeExternalUrl(value: string | null) {
-  if (!value) return null;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
-}
 
 function ProjectDetailPage() {
   const { role } = useAuth();
@@ -136,12 +125,16 @@ function ProjectDetailPage() {
   }
 
   const { project, customer, processes, tasks, managers } = projectQuery.data;
-  const progress = projectProgress(tasks.map((task) => task.status));
+  const processProgresses = processes.map((process) => ({
+    ...process,
+    progress: projectProgress(
+      tasks.filter((task) => task.process_id === process.id).map((task) => task.status),
+    ),
+  }));
   const managerById = new Map(managers.map((manager) => [manager.id, manager.full_name]));
   const location = [project.province, project.district, project.neighborhood]
     .filter(Boolean)
     .join(" / ");
-  const mapUrl = safeExternalUrl(project.location_url);
 
   return (
     <>
@@ -207,15 +200,17 @@ function ProjectDetailPage() {
             </div>
           ) : null}
 
+          {project.location_url ? (
+            <MapPreview
+              mapUrl={project.location_url}
+              fallbackQuery={[project.neighborhood, project.district, project.province]
+                .filter(Boolean)
+                .join(", ")}
+              className="mt-5"
+            />
+          ) : null}
+
           <div className="mt-5 flex flex-wrap gap-3">
-            {mapUrl ? (
-              <Button asChild variant="outline">
-                <a href={mapUrl} target="_blank" rel="noreferrer">
-                  <MapPin className="mr-2 h-4 w-4" /> Haritada Aç
-                  <ExternalLink className="ml-2 h-3.5 w-3.5" />
-                </a>
-              </Button>
-            ) : null}
             {project.external_reference_no ? (
               <Badge variant="outline" className="px-3 py-2">
                 Dış Referans: {project.external_reference_no}
@@ -235,21 +230,27 @@ function ProjectDetailPage() {
         </div>
 
         <div className="surface-panel p-5">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-emerald-500/15 p-2.5 text-emerald-300">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Genel İlerleme</p>
-              <p className="text-3xl font-black">%{progress.percentage}</p>
-            </div>
-          </div>
-          <Progress value={progress.percentage} className="mt-5 h-3" />
-          <div className="mt-4 flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Tamamlanan görev</span>
-            <span className="font-bold">
-              {progress.completed} / {progress.total}
-            </span>
+          <h2 className="font-black">Süreç İlerlemesi</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Her proje türü kendi görevleri üzerinden ayrı hesaplanır.
+          </p>
+          <div className="mt-5 space-y-4">
+            {processProgresses.map((process) => (
+              <div key={process.id} className="rounded-xl border border-border bg-muted/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-black">{projectTypeLabel[process.process_type]}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {process.progress.completed}/{process.progress.total} görev tamamlandı
+                    </p>
+                  </div>
+                  <span className="text-xl font-black text-primary">
+                    %{process.progress.percentage}
+                  </span>
+                </div>
+                <Progress value={process.progress.percentage} className="mt-3 h-2.5" />
+              </div>
+            ))}
           </div>
           {project.admin_notes ? (
             <div className="mt-5 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
@@ -519,4 +520,3 @@ function TaskEditor({ task, managers }: { task: ProjectTask; managers: Manager[]
     </div>
   );
 }
-

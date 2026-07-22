@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { MapPin } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import { statusLabels } from "@/lib/domain";
 import { formatDate } from "@/lib/format";
@@ -38,7 +39,13 @@ export function JobList({ orders, emptyLabel }: { orders: Order[]; emptyLabel: s
               <p className="text-sm text-muted-foreground">
                 {order.customers?.name} · {formatDate(order.scheduled_at)}
               </p>
-              {order.location ? <p className="mt-1 text-sm">{order.location}</p> : null}
+              {order.location_url ? (
+                <p className="mt-1 flex items-center gap-1.5 text-sm text-primary">
+                  <MapPin className="h-3.5 w-3.5" /> Harita konumu eklendi
+                </p>
+              ) : order.location ? (
+                <p className="mt-1 text-sm">{order.location}</p>
+              ) : null}
             </div>
             <div className="w-full shrink-0 sm:w-64">
               <div className="mb-1 flex justify-between text-sm">
