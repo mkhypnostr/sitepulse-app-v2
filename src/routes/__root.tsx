@@ -86,7 +86,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "NES Enerji saha, taşeron ve müşteri yönetim platformu — iş emirleri, hakediş, stok ve şantiye fotoğrafları tek panelde.",
       },
       { name: "author", content: "NES Enerji" },
-      { name: "theme-color", content: "#0a0a0a" },
+      { name: "theme-color", content: "#0046a4" },
       { property: "og:title", content: "NES Enerji İş Takip" },
       {
         property: "og:description",
