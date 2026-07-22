@@ -282,6 +282,7 @@ export type Database = {
           project_task_id: string
           size_bytes: number
           storage_path: string
+          submission_id: string | null
           uploaded_by: string
         }
         Insert: {
@@ -294,6 +295,7 @@ export type Database = {
           project_task_id: string
           size_bytes: number
           storage_path: string
+          submission_id?: string | null
           uploaded_by: string
         }
         Update: {
@@ -306,6 +308,7 @@ export type Database = {
           project_task_id?: string
           size_bytes?: number
           storage_path?: string
+          submission_id?: string | null
           uploaded_by?: string
         }
         Relationships: [
@@ -317,8 +320,79 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "project_task_evidence_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "project_task_progress_submissions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "project_task_evidence_uploaded_by_fkey"
             columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_task_progress_submissions: {
+        Row: {
+          id: string
+          note: string
+          project_task_id: string
+          proposed_actual_date: string | null
+          proposed_pct: number
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: Database["public"]["Enums"]["project_progress_submission_status"]
+          submitted_at: string
+          submitted_by: string
+        }
+        Insert: {
+          id?: string
+          note: string
+          project_task_id: string
+          proposed_actual_date?: string | null
+          proposed_pct: number
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["project_progress_submission_status"]
+          submitted_at?: string
+          submitted_by: string
+        }
+        Update: {
+          id?: string
+          note?: string
+          project_task_id?: string
+          proposed_actual_date?: string | null
+          proposed_pct?: number
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["project_progress_submission_status"]
+          submitted_at?: string
+          submitted_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_task_progress_submissions_project_task_id_fkey"
+            columns: ["project_task_id"]
+            isOneToOne: false
+            referencedRelation: "project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_task_progress_submissions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_task_progress_submissions_submitted_by_fkey"
+            columns: ["submitted_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -328,6 +402,7 @@ export type Database = {
       project_tasks: {
         Row: {
           actual_date: string | null
+          approved_progress_pct: number
           completed_at: string | null
           completed_by: string | null
           created_at: string
@@ -350,6 +425,7 @@ export type Database = {
         }
         Insert: {
           actual_date?: string | null
+          approved_progress_pct?: number
           completed_at?: string | null
           completed_by?: string | null
           created_at?: string
@@ -372,6 +448,7 @@ export type Database = {
         }
         Update: {
           actual_date?: string | null
+          approved_progress_pct?: number
           completed_at?: string | null
           completed_by?: string | null
           created_at?: string
@@ -998,6 +1075,23 @@ export type Database = {
         }
         Returns: undefined
       }
+      review_project_task_progress: {
+        Args: {
+          approve_submission: boolean
+          decision_note?: string
+          target_submission_id: string
+        }
+        Returns: undefined
+      }
+      submit_project_task_progress: {
+        Args: {
+          actual_on?: string
+          progress_note: string
+          proposed_progress: number
+          target_task_id: string
+        }
+        Returns: string
+      }
       delete_draft_project: {
         Args: { target_project_id: string }
         Returns: undefined
@@ -1047,6 +1141,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "contractor" | "customer"
       photo_type: "saha" | "montaj_sonrasi" | "malzeme" | "diger"
+      project_progress_submission_status: "pending" | "approved" | "revision_requested"
       project_status: "draft" | "active" | "on_hold" | "completed" | "cancelled"
       project_task_status:
         | "not_started"
@@ -1188,6 +1283,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "contractor", "customer"],
       photo_type: ["saha", "montaj_sonrasi", "malzeme", "diger"],
+      project_progress_submission_status: ["pending", "approved", "revision_requested"],
       project_status: ["draft", "active", "on_hold", "completed", "cancelled"],
       project_task_status: [
         "not_started",

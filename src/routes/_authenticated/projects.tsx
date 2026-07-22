@@ -17,7 +17,7 @@ import { errorMessage } from "@/lib/domain";
 import { safeHttpsMapUrl } from "@/lib/map-location";
 import {
   formatProjectDate,
-  projectProgress,
+  projectApprovedProgress,
   projectStatusLabel,
   projectStatusOptions,
   projectTypeLabel,
@@ -102,7 +102,9 @@ function ProjectsPage() {
           supabase.from("customers").select("id, name").order("name"),
           supabase.from("user_roles").select("user_id").eq("role", "admin"),
           supabase.from("project_processes").select("id, project_id, process_type, position"),
-          supabase.from("project_tasks").select("project_id, process_id, status"),
+          supabase
+            .from("project_tasks")
+            .select("project_id, process_id, status, approved_progress_pct"),
         ]);
 
       if (projectsResult.error) throw projectsResult.error;
@@ -547,10 +549,9 @@ function ProjectsPage() {
             const projectTasks = tasksByProject.get(project.id) ?? [];
             const processProgresses = projectProcesses.map((process) => ({
               ...process,
-              progress: projectProgress(
+              progress: projectApprovedProgress(
                 projectTasks
-                  .filter((task) => task.process_id === process.id)
-                  .map((task) => task.status),
+                  .filter((task) => task.process_id === process.id),
               ),
             }));
             const location = [project.province, project.district, project.neighborhood]

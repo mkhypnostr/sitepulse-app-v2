@@ -20,7 +20,7 @@ import { errorMessage } from "@/lib/domain";
 import {
   formatProjectDate,
   formatProjectDateTime,
-  projectProgress,
+  projectApprovedProgress,
   projectStatusLabel,
   projectTaskStatusLabel,
   projectTaskStatusOptions,
@@ -32,6 +32,7 @@ import { AccessDenied, LoadingState, PageHeader } from "@/components/page-states
 import { MapPreview } from "@/components/map-preview";
 import { ProjectLifecycleControls } from "@/components/project-lifecycle-controls";
 import { ProjectTaskEvidence } from "@/components/project-task-evidence";
+import { ProjectTaskProgress } from "@/components/project-task-progress";
 import {
   Accordion,
   AccordionContent,
@@ -150,8 +151,8 @@ function ProjectDetailPage() {
   ];
   const processProgresses = processes.map((process) => ({
     ...process,
-    progress: projectProgress(
-      tasks.filter((task) => task.process_id === process.id).map((task) => task.status),
+    progress: projectApprovedProgress(
+      tasks.filter((task) => task.process_id === process.id),
     ),
   }));
   const managerById = new Map(managers.map((manager) => [manager.id, manager.full_name]));
@@ -323,7 +324,7 @@ function ProjectDetailPage() {
         >
           {processes.map((process) => {
             const processTasks = tasks.filter((task) => task.process_id === process.id);
-            const processProgress = projectProgress(processTasks.map((task) => task.status));
+            const processProgress = projectApprovedProgress(processTasks);
             const phases = groupTasksByPhase(processTasks);
             return (
               <AccordionItem
@@ -480,7 +481,7 @@ function TaskEditor({
   });
 
   return (
-    <div className="rounded-xl border border-border bg-background/35 p-4">
+    <div id={`task-${task.id}`} className="scroll-mt-6 rounded-xl border border-border bg-background/35 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -583,6 +584,8 @@ function TaskEditor({
         requiresDocument={task.requires_document}
         canUpload={editable}
       />
+
+      <ProjectTaskProgress task={task} canSubmit={editable} canReview={editable} />
 
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="grid gap-1 text-xs font-bold">
