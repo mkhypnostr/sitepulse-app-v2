@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { roleLabels } from "@/lib/domain";
+import { supabase } from "@/integrations/supabase/client";
 
 interface NavItem {
   to: string;
@@ -28,6 +30,25 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const profileQuery = useQuery({
+    queryKey: ["current-profile", user?.id],
+    enabled: Boolean(user?.id),
+    queryFn: async () => {
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const displayName = (
+    profileQuery.data?.full_name?.trim() ||
+    user?.email ||
+    "Kullanıcı"
+  ).toLocaleUpperCase("tr-TR");
 
   const nav: NavItem[] =
     role === "admin"
@@ -83,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <p className="text-xs font-semibold text-muted-foreground">
           {role ? roleLabels[role] : "Kullanıcı"}
         </p>
-        <p className="mt-1 truncate text-sm font-bold text-foreground">{user?.email}</p>
+        <p className="mt-1 truncate text-sm font-bold text-foreground">{displayName}</p>
       </div>
       <button
         type="button"
@@ -137,7 +158,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </Link>
         <span className="ml-auto max-w-32 truncate text-xs text-muted-foreground">
-          {user?.email}
+          {displayName}
         </span>
       </header>
 
