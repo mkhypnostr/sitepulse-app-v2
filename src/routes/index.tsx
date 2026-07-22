@@ -6,18 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  Boxes,
   BriefcaseBusiness,
   CheckCircle2,
   Download,
   Eye,
   EyeOff,
+  FolderKanban,
   Monitor,
   MoreVertical,
   Share2,
   ShieldCheck,
   Smartphone,
-  UsersRound,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -148,26 +147,39 @@ function IndexComponent() {
 
             <div className="mt-10 h-1 w-16 rounded-full bg-[#0046a4]" />
             <h1 className="mt-6 max-w-xl text-4xl font-black leading-tight tracking-tight sm:text-5xl">
-              Saha operasyonunuz
-              <span className="block text-[#0046a4]">tek, güvenli panelde.</span>
+              Saha ve proje süreçleriniz,
+              <span className="block text-[#0046a4]">size özel panelde.</span>
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
-              İş emirlerini planlayın, taşeronları yönetin, stok ve ilerleme durumunu anlık takip
-              edin.
+              NES Enerji tarafından size açılan işlere, proje ilerlemesine, fotoğraflara ve
+              raporlara güvenli şekilde ulaşın.
             </p>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
               {[
-                { icon: BriefcaseBusiness, label: "İş Emirleri" },
-                { icon: UsersRound, label: "Ekip Yönetimi" },
-                { icon: Boxes, label: "Stok Takibi" },
+                {
+                  icon: BriefcaseBusiness,
+                  label: "Taşeron Paneli",
+                  description: "Atanan işleri, ilerlemeyi ve saha kayıtlarını yönetin.",
+                },
+                {
+                  icon: FolderKanban,
+                  label: "Müşteri Paneli",
+                  description: "Proje durumunu, fotoğrafları ve raporları takip edin.",
+                },
+                {
+                  icon: ShieldCheck,
+                  label: "Güvenli Erişim",
+                  description: "Yalnızca size yetki verilen bilgileri görün.",
+                },
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-4 text-sm font-bold shadow-sm"
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
                 >
-                  <item.icon className="h-5 w-5 shrink-0 text-[#0046a4]" />
-                  {item.label}
+                  <item.icon className="h-5 w-5 text-[#0046a4]" />
+                  <p className="mt-3 text-sm font-black text-slate-950">{item.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>
                 </div>
               ))}
             </div>
@@ -181,10 +193,10 @@ function IndexComponent() {
                 <ShieldCheck className="h-4 w-4" /> Güvenli giriş
               </div>
               <CardTitle className="text-3xl font-black tracking-tight text-slate-950">
-                Hesabınıza giriş yapın
+                Size tanımlanan hesabınızla giriş yapın
               </CardTitle>
               <p className="text-sm leading-6 text-slate-500">
-                Size tanımlanan e-posta ve şifreyi kullanın.
+                NES Enerji tarafından iletilen e-posta ve geçici şifrenizi kullanın.
               </p>
             </CardHeader>
             <CardContent className="pt-6">
@@ -255,7 +267,7 @@ function IndexComponent() {
                 </Button>
               </div>
               <p className="mt-6 text-center text-xs leading-5 text-slate-500">
-                Hesap ve yetki işlemleri NES Enerji yöneticisi tarafından yapılır.
+                Hesabınız yoksa veya giriş yapamıyorsanız NES Enerji yetkilinizle iletişime geçin.
               </p>
             </CardContent>
           </Card>
