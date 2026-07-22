@@ -392,6 +392,8 @@ export type Database = {
           show_to_customer: boolean
           start_date: string | null
           status: Database["public"]["Enums"]["project_status"]
+          status_changed_at: string
+          status_note: string | null
           target_end_date: string | null
           updated_at: string
         }
@@ -416,6 +418,8 @@ export type Database = {
           show_to_customer?: boolean
           start_date?: string | null
           status?: Database["public"]["Enums"]["project_status"]
+          status_changed_at?: string
+          status_note?: string | null
           target_end_date?: string | null
           updated_at?: string
         }
@@ -440,6 +444,8 @@ export type Database = {
           show_to_customer?: boolean
           start_date?: string | null
           status?: Database["public"]["Enums"]["project_status"]
+          status_changed_at?: string
+          status_note?: string | null
           target_end_date?: string | null
           updated_at?: string
         }
@@ -899,6 +905,39 @@ export type Database = {
         }
         Returns: undefined
       }
+      delete_draft_project: {
+        Args: { target_project_id: string }
+        Returns: undefined
+      }
+      update_project_details: {
+        Args: {
+          project_admin_notes?: string
+          project_area?: number
+          project_block_no?: string
+          project_description?: string
+          project_district?: string
+          project_external_reference_no?: string
+          project_location_url?: string
+          project_name: string
+          project_neighborhood?: string
+          project_parcel_no?: string
+          project_province?: string
+          project_start_date?: string
+          project_target_end_date?: string
+          target_manager_id?: string
+          target_project_id: string
+          visible_to_customer?: boolean
+        }
+        Returns: undefined
+      }
+      update_project_lifecycle: {
+        Args: {
+          change_note?: string
+          new_status: Database["public"]["Enums"]["project_status"]
+          target_project_id: string
+        }
+        Returns: Database["public"]["Enums"]["project_status"]
+      }
       update_project_task: {
         Args: {
           assigned_user_id?: string
@@ -1071,5 +1110,4 @@ export const Constants = {
     },
   },
 } as const
-
 

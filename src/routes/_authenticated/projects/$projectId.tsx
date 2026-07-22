@@ -6,6 +6,7 @@ import {
   Building2,
   CalendarDays,
   Camera,
+  Clock3,
   FileText,
   MapPin,
   Save,
@@ -18,6 +19,7 @@ import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import {
   formatProjectDate,
+  formatProjectDateTime,
   projectProgress,
   projectStatusLabel,
   projectTaskStatusLabel,
@@ -28,6 +30,7 @@ import {
 } from "@/lib/projects";
 import { AccessDenied, LoadingState, PageHeader } from "@/components/page-states";
 import { MapPreview } from "@/components/map-preview";
+import { ProjectLifecycleControls } from "@/components/project-lifecycle-controls";
 import {
   Accordion,
   AccordionContent,
@@ -165,6 +168,10 @@ function ProjectDetailPage() {
         }
       />
 
+      <div className="mb-6">
+        <ProjectLifecycleControls project={project} managers={managers} />
+      </div>
+
       <section className="mb-6 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
         <div className="surface-panel p-5">
           <h2 className="mb-4 font-black">Proje Kartı</h2>
@@ -181,7 +188,21 @@ function ProjectDetailPage() {
               label="Tarih"
               value={`${formatProjectDate(project.start_date)} → ${formatProjectDate(project.target_end_date)}`}
             />
+            <InfoItem
+              icon={Clock3}
+              label="Son Durum Değişikliği"
+              value={formatProjectDateTime(project.status_changed_at)}
+            />
           </div>
+
+          {project.status_note ? (
+            <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-primary">
+                Durum Açıklaması
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{project.status_note}</p>
+            </div>
+          ) : null}
 
           <div className="mt-4 flex flex-wrap gap-2">
             {processes.map((process) => (
@@ -269,7 +290,9 @@ function ProjectDetailPage() {
         <div className="mb-4">
           <h2 className="text-xl font-black">Süreç ve Görev Takibi</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Her görevin durumunu, sorumlusunu, plan tarihini ve notunu ayrı ayrı kaydedin.
+            {project.status === "completed" || project.status === "cancelled"
+              ? "Bu proje kapalıdır. Görevleri değiştirmek için projeyi yeniden aktifleştirin."
+              : "Her görevin durumunu, sorumlusunu, plan tarihini ve notunu ayrı ayrı kaydedin."}
           </p>
         </div>
 
@@ -317,7 +340,14 @@ function ProjectDetailPage() {
                       </div>
                       <div className="space-y-3">
                         {phase.tasks.map((task) => (
-                          <TaskEditor key={task.id} task={task} managers={managers} />
+                          <TaskEditor
+                            key={task.id}
+                            task={task}
+                            managers={managers}
+                            editable={
+                              project.status !== "completed" && project.status !== "cancelled"
+                            }
+                          />
                         ))}
                       </div>
                     </div>
@@ -371,7 +401,15 @@ function groupTasksByPhase(tasks: ProjectTask[]) {
     }));
 }
 
-function TaskEditor({ task, managers }: { task: ProjectTask; managers: Manager[] }) {
+function TaskEditor({
+  task,
+  managers,
+  editable,
+}: {
+  task: ProjectTask;
+  managers: Manager[];
+  editable: boolean;
+}) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<ProjectTaskStatus>(task.status);
   const [responsibleId, setResponsibleId] = useState(task.responsible_id ?? "none");
@@ -449,7 +487,11 @@ function TaskEditor({ task, managers }: { task: ProjectTask; managers: Manager[]
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <label className="grid gap-1 text-xs font-bold">
           Durum
-          <Select value={status} onValueChange={(value: ProjectTaskStatus) => setStatus(value)}>
+          <Select
+            value={status}
+            onValueChange={(value: ProjectTaskStatus) => setStatus(value)}
+            disabled={!editable}
+          >
             <SelectTrigger className="h-10">
               <SelectValue />
             </SelectTrigger>
@@ -464,7 +506,7 @@ function TaskEditor({ task, managers }: { task: ProjectTask; managers: Manager[]
         </label>
         <label className="grid gap-1 text-xs font-bold">
           Sorumlu
-          <Select value={responsibleId} onValueChange={setResponsibleId}>
+          <Select value={responsibleId} onValueChange={setResponsibleId} disabled={!editable}>
             <SelectTrigger className="h-10">
               <SelectValue />
             </SelectTrigger>
@@ -485,6 +527,7 @@ function TaskEditor({ task, managers }: { task: ProjectTask; managers: Manager[]
             value={plannedDate}
             onChange={(event) => setPlannedDate(event.target.value)}
             className="h-10"
+            disabled={!editable}
           />
         </label>
         <label className="grid gap-1 text-xs font-bold">
@@ -494,6 +537,7 @@ function TaskEditor({ task, managers }: { task: ProjectTask; managers: Manager[]
             onChange={(event) => setExternalSystem(event.target.value)}
             placeholder="YBS, EMO, Belediye..."
             className="h-10"
+            disabled={!editable}
           />
         </label>
       </div>
@@ -506,11 +550,12 @@ function TaskEditor({ task, managers }: { task: ProjectTask; managers: Manager[]
             onChange={(event) => setNote(event.target.value)}
             placeholder="Son durum, beklenen belge veya açıklama"
             className="min-h-20"
+            disabled={!editable}
           />
         </label>
         <Button
           onClick={() => updateTask.mutate()}
-          disabled={!changed || updateTask.isPending}
+          disabled={!editable || !changed || updateTask.isPending}
           className="h-11 sm:min-w-32"
         >
           <Save className="mr-2 h-4 w-4" />

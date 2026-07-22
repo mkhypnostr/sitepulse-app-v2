@@ -89,6 +89,7 @@ function ProjectsPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | ProjectStatus>("all");
   const [form, setForm] = useState(initialForm);
 
   const pageQuery = useQuery({
@@ -211,9 +212,10 @@ function ProjectsPage() {
 
   const filteredProjects = (() => {
     const needle = searchText.trim().toLocaleLowerCase("tr-TR");
-    if (!needle) return data.projects;
-    return data.projects.filter((project) =>
-      [
+    return data.projects.filter((project) => {
+      if (statusFilter !== "all" && project.status !== statusFilter) return false;
+      if (!needle) return true;
+      return [
         project.project_no,
         project.name,
         customerById.get(project.customer_id),
@@ -224,8 +226,8 @@ function ProjectsPage() {
         .filter(Boolean)
         .join(" ")
         .toLocaleLowerCase("tr-TR")
-        .includes(needle),
-    );
+        .includes(needle);
+    });
   })();
 
   const createButton = (
@@ -491,14 +493,42 @@ function ProjectsPage() {
       />
 
       {data.projects.length > 0 ? (
-        <div className="mb-5 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
-          <Search className="h-5 w-5 text-muted-foreground" />
-          <Input
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-            placeholder="Proje no, ad, müşteri veya konum ara..."
-            className="border-0 bg-transparent shadow-none focus-visible:ring-0"
-          />
+        <div className="mb-5 space-y-3">
+          <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+            <Search className="h-5 w-5 text-muted-foreground" />
+            <Input
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="Proje no, ad, müşteri veya konum ara..."
+              className="border-0 bg-transparent shadow-none focus-visible:ring-0"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={statusFilter === "all" ? "default" : "outline"}
+              onClick={() => setStatusFilter("all")}
+            >
+              Tümü ({data.projects.length})
+            </Button>
+            {projectStatusOptions.map((option) => {
+              const count = data.projects.filter(
+                (project) => project.status === option.value,
+              ).length;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  size="sm"
+                  variant={statusFilter === option.value ? "default" : "outline"}
+                  onClick={() => setStatusFilter(option.value)}
+                >
+                  {option.label} ({count})
+                </Button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
@@ -509,7 +539,7 @@ function ProjectsPage() {
           action={createButton}
         />
       ) : filteredProjects.length === 0 ? (
-        <EmptyState title="Aramanızla eşleşen proje bulunamadı" />
+        <EmptyState title="Seçtiğiniz filtreyle eşleşen proje bulunamadı" />
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {filteredProjects.map((project) => {
