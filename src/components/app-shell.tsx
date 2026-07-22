@@ -110,7 +110,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="leading-tight">
             <div className="text-base font-black tracking-wide text-foreground">NES ENERJİ</div>
             <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
-              İş Takip
+              Saha Operasyon
             </div>
           </div>
         </Link>
@@ -132,7 +132,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="leading-tight">
             <div className="text-sm font-black">NES ENERJİ</div>
             <div className="text-[9px] font-bold uppercase tracking-widest text-primary">
-              İş Takip
+              Saha Operasyon
             </div>
           </div>
         </Link>
@@ -155,7 +155,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="leading-tight">
                 <div className="font-black">NES ENERJİ</div>
                 <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
-                  İş Takip
+                  Saha Operasyon
                 </div>
               </div>
               <button
