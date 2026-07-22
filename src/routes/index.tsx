@@ -127,11 +127,11 @@ function IndexComponent() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      <div className="mx-auto grid min-h-screen max-w-7xl lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="login-energy-light flex items-center px-6 py-10 sm:px-10 lg:px-16 lg:py-16">
-          <div className="mx-auto w-full max-w-2xl">
-            <div className="flex items-center gap-3">
+    <main className="login-page min-h-screen bg-slate-50 text-slate-950">
+      <div className="login-layout mx-auto grid min-h-screen max-w-7xl lg:grid-cols-[1.15fr_0.85fr]">
+        <section className="login-intro login-energy-light flex items-center px-6 py-10 sm:px-10 lg:px-16 lg:py-16">
+          <div className="login-intro-content mx-auto w-full max-w-2xl">
+            <div className="login-brand flex items-center gap-3">
               <img
                 src="/app-icon.svg"
                 alt="NES Enerji"
@@ -145,17 +145,17 @@ function IndexComponent() {
               </div>
             </div>
 
-            <div className="mt-10 h-1 w-16 rounded-full bg-[#0046a4]" />
-            <h1 className="mt-6 max-w-xl text-4xl font-black leading-tight tracking-tight sm:text-5xl">
+            <div className="login-divider mt-10 h-1 w-16 rounded-full bg-[#0046a4]" />
+            <h1 className="login-headline mt-6 max-w-xl text-4xl font-black leading-tight tracking-tight sm:text-5xl">
               Saha ve proje süreçleriniz,
               <span className="block text-[#0046a4]">size özel panelde.</span>
             </h1>
-            <p className="mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
+            <p className="login-description mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
               NES Enerji tarafından size açılan işlere, proje ilerlemesine, fotoğraflara ve
               raporlara güvenli şekilde ulaşın.
             </p>
 
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            <div className="login-role-grid mt-8 grid gap-3 sm:grid-cols-3">
               {[
                 {
                   icon: BriefcaseBusiness,
@@ -175,33 +175,37 @@ function IndexComponent() {
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
+                  className="login-role-card rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
                 >
                   <item.icon className="h-5 w-5 text-[#0046a4]" />
-                  <p className="mt-3 text-sm font-black text-slate-950">{item.label}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>
+                  <p className="login-role-label mt-3 text-sm font-black text-slate-950">
+                    {item.label}
+                  </p>
+                  <p className="login-role-description mt-1 text-xs leading-5 text-slate-500">
+                    {item.description}
+                  </p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="login-energy-dark flex items-center justify-center border-t border-slate-200 px-6 py-10 lg:border-l lg:border-t-0 lg:px-12">
-          <Card className="w-full max-w-md border-slate-200 bg-white shadow-xl shadow-slate-200/60">
-            <CardHeader className="space-y-3 pb-2">
-              <div className="inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#0046a4]">
+        <section className="login-form-section login-energy-dark flex items-center justify-center border-t border-slate-200 px-6 py-10 lg:border-l lg:border-t-0 lg:px-12">
+          <Card className="login-card w-full max-w-md border-slate-200 bg-white shadow-xl shadow-slate-200/60">
+            <CardHeader className="login-card-header space-y-3 pb-2">
+              <div className="login-security-badge inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#0046a4]">
                 <ShieldCheck className="h-4 w-4" /> Güvenli giriş
               </div>
-              <CardTitle className="text-3xl font-black tracking-tight text-slate-950">
+              <CardTitle className="login-card-title text-3xl font-black tracking-tight text-slate-950">
                 Size tanımlanan hesabınızla giriş yapın
               </CardTitle>
-              <p className="text-sm leading-6 text-slate-500">
+              <p className="login-card-subtitle text-sm leading-6 text-slate-500">
                 NES Enerji tarafından iletilen e-posta ve geçici şifrenizi kullanın.
               </p>
             </CardHeader>
-            <CardContent className="pt-6">
-              <form onSubmit={handleLogin} className="space-y-5">
-                <label className="grid gap-2 text-sm font-bold text-slate-800">
+            <CardContent className="login-card-content pt-6">
+              <form onSubmit={handleLogin} className="login-form space-y-5">
+                <label className="login-field grid gap-2 text-sm font-bold text-slate-800">
                   E-posta
                   <Input
                     type="email"
@@ -210,10 +214,10 @@ function IndexComponent() {
                     required
                     autoComplete="email"
                     placeholder="ornek@nesenerji.com"
-                    className="h-12 border-slate-300 bg-white text-slate-950 placeholder:text-slate-400 focus-visible:ring-[#0046a4]"
+                    className="login-input h-12 border-slate-300 bg-white text-slate-950 placeholder:text-slate-400 focus-visible:ring-[#0046a4]"
                   />
                 </label>
-                <label className="grid gap-2 text-sm font-bold text-slate-800">
+                <label className="login-field grid gap-2 text-sm font-bold text-slate-800">
                   Şifre
                   <div className="relative">
                     <Input
@@ -223,7 +227,7 @@ function IndexComponent() {
                       required
                       autoComplete="current-password"
                       placeholder="••••••••"
-                      className="h-12 border-slate-300 bg-white pr-11 text-slate-950 placeholder:text-slate-400 focus-visible:ring-[#0046a4]"
+                      className="login-input h-12 border-slate-300 bg-white pr-11 text-slate-950 placeholder:text-slate-400 focus-visible:ring-[#0046a4]"
                     />
                     <button
                       type="button"
@@ -237,19 +241,19 @@ function IndexComponent() {
                 </label>
                 <Button
                   type="submit"
-                  className="mt-2 h-12 w-full bg-[#0046a4] text-base font-bold text-white hover:bg-[#00377f]"
+                  className="login-submit mt-2 h-12 w-full bg-[#0046a4] text-base font-bold text-white hover:bg-[#00377f]"
                   disabled={loginInProgress}
                 >
                   {loginInProgress ? "Giriş yapılıyor..." : "Giriş Yap"}
                 </Button>
               </form>
-              <div className="mt-4 border-t border-slate-200 pt-4">
+              <div className="login-install mt-4 border-t border-slate-200 pt-4">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={handleInstall}
                   disabled={isInstalled}
-                  className="h-14 w-full justify-start border-[#0046a4]/30 bg-blue-50 px-4 text-left text-[#0046a4] hover:border-[#0046a4] hover:bg-blue-100 hover:text-[#00377f]"
+                  className="login-install-button h-14 w-full justify-start border-[#0046a4]/30 bg-blue-50 px-4 text-left text-[#0046a4] hover:border-[#0046a4] hover:bg-blue-100 hover:text-[#00377f]"
                 >
                   {isInstalled ? (
                     <CheckCircle2 className="mr-3 h-6 w-6 shrink-0" />
@@ -266,7 +270,7 @@ function IndexComponent() {
                   </span>
                 </Button>
               </div>
-              <p className="mt-6 text-center text-xs leading-5 text-slate-500">
+              <p className="login-help mt-6 text-center text-xs leading-5 text-slate-500">
                 Hesabınız yoksa veya giriş yapamıyorsanız NES Enerji yetkilinizle iletişime geçin.
               </p>
             </CardContent>

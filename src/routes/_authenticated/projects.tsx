@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -50,8 +50,15 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/projects")({
-  component: ProjectsPage,
+  component: ProjectsRoute,
 });
+
+function ProjectsRoute() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const isProjectsIndex = pathname === "/projects" || pathname === "/projects/";
+
+  return isProjectsIndex ? <ProjectsPage /> : <Outlet />;
+}
 
 const initialForm = {
   customerId: "",
