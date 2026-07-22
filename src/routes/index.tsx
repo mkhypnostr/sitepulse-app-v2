@@ -129,7 +129,7 @@ function IndexComponent() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
       <div className="mx-auto grid min-h-screen max-w-7xl lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="flex items-center px-6 py-10 sm:px-10 lg:px-16 lg:py-16">
+        <section className="login-energy-light flex items-center px-6 py-10 sm:px-10 lg:px-16 lg:py-16">
           <div className="mx-auto w-full max-w-2xl">
             <div className="flex items-center gap-3">
               <img
@@ -186,7 +186,7 @@ function IndexComponent() {
           </div>
         </section>
 
-        <section className="flex items-center justify-center border-t border-slate-200 bg-white px-6 py-10 lg:border-l lg:border-t-0 lg:px-12">
+        <section className="login-energy-dark flex items-center justify-center border-t border-slate-200 px-6 py-10 lg:border-l lg:border-t-0 lg:px-12">
           <Card className="w-full max-w-md border-slate-200 bg-white shadow-xl shadow-slate-200/60">
             <CardHeader className="space-y-3 pb-2">
               <div className="inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#0046a4]">
