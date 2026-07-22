@@ -75,6 +75,14 @@ function validEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 }
 
+function normalizedUsername(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function validUsername(value: string) {
+  return /^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])$/.test(value);
+}
+
 function validPassword(value: unknown) {
   if (typeof value !== "string" || value.length < 12 || value.length > 128) return false;
   return (
@@ -119,6 +127,7 @@ async function writeAudit(input: {
   targetUserId?: string | null;
   email: string;
   role: AppRole;
+  action?: "create_user" | "reset_password";
   outcome: "success" | "failed";
   errorCode?: string | null;
 }) {
@@ -128,7 +137,7 @@ async function writeAudit(input: {
     target_user_id: input.targetUserId ?? null,
     target_email: input.email,
     requested_role: input.role,
-    action: "create_user",
+    action: input.action ?? "create_user",
     outcome: input.outcome,
     error_code: input.errorCode ?? null,
   });
@@ -137,6 +146,7 @@ async function writeAudit(input: {
 async function createUser(actorUserId: string, rawArguments: unknown) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const email = normalizedEmail(args.email);
+  const username = normalizedUsername(args.username);
   const fullName = typeof args.full_name === "string" ? args.full_name.trim() : "";
   const companyName = optionalText(args.company_name, 160, "Firma adı");
   const phone = optionalText(args.phone, 40, "Telefon");
@@ -144,7 +154,12 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
   const temporaryPassword = args.temporary_password;
   const requestId = crypto.randomUUID();
 
-  if (!validEmail(email)) throw new Error("Geçerli bir e-posta adresi girin.");
+  if (!validUsername(username)) {
+    throw new Error(
+      "Kullanıcı adı 3-32 karakter olmalı; yalnızca küçük harf, rakam, nokta, tire ve alt çizgi içermelidir.",
+    );
+  }
+  if (email && !validEmail(email)) throw new Error("Geçerli bir e-posta adresi girin.");
   if (fullName.length < 2 || fullName.length > 120) {
     throw new Error("Ad soyad 2 ile 120 karakter arasında olmalıdır.");
   }
@@ -158,9 +173,12 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
   }
 
   let createdUserId: string | null = null;
+  // Gerçek e-postası henüz olmayan saha kullanıcıları için yalnızca sistem içinde kullanılan,
+  // kullanıcıya gösterilmeyen bir giriş adresi oluşturulur. E-posta doğrulama gönderilmez.
+  const authEmail = email || `${username}.${crypto.randomUUID()}@accounts.nesgrup.com`;
   try {
     const { data, error } = await admin.auth.admin.createUser({
-      email,
+      email: authEmail,
       password: temporaryPassword as string,
       email_confirm: true,
       user_metadata: {
@@ -175,7 +193,7 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
       await writeAudit({
         requestId,
         actorUserId,
-        email,
+        email: authEmail,
         role,
         outcome: "failed",
         errorCode: error?.code ?? "auth_create_failed",
@@ -211,11 +229,21 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
 
     if (profileError) throw profileError;
 
+    const { error: usernameError } = await admin.from("user_login_profiles").insert({
+      user_id: createdUserId,
+      username,
+    });
+
+    if (usernameError) {
+      if (usernameError.code === "23505") throw new Error("Bu kullanıcı adı zaten kullanılıyor.");
+      throw usernameError;
+    }
+
     await writeAudit({
       requestId,
       actorUserId,
       targetUserId: createdUserId,
-      email,
+      email: authEmail,
       role,
       outcome: "success",
     });
@@ -223,7 +251,8 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
     return {
       success: true,
       user_id: createdUserId,
-      email,
+      username,
+      email: email || null,
       full_name: fullName,
       company_name: companyName,
       phone,
@@ -243,7 +272,7 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
         requestId,
         actorUserId,
         targetUserId: createdUserId,
-        email,
+        email: authEmail,
         role,
         outcome: "failed",
         errorCode: "role_assignment_failed_rolled_back",
@@ -253,17 +282,60 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
   }
 }
 
+async function resetUserPassword(actorUserId: string, rawArguments: unknown) {
+  const args = (rawArguments ?? {}) as Record<string, unknown>;
+  const targetUserId = typeof args.target_user_id === "string" ? args.target_user_id : "";
+  const temporaryPassword = args.temporary_password;
+  const requestId = crypto.randomUUID();
+
+  if (!/^[0-9a-f-]{36}$/i.test(targetUserId)) throw new Error("Geçersiz kullanıcı seçildi.");
+  if (!validPassword(temporaryPassword)) {
+    throw new Error("Geçici şifre en az 12 karakter olmalı; büyük harf, küçük harf, rakam ve özel karakter içermelidir.");
+  }
+
+  const [{ data: roleRow, error: roleError }, { data: userResult, error: userError }] = await Promise.all([
+    admin.from("user_roles").select("role").eq("user_id", targetUserId).maybeSingle(),
+    admin.auth.admin.getUserById(targetUserId),
+  ]);
+
+  if (roleError || !roleRow || userError || !userResult.user) throw new Error("Kullanıcı bulunamadı.");
+  if (roleRow.role === "admin") throw new Error("Yönetici hesabının şifresi bu ekrandan yenilenemez.");
+
+  const { error } = await admin.auth.admin.updateUserById(targetUserId, {
+    password: temporaryPassword as string,
+  });
+  if (error) throw new Error(error.message);
+
+  await writeAudit({
+    requestId,
+    actorUserId,
+    targetUserId,
+    email: userResult.user.email ?? "hesap",
+    role: roleRow.role as AppRole,
+    action: "reset_password",
+    outcome: "success",
+  });
+
+  return { success: true, user_id: targetUserId, message: "Geçici şifre yenilendi." };
+}
+
 const tools = [
   {
     name: "create_nes_user",
     title: "NES kullanıcısı oluştur",
     description:
-      "NES Saha Operasyon sisteminde yeni bir hesap oluşturur ve admin, contractor veya customer rolünü atar. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
+      "NES Saha Operasyon sisteminde yeni bir hesap oluşturur ve admin, contractor veya customer rolünü atar. Kullanıcı adı zorunludur; e-posta isteğe bağlıdır. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
-        email: { type: "string", format: "email", description: "Yeni kullanıcının e-posta adresi" },
+        username: {
+          type: "string",
+          minLength: 3,
+          maxLength: 32,
+          description: "Giriş kullanıcı adı: küçük harf, rakam, nokta, tire veya alt çizgi",
+        },
+        email: { type: "string", format: "email", description: "Gerçek e-posta adresi (isteğe bağlı)" },
         full_name: { type: "string", minLength: 2, maxLength: 120, description: "Ad ve soyad" },
         company_name: {
           type: "string",
@@ -288,7 +360,33 @@ const tools = [
             "Geçici şifre; büyük/küçük harf, rakam ve özel karakter içermelidir. Araç şifreyi kaydetmez veya yanıtında tekrarlamaz.",
         },
       },
-      required: ["email", "full_name", "role", "temporary_password"],
+      required: ["username", "full_name", "role", "temporary_password"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: "reset_nes_user_password",
+    title: "NES kullanıcı şifresini yenile",
+    description:
+      "Yalnızca taşeron veya müşteri hesabının geçici şifresini yeniler. Yönetici hesaplarını değiştiremez. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        target_user_id: { type: "string", format: "uuid", description: "Şifresi yenilenecek kullanıcı kimliği" },
+        temporary_password: {
+          type: "string",
+          minLength: 12,
+          maxLength: 128,
+          description: "Yeni geçici şifre; yanıt veya kayıtlarda gösterilmez.",
+        },
+      },
+      required: ["target_user_id", "temporary_password"],
     },
     annotations: {
       readOnlyHint: false,
@@ -344,12 +442,15 @@ Deno.serve(async (req: Request) => {
 
   if (request.method === "tools/call") {
     const params = request.params ?? {};
-    if (params.name !== "create_nes_user") {
+    if (params.name !== "create_nes_user" && params.name !== "reset_nes_user_password") {
       return rpcError(request.id, -32602, "Bilinmeyen araç");
     }
 
     try {
-      const result = await createUser(auth.user.id, params.arguments);
+      const result =
+        params.name === "create_nes_user"
+          ? await createUser(auth.user.id, params.arguments)
+          : await resetUserPassword(auth.user.id, params.arguments);
       return rpcResult(request.id, {
         content: [{ type: "text", text: JSON.stringify(result) }],
         structuredContent: result,
