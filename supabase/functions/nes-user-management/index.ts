@@ -82,6 +82,17 @@ function validPassword(value: unknown) {
   );
 }
 
+function optionalText(value: unknown, maxLength: number, fieldLabel: string) {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string") throw new Error(`${fieldLabel} metin olmalıdır.`);
+  const normalized = value.trim();
+  if (!normalized) return null;
+  if (normalized.length > maxLength) {
+    throw new Error(`${fieldLabel} en fazla ${maxLength} karakter olabilir.`);
+  }
+  return normalized;
+}
+
 async function authenticate(req: Request) {
   const header = req.headers.get("Authorization") ?? "";
   if (!header.startsWith("Bearer ")) return null;
@@ -127,6 +138,8 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const email = normalizedEmail(args.email);
   const fullName = typeof args.full_name === "string" ? args.full_name.trim() : "";
+  const companyName = optionalText(args.company_name, 160, "Firma adı");
+  const phone = optionalText(args.phone, 40, "Telefon");
   const role = args.role as AppRole;
   const temporaryPassword = args.temporary_password;
   const requestId = crypto.randomUUID();
@@ -150,7 +163,11 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
       email,
       password: temporaryPassword as string,
       email_confirm: true,
-      user_metadata: { full_name: fullName },
+      user_metadata: {
+        full_name: fullName,
+        company_name: companyName,
+        phone,
+      },
     });
 
     if (error || !data.user) {
@@ -182,6 +199,18 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
 
     if (removeDefaultRoleError) throw removeDefaultRoleError;
 
+    const { error: profileError } = await admin.from("profiles").upsert(
+      {
+        id: createdUserId,
+        full_name: fullName,
+        company_name: companyName,
+        phone,
+      },
+      { onConflict: "id" },
+    );
+
+    if (profileError) throw profileError;
+
     await writeAudit({
       requestId,
       actorUserId,
@@ -196,6 +225,8 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
       user_id: createdUserId,
       email,
       full_name: fullName,
+      company_name: companyName,
+      phone,
       role,
       message: "Kullanıcı oluşturuldu ve rolü atandı.",
       security_note:
@@ -234,6 +265,16 @@ const tools = [
       properties: {
         email: { type: "string", format: "email", description: "Yeni kullanıcının e-posta adresi" },
         full_name: { type: "string", minLength: 2, maxLength: 120, description: "Ad ve soyad" },
+        company_name: {
+          type: "string",
+          maxLength: 160,
+          description: "Firma adı (isteğe bağlı)",
+        },
+        phone: {
+          type: "string",
+          maxLength: 40,
+          description: "Telefon numarası (isteğe bağlı)",
+        },
         role: {
           type: "string",
           enum: ["admin", "contractor", "customer"],
