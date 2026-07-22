@@ -45,7 +45,7 @@ function safeRedirect(value: string | undefined) {
 }
 
 function IndexComponent() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loginInProgress, setLoginInProgress] = useState(false);
@@ -104,10 +104,34 @@ function IndexComponent() {
     e.preventDefault();
     setLoginInProgress(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const normalizedIdentifier = identifier.trim();
+    let error: Error | null = null;
+
+    if (normalizedIdentifier.includes("@")) {
+      const response = await supabase.auth.signInWithPassword({
+        email: normalizedIdentifier.toLowerCase(),
+        password,
+      });
+      error = response.error;
+    } else {
+      const { data, error: functionError } = await supabase.functions.invoke<{
+        access_token?: string;
+        refresh_token?: string;
+        error?: string;
+      }>("nes-username-login", {
+        body: { username: normalizedIdentifier, password },
+      });
+
+      if (functionError || !data?.access_token || !data.refresh_token) {
+        error = new Error(data?.error || "Kullanıcı adı veya şifre hatalı.");
+      } else {
+        const sessionResult = await supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+        });
+        error = sessionResult.error;
+      }
+    }
 
     if (error) {
       toast.error("Giriş başarısız: " + error.message);
@@ -200,20 +224,20 @@ function IndexComponent() {
                 Size tanımlanan hesabınızla giriş yapın
               </CardTitle>
               <p className="login-card-subtitle text-sm leading-6 text-slate-500">
-                NES Enerji tarafından iletilen e-posta ve geçici şifrenizi kullanın.
+                NES Enerji tarafından iletilen kullanıcı adı veya e-posta ile geçici şifrenizi kullanın.
               </p>
             </CardHeader>
             <CardContent className="login-card-content pt-6">
               <form onSubmit={handleLogin} className="login-form space-y-5">
                 <label className="login-field grid gap-2 text-sm font-bold text-slate-800">
-                  E-posta
+                  Kullanıcı adı veya e-posta
                   <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     required
-                    autoComplete="email"
-                    placeholder="ornek@nesenerji.com"
+                    autoComplete="username"
+                    placeholder="ornek.kullanici veya ornek@firma.com"
                     className="login-input h-12 border-slate-300 bg-white text-slate-950 placeholder:text-slate-400 focus-visible:ring-[#0046a4]"
                   />
                 </label>
