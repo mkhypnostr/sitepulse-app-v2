@@ -129,6 +129,61 @@
   }
 }
 
+/*
+ * Kurumsal enerji altyapısı arka planları.
+ * Görseller yalnızca arka katmandadır; mevcut kart ve içerik düzenini değiştirmez.
+ */
+.login-energy-light {
+  background-color: #f8fafc;
+  background-image: url("/login-energy-light.webp");
+  background-position: right center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.login-energy-dark {
+  background-color: #031735;
+  background-image: url("/login-energy-dark.webp");
+  background-position: right center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.dashboard-energy-background {
+  position: relative;
+  isolation: isolate;
+}
+
+.dashboard-energy-background::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-color: #020f24;
+  background-image: url("/dashboard-energy-dark.webp");
+  background-position: right bottom;
+  background-repeat: no-repeat;
+  background-size: cover;
+  content: "";
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+@media (max-width: 1023px) {
+  .login-energy-light {
+    background-position: 62% center;
+  }
+
+  .login-energy-dark {
+    background-position: 72% center;
+  }
+
+  .dashboard-energy-background::before {
+    background-position: 68% bottom;
+    background-size: auto 68%;
+    opacity: 0.48;
+  }
+}
+
 /* Şantiye için büyük dokunmatik hedefler */
 @utility touch-lg {
   min-height: 56px;
