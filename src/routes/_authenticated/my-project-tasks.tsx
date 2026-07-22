@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { ProjectTaskEvidence } from "@/components/project-task-evidence";
+import { ProjectTaskProgress } from "@/components/project-task-progress";
 import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { projectTaskStatusLabel, taskStatusClass } from "@/lib/projects";
@@ -74,8 +75,9 @@ function MyProjectTasksPage() {
                 requiresDocument={task.requires_document}
                 canUpload
               />
+              <ProjectTaskProgress task={task} canSubmit canReview={false} />
               <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                <ClipboardCheck className="h-4 w-4 text-primary" /> Kanıtı ekleyin; ilerleme ve tamamlanma onayı yönetici tarafından ayrı olarak verilir.
+                <ClipboardCheck className="h-4 w-4 text-primary" /> Kanıtı ve açıklamayı gönderin; ilerleme yalnızca yönetici onayından sonra projeye yansır.
               </div>
             </article>
           ))}
