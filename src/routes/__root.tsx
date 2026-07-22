@@ -79,7 +79,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "NES Enerji İş Takip" },
+      { title: "NES Enerji Saha Operasyon" },
       {
         name: "description",
         content:
@@ -87,7 +87,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { name: "author", content: "NES Enerji" },
       { name: "theme-color", content: "#0046a4" },
-      { property: "og:title", content: "NES Enerji İş Takip" },
+      { property: "og:title", content: "NES Enerji Saha Operasyon" },
       {
         property: "og:description",
         content: "Saha operasyonları için kurumsal iş takip platformu.",

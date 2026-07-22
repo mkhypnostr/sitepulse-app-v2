@@ -67,7 +67,7 @@ function IndexComponent() {
       setInstallPrompt(null);
       setIsInstalled(true);
       setInstallInstructionsOpen(false);
-      toast.success("NES İş Takip bu cihaza kuruldu");
+      toast.success("NES Saha Operasyon bu cihaza kuruldu");
     };
 
     window.addEventListener("beforeinstallprompt", handleInstallPrompt);
@@ -133,7 +133,7 @@ function IndexComponent() {
               <div>
                 <p className="text-xl font-black tracking-tight text-slate-950">NES ENERJİ</p>
                 <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#0046a4]">
-                  İş Takip Platformu
+                  Saha Operasyon Platformu
                 </p>
               </div>
             </div>
