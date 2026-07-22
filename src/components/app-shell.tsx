@@ -65,6 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
             { to: "/my-jobs", label: "İşlerim", icon: BriefcaseBusiness },
+            { to: "/my-project-tasks", label: "Proje Görevlerim", icon: ClipboardList },
           ]
         : [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },

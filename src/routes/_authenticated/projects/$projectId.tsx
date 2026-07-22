@@ -31,6 +31,7 @@ import {
 import { AccessDenied, LoadingState, PageHeader } from "@/components/page-states";
 import { MapPreview } from "@/components/map-preview";
 import { ProjectLifecycleControls } from "@/components/project-lifecycle-controls";
+import { ProjectTaskEvidence } from "@/components/project-task-evidence";
 import {
   Accordion,
   AccordionContent,
@@ -56,6 +57,7 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 
 type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
 type Manager = Pick<Database["public"]["Tables"]["profiles"]["Row"], "id" | "full_name">;
+type TaskAssignee = Manager & { role: "admin" | "contractor" };
 
 function ProjectDetailPage() {
   const { role } = useAuth();
@@ -74,7 +76,7 @@ function ProjectDetailPage() {
       if (!projectResult.data) throw new Error("Proje bulunamadı");
 
       const project = projectResult.data;
-      const [customerResult, processesResult, tasksResult, rolesResult] = await Promise.all([
+      const [customerResult, processesResult, tasksResult, managerRolesResult, contractorRolesResult] = await Promise.all([
         supabase.from("customers").select("id, name").eq("id", project.customer_id).maybeSingle(),
         supabase
           .from("project_processes")
@@ -88,21 +90,34 @@ function ProjectDetailPage() {
           .order("phase_order")
           .order("task_order"),
         supabase.from("user_roles").select("user_id").eq("role", "admin"),
+        supabase.from("user_roles").select("user_id").eq("role", "contractor"),
       ]);
       if (customerResult.error) throw customerResult.error;
       if (processesResult.error) throw processesResult.error;
       if (tasksResult.error) throw tasksResult.error;
-      if (rolesResult.error) throw rolesResult.error;
+      if (managerRolesResult.error) throw managerRolesResult.error;
+      if (contractorRolesResult.error) throw contractorRolesResult.error;
 
-      const managerIds = rolesResult.data.map((item) => item.user_id);
-      const managersResult = managerIds.length
-        ? await supabase
+      const managerIds = managerRolesResult.data.map((item) => item.user_id);
+      const contractorIds = contractorRolesResult.data.map((item) => item.user_id);
+      const [managersResult, contractorsResult] = await Promise.all([
+        managerIds.length
+          ? supabase
             .from("profiles")
             .select("id, full_name")
             .in("id", managerIds)
             .order("full_name")
-        : { data: [], error: null };
+          : Promise.resolve({ data: [], error: null }),
+        contractorIds.length
+          ? supabase
+              .from("profiles")
+              .select("id, full_name")
+              .in("id", contractorIds)
+              .order("full_name")
+          : Promise.resolve({ data: [], error: null }),
+      ]);
       if (managersResult.error) throw managersResult.error;
+      if (contractorsResult.error) throw contractorsResult.error;
 
       return {
         project,
@@ -110,6 +125,7 @@ function ProjectDetailPage() {
         processes: processesResult.data,
         tasks: tasksResult.data,
         managers: managersResult.data ?? [],
+        contractors: contractorsResult.data ?? [],
       };
     },
   });
@@ -127,7 +143,11 @@ function ProjectDetailPage() {
     );
   }
 
-  const { project, customer, processes, tasks, managers } = projectQuery.data;
+  const { project, customer, processes, tasks, managers, contractors } = projectQuery.data;
+  const assignees: TaskAssignee[] = [
+    ...managers.map((manager) => ({ ...manager, role: "admin" as const })),
+    ...contractors.map((contractor) => ({ ...contractor, role: "contractor" as const })),
+  ];
   const processProgresses = processes.map((process) => ({
     ...process,
     progress: projectProgress(
@@ -343,7 +363,7 @@ function ProjectDetailPage() {
                           <TaskEditor
                             key={task.id}
                             task={task}
-                            managers={managers}
+                            assignees={assignees}
                             editable={
                               project.status !== "completed" && project.status !== "cancelled"
                             }
@@ -403,17 +423,18 @@ function groupTasksByPhase(tasks: ProjectTask[]) {
 
 function TaskEditor({
   task,
-  managers,
+  assignees,
   editable,
 }: {
   task: ProjectTask;
-  managers: Manager[];
+  assignees: TaskAssignee[];
   editable: boolean;
 }) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<ProjectTaskStatus>(task.status);
   const [responsibleId, setResponsibleId] = useState(task.responsible_id ?? "none");
   const [plannedDate, setPlannedDate] = useState(task.planned_date ?? "");
+  const [actualDate, setActualDate] = useState(task.actual_date ?? "");
   const [externalSystem, setExternalSystem] = useState(task.external_system ?? "");
   const [note, setNote] = useState(task.note ?? "");
 
@@ -421,6 +442,7 @@ function TaskEditor({
     setStatus(task.status);
     setResponsibleId(task.responsible_id ?? "none");
     setPlannedDate(task.planned_date ?? "");
+    setActualDate(task.actual_date ?? "");
     setExternalSystem(task.external_system ?? "");
     setNote(task.note ?? "");
   }, [task]);
@@ -430,9 +452,10 @@ function TaskEditor({
       status !== task.status ||
       responsibleId !== (task.responsible_id ?? "none") ||
       plannedDate !== (task.planned_date ?? "") ||
+      actualDate !== (task.actual_date ?? "") ||
       externalSystem !== (task.external_system ?? "") ||
       note !== (task.note ?? ""),
-    [status, responsibleId, plannedDate, externalSystem, note, task],
+    [status, responsibleId, plannedDate, actualDate, externalSystem, note, task],
   );
 
   const updateTask = useMutation({
@@ -442,6 +465,7 @@ function TaskEditor({
         new_status: status,
         assigned_user_id: responsibleId === "none" ? undefined : responsibleId,
         planned_on: plannedDate || undefined,
+        actual_on: actualDate || undefined,
         task_system: externalSystem.trim() || undefined,
         task_note: note.trim() || undefined,
       });
@@ -484,7 +508,7 @@ function TaskEditor({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <label className="grid gap-1 text-xs font-bold">
           Durum
           <Select
@@ -512,9 +536,9 @@ function TaskEditor({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="none">Atanmadı</SelectItem>
-              {managers.map((manager) => (
-                <SelectItem key={manager.id} value={manager.id}>
-                  {manager.full_name || "İsimsiz yönetici"}
+              {assignees.map((assignee) => (
+                <SelectItem key={assignee.id} value={assignee.id}>
+                  {(assignee.full_name || "İsimsiz kullanıcı")} · {assignee.role === "admin" ? "NES Teknik Ofis" : "Taşeron"}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -531,6 +555,16 @@ function TaskEditor({
           />
         </label>
         <label className="grid gap-1 text-xs font-bold">
+          Gerçekleşen Tarih
+          <Input
+            type="date"
+            value={actualDate}
+            onChange={(event) => setActualDate(event.target.value)}
+            className="h-10"
+            disabled={!editable}
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-bold">
           Dış Sistem / Kurum
           <Input
             value={externalSystem}
@@ -541,6 +575,14 @@ function TaskEditor({
           />
         </label>
       </div>
+
+      <ProjectTaskEvidence
+        taskId={task.id}
+        projectId={task.project_id}
+        requiresPhoto={task.requires_photo}
+        requiresDocument={task.requires_document}
+        canUpload={editable}
+      />
 
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="grid gap-1 text-xs font-bold">

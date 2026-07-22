@@ -271,8 +271,63 @@ export type Database = {
           },
         ]
       }
+      project_task_evidence: {
+        Row: {
+          created_at: string
+          description: string | null
+          evidence_type: string
+          file_name: string
+          id: string
+          mime_type: string
+          project_task_id: string
+          size_bytes: number
+          storage_path: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          evidence_type: string
+          file_name: string
+          id?: string
+          mime_type: string
+          project_task_id: string
+          size_bytes: number
+          storage_path: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          evidence_type?: string
+          file_name?: string
+          id?: string
+          mime_type?: string
+          project_task_id?: string
+          size_bytes?: number
+          storage_path?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_task_evidence_project_task_id_fkey"
+            columns: ["project_task_id"]
+            isOneToOne: false
+            referencedRelation: "project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_task_evidence_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_tasks: {
         Row: {
+          actual_date: string | null
           completed_at: string | null
           completed_by: string | null
           created_at: string
@@ -294,6 +349,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          actual_date?: string | null
           completed_at?: string | null
           completed_by?: string | null
           created_at?: string
@@ -315,6 +371,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          actual_date?: string | null
           completed_at?: string | null
           completed_by?: string | null
           created_at?: string
@@ -976,6 +1033,7 @@ export type Database = {
       }
       update_project_task: {
         Args: {
+          actual_on?: string
           assigned_user_id?: string
           new_status: Database["public"]["Enums"]["project_task_status"]
           planned_on?: string
