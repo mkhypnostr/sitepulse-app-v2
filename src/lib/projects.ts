@@ -81,6 +81,14 @@ export function formatProjectDate(value: string | null | undefined) {
   );
 }
 
+export function formatProjectDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("tr-TR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
 export function projectProgress(statuses: ProjectTaskStatus[]) {
   const applicable = statuses.filter((status) => status !== "not_applicable");
   const completed = applicable.filter((status) => status === "completed").length;
@@ -90,4 +98,3 @@ export function projectProgress(statuses: ProjectTaskStatus[]) {
     percentage: applicable.length ? Math.round((completed / applicable.length) * 100) : 0,
   };
 }
-
