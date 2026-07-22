@@ -54,6 +54,9 @@ type CreateUserRpcResponse = {
   };
 };
 
+type EditableRole = Exclude<AppRole, "admin">;
+const editableRoles: EditableRole[] = ["contractor", "customer"];
+
 function passwordIsValid(value: string) {
   return (
     value.length >= 12 &&
@@ -92,7 +95,7 @@ function TeamPage() {
   });
 
   const roleMutation = useMutation({
-    mutationFn: async ({ userId, newRole }: { userId: string; newRole: AppRole }) => {
+    mutationFn: async ({ userId, newRole }: { userId: string; newRole: EditableRole }) => {
       const { error } = await supabase.rpc("set_user_role", {
         target_user_id: userId,
         new_role: newRole,
@@ -345,7 +348,7 @@ function TeamPage() {
     <>
       <PageHeader
         title="Ekip ve Yetkiler"
-        description="Kullanıcı hesaplarını, firma bilgilerini ve uygulama rollerini yönetin."
+        description="Taşeron ve müşteri rollerini yönetin. Yönetici hesapları güvenlik nedeniyle bu ekranda kilitlidir."
         actions={createButton}
       />
       {members.length === 0 ? (
@@ -374,23 +377,31 @@ function TeamPage() {
                   <TableCell>{member.company_name || "—"}</TableCell>
                   <TableCell>{member.phone || "—"}</TableCell>
                   <TableCell>
-                    <Select
-                      value={member.role}
-                      onValueChange={(newRole: AppRole) =>
-                        roleMutation.mutate({ userId: member.id, newRole })
-                      }
-                    >
-                      <SelectTrigger className="h-11">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(Object.keys(roleLabels) as AppRole[]).map((itemRole) => (
-                          <SelectItem key={itemRole} value={itemRole}>
-                            {roleLabels[itemRole]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {member.role === "admin" ? (
+                      <div className="inline-flex h-11 min-w-48 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 font-bold text-primary">
+                        <ShieldCheck className="h-4 w-4" />
+                        <span>Yönetici — Korumalı</span>
+                      </div>
+                    ) : (
+                      <Select
+                        value={member.role}
+                        disabled={roleMutation.isPending}
+                        onValueChange={(newRole: EditableRole) =>
+                          roleMutation.mutate({ userId: member.id, newRole })
+                        }
+                      >
+                        <SelectTrigger className="h-11">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {editableRoles.map((itemRole) => (
+                            <SelectItem key={itemRole} value={itemRole}>
+                              {roleLabels[itemRole]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -399,8 +410,8 @@ function TeamPage() {
         </div>
       )}
       <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
-        <ShieldCheck className="h-4 w-4 text-primary" /> Hesap oluşturma ve rol işlemleri yalnızca
-        yöneticilere açıktır; geçici şifreler kaydedilmez.
+        <ShieldCheck className="h-4 w-4 text-primary" /> Yönetici rolleri korumalıdır. Bu ekrandan
+        yalnızca taşeron ve müşteri rolleri değiştirilebilir; geçici şifreler kaydedilmez.
       </div>
     </>
   );
