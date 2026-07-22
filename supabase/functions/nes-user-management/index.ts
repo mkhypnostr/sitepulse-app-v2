@@ -38,7 +38,7 @@ const admin = createClient(SUPABASE_URL, readAdminKey(), {
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, content-type, mcp-protocol-version, mcp-session-id",
+    "authorization, apikey, content-type, x-client-info, mcp-protocol-version, mcp-session-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
