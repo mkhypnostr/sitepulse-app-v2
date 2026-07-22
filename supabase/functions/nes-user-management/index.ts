@@ -11,12 +11,27 @@ type JsonRpcRequest = {
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/nes-user-management`;
 const RESOURCE_METADATA_URL = `${FUNCTION_URL}/.well-known/oauth-protected-resource`;
 const AUTH_SERVER_URL = `${SUPABASE_URL}/auth/v1`;
 
-const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+function readAdminKey() {
+  const secretKeysJson = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (secretKeysJson) {
+    try {
+      const secretKeys = JSON.parse(secretKeysJson) as Record<string, string>;
+      if (secretKeys.default) return secretKeys.default;
+    } catch {
+      // Eski projelerde aşağıdaki geriye uyumlu anahtarı kullan.
+    }
+  }
+
+  const legacyKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!legacyKey) throw new Error("Supabase sunucu anahtarı yapılandırılmamış.");
+  return legacyKey;
+}
+
+const admin = createClient(SUPABASE_URL, readAdminKey(), {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
