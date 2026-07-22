@@ -12,6 +12,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage, statusLabels } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
@@ -19,10 +20,21 @@ import { PageHeader, LoadingState } from "@/components/page-states";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { formatProjectDateTime } from "@/lib/projects";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
 });
+
+type ProjectSubmission = Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
+type ProjectTaskSummary = Pick<
+  Database["public"]["Tables"]["project_tasks"]["Row"],
+  "id" | "project_id" | "task_name" | "phase_name"
+>;
+type ProjectSummary = Pick<
+  Database["public"]["Tables"]["projects"]["Row"],
+  "id" | "name" | "project_no"
+>;
 
 function DashboardPage() {
   const { role } = useAuth();
@@ -37,12 +49,61 @@ function DashboardPage() {
       if (orderError) throw orderError;
 
       let stock: { quantity: number; min_quantity: number }[] = [];
+      let projectSubmissions: ProjectSubmission[] = [];
+      let projectTasks: ProjectTaskSummary[] = [];
+      let projects: ProjectSummary[] = [];
+      let profileNames: Array<{ id: string; full_name: string }> = [];
       if (role === "admin" || role === "contractor") {
         const { data, error } = await supabase.from("stock_items").select("quantity, min_quantity");
         if (error) throw error;
         stock = data;
       }
-      return { orders, stock };
+      if (role === "admin") {
+        const [pendingResult, approvedResult] = await Promise.all([
+          supabase
+            .from("project_task_progress_submissions")
+            .select("*")
+            .eq("status", "pending")
+            .order("submitted_at", { ascending: false }),
+          supabase
+            .from("project_task_progress_submissions")
+            .select("*")
+            .eq("status", "approved")
+            .order("reviewed_at", { ascending: false })
+            .limit(8),
+        ]);
+        if (pendingResult.error) throw pendingResult.error;
+        if (approvedResult.error) throw approvedResult.error;
+        projectSubmissions = [...pendingResult.data, ...approvedResult.data];
+
+        const taskIds = [...new Set(projectSubmissions.map((item) => item.project_task_id))];
+        if (taskIds.length) {
+          const taskResult = await supabase
+            .from("project_tasks")
+            .select("id, project_id, task_name, phase_name")
+            .in("id", taskIds);
+          if (taskResult.error) throw taskResult.error;
+          projectTasks = taskResult.data;
+
+          const projectIds = [...new Set(projectTasks.map((item) => item.project_id))];
+          const userIds = [...new Set(projectSubmissions.flatMap((item) =>
+            [item.submitted_by, item.reviewed_by].filter(Boolean) as string[],
+          ))];
+          const [projectsResult, profilesResult] = await Promise.all([
+            projectIds.length
+              ? supabase.from("projects").select("id, name, project_no").in("id", projectIds)
+              : Promise.resolve({ data: [], error: null }),
+            userIds.length
+              ? supabase.from("profiles").select("id, full_name").in("id", userIds)
+              : Promise.resolve({ data: [], error: null }),
+          ]);
+          if (projectsResult.error) throw projectsResult.error;
+          if (profilesResult.error) throw profilesResult.error;
+          projects = projectsResult.data ?? [];
+          profileNames = profilesResult.data ?? [];
+        }
+      }
+      return { orders, stock, projectSubmissions, projectTasks, projects, profileNames };
     },
   });
 
@@ -59,6 +120,12 @@ function DashboardPage() {
       role === "admin" &&
       order.progress_pct > (order.work_order_financials?.approved_progress_pct ?? 0),
   ).length;
+  const projectSubmissions = query.data?.projectSubmissions ?? [];
+  const pendingProjectSubmissions = projectSubmissions.filter((item) => item.status === "pending");
+  const approvedProjectSubmissions = projectSubmissions.filter((item) => item.status === "approved");
+  const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
+  const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
+  const profileNameById = new Map((query.data?.profileNames ?? []).map((item) => [item.id, item.full_name]));
   const lowStock = (query.data?.stock ?? []).filter(
     (item) => item.quantity <= item.min_quantity,
   ).length;
@@ -68,7 +135,7 @@ function DashboardPage() {
       ? [
           { label: "Toplam İş Emri", value: orders.length, icon: BriefcaseBusiness },
           { label: "Devam Eden", value: active, icon: Clock3 },
-          { label: "Onay Bekleyen", value: pendingApproval, icon: AlertTriangle },
+          { label: "Onay Bekleyen", value: pendingApproval + pendingProjectSubmissions.length, icon: AlertTriangle },
           { label: "Kritik Stok", value: lowStock, icon: Package },
         ]
       : [
@@ -117,20 +184,105 @@ function DashboardPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <Card key={metric.label} className="border-border bg-card">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className="rounded-lg bg-primary/15 p-3 text-primary">
-                <metric.icon className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{metric.label}</p>
-                <p className="text-3xl font-black">{metric.value}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {metrics.map((metric) => {
+          const card = (
+            <Card className={metric.label === "Onay Bekleyen" && metric.value > 0
+              ? "border-red-500/40 bg-red-500/5"
+              : "border-border bg-card"}
+            >
+              <CardContent className="flex items-center gap-4 p-5">
+                <div className={metric.label === "Onay Bekleyen" && metric.value > 0
+                  ? "rounded-lg bg-red-500/15 p-3 text-red-300 animate-pulse"
+                  : "rounded-lg bg-primary/15 p-3 text-primary"}
+                >
+                  <metric.icon className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">{metric.label}</p>
+                  <p className="text-3xl font-black">{metric.value}</p>
+                </div>
+              </CardContent>
+            </Card>
+          );
+          return metric.label === "Onay Bekleyen" ? (
+            <a key={metric.label} href="#project-approvals" className="block">{card}</a>
+          ) : (
+            <div key={metric.label}>{card}</div>
+          );
+        })}
       </div>
+
+      {role === "admin" ? (
+        <section id="project-approvals" className="mt-7 scroll-mt-6">
+          <div className="mb-3">
+            <h2 className="text-lg font-bold">Proje Görev Bildirimleri</h2>
+            <p className="text-sm text-muted-foreground">
+              Bekleyen ve son onaylanan ilerlemeler. Bir kayda dokunduğunuzda ilgili görev açılır.
+            </p>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {pendingProjectSubmissions.map((submission) => {
+              const task = projectTaskById.get(submission.project_task_id);
+              const project = task ? projectById.get(task.project_id) : undefined;
+              if (!task || !project) return null;
+              return (
+                <a
+                  key={submission.id}
+                  href={`/projects/${project.id}#task-${task.id}`}
+                  className="surface-panel block border-red-500/40 bg-red-500/5 p-4 transition-colors hover:bg-red-500/10"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-red-300 animate-pulse">ONAY BEKLİYOR</p>
+                      <p className="mt-1 font-black">%{submission.proposed_pct} · {task.task_name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {project.project_no} · {project.name} · {task.phase_name}
+                      </p>
+                    </div>
+                    <AlertTriangle className="h-5 w-5 shrink-0 text-red-300" />
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {profileNameById.get(submission.submitted_by) || "Kullanıcı"} · {formatProjectDateTime(submission.submitted_at)}
+                  </p>
+                </a>
+              );
+            })}
+
+            {approvedProjectSubmissions.map((submission) => {
+              const task = projectTaskById.get(submission.project_task_id);
+              const project = task ? projectById.get(task.project_id) : undefined;
+              if (!task || !project) return null;
+              return (
+                <a
+                  key={submission.id}
+                  href={`/projects/${project.id}#task-${task.id}`}
+                  className="surface-panel block border-emerald-500/30 bg-emerald-500/5 p-4 transition-colors hover:bg-emerald-500/10"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-emerald-300">ONAYLANDI</p>
+                      <p className="mt-1 font-black">%{submission.proposed_pct} · {task.task_name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {project.project_no} · {project.name} · {task.phase_name}
+                      </p>
+                    </div>
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
+                  </div>
+                  <p className="mt-3 text-xs text-emerald-200/80">
+                    {profileNameById.get(submission.reviewed_by ?? "") || "Yönetici"} tarafından {formatProjectDateTime(submission.reviewed_at)} tarihinde onaylandı
+                  </p>
+                </a>
+              );
+            })}
+
+            {pendingProjectSubmissions.length === 0 && approvedProjectSubmissions.length === 0 ? (
+              <div className="surface-panel p-5 text-sm text-muted-foreground xl:col-span-2">
+                Henüz proje görevi onay bildirimi yok.
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {role === "admin" ? (
         <section className="mt-7">
