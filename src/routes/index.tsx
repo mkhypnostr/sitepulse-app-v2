@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,8 +34,16 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  }),
   component: IndexComponent,
 });
+
+function safeRedirect(value: string | undefined) {
+  if (!value) return "/dashboard";
+  return value.startsWith("/oauth/consent?authorization_id=") ? value : "/dashboard";
+}
 
 function IndexComponent() {
   const [email, setEmail] = useState("");
@@ -46,11 +54,11 @@ function IndexComponent() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const { user, loading } = useAuth();
-  const navigate = useNavigate();
+  const { redirect } = Route.useSearch();
 
   useEffect(() => {
-    if (!loading && user) navigate({ to: "/dashboard", replace: true });
-  }, [loading, navigate, user]);
+    if (!loading && user) window.location.assign(safeRedirect(redirect));
+  }, [loading, redirect, user]);
 
   useEffect(() => {
     const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
@@ -107,7 +115,7 @@ function IndexComponent() {
       setLoginInProgress(false);
     } else {
       toast.success("Giriş başarılı!");
-      window.location.assign("/dashboard");
+      window.location.assign(safeRedirect(redirect));
     }
   };
 
