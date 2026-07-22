@@ -18,6 +18,7 @@ import { errorMessage, photoTypeLabels, statusLabels, type PhotoType } from "@/l
 import { formatDate, formatTRY } from "@/lib/format";
 import { compressImage } from "@/lib/image-compress";
 import { EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import { MapPreview } from "@/components/map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -332,7 +333,9 @@ function JobDetailPage() {
             <p className="whitespace-pre-wrap text-sm text-muted-foreground">
               {order.description || "Açıklama girilmemiş."}
             </p>
-            {order.location ? (
+            {order.location_url ? (
+              <MapPreview mapUrl={order.location_url} />
+            ) : order.location ? (
               <p className="flex items-center gap-2 text-sm">
                 <MapPin className="h-4 w-4 text-primary" /> {order.location}
               </p>

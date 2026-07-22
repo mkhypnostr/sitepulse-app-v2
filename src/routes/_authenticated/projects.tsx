@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
+import { safeHttpsMapUrl } from "@/lib/map-location";
 import {
   formatProjectDate,
   projectProgress,
@@ -25,6 +26,7 @@ import {
   type ProjectType,
 } from "@/lib/projects";
 import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import { MapPreview } from "@/components/map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -98,8 +100,8 @@ function ProjectsPage() {
           supabase.from("projects").select("*").order("created_at", { ascending: false }),
           supabase.from("customers").select("id, name").order("name"),
           supabase.from("user_roles").select("user_id").eq("role", "admin"),
-          supabase.from("project_processes").select("project_id, process_type, position"),
-          supabase.from("project_tasks").select("project_id, status"),
+          supabase.from("project_processes").select("id, project_id, process_type, position"),
+          supabase.from("project_tasks").select("project_id, process_id, status"),
         ]);
 
       if (projectsResult.error) throw projectsResult.error;
@@ -130,19 +132,12 @@ function ProjectsPage() {
 
   const createProject = useMutation({
     mutationFn: async () => {
-      const parsedArea = form.area.trim()
-        ? Number(form.area.trim().replace(",", "."))
-        : undefined;
+      const parsedArea = form.area.trim() ? Number(form.area.trim().replace(",", ".")) : undefined;
       if (parsedArea !== undefined && (!Number.isFinite(parsedArea) || parsedArea <= 0)) {
         throw new Error("Alan bilgisini sıfırdan büyük bir sayı olarak girin");
       }
-      if (form.locationUrl.trim()) {
-        try {
-          const parsedLocation = new URL(form.locationUrl.trim());
-          if (!["http:", "https:"].includes(parsedLocation.protocol)) throw new Error();
-        } catch {
-          throw new Error("Harita konumunu Google Maps veya başka bir güvenli bağlantı olarak girin");
-        }
+      if (!safeHttpsMapUrl(form.locationUrl)) {
+        throw new Error("Google Maps'ten kopyaladığınız güvenli konum bağlantısını girin");
       }
 
       const { data, error } = await supabase.rpc("create_project_with_workflow", {
@@ -199,12 +194,12 @@ function ProjectsPage() {
   };
   const customerById = new Map(data.customers.map((item) => [item.id, item.name]));
   const managerById = new Map(data.managers.map((item) => [item.id, item.full_name]));
-  const processesByProject = new Map<string, ProjectType[]>();
+  const processesByProject = new Map<string, typeof data.processes>();
   data.processes
     .sort((a, b) => a.position - b.position)
     .forEach((item) => {
       const list = processesByProject.get(item.project_id) ?? [];
-      list.push(item.process_type);
+      list.push(item);
       processesByProject.set(item.project_id, list);
     });
   const tasksByProject = new Map<string, typeof data.tasks>();
@@ -244,8 +239,8 @@ function ProjectsPage() {
         <DialogHeader>
           <DialogTitle>Yeni proje / şantiye oluştur</DialogTitle>
           <DialogDescription>
-            Projeye bir veya birden fazla süreç ekleyin. Proje numarası ve görev listeleri
-            otomatik hazırlanır.
+            Projeye bir veya birden fazla süreç ekleyin. Proje numarası ve görev listeleri otomatik
+            hazırlanır.
           </DialogDescription>
         </DialogHeader>
 
@@ -311,12 +306,15 @@ function ProjectsPage() {
 
           <section className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-medium">
-              Harita Konum Bağlantısı
+              Google Maps Konumu <span className="text-destructive">*</span>
               <Input
                 value={form.locationUrl}
                 onChange={(event) => setForm({ ...form, locationUrl: event.target.value })}
-                placeholder="Google Maps konum bağlantısını yapıştırın"
+                placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
               />
+              <span className="text-xs font-normal text-muted-foreground">
+                Haritadaki yeri paylaşın; proje kartında görsel olarak gösterilecektir.
+              </span>
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Dış Referans Numarası
@@ -347,6 +345,16 @@ function ProjectsPage() {
                 onChange={(event) => setForm({ ...form, neighborhood: event.target.value })}
               />
             </label>
+            {safeHttpsMapUrl(form.locationUrl) ? (
+              <MapPreview
+                mapUrl={form.locationUrl}
+                fallbackQuery={[form.neighborhood, form.district, form.province]
+                  .filter(Boolean)
+                  .join(", ")}
+                compact
+                className="sm:col-span-2"
+              />
+            ) : null}
             <label className="grid gap-1.5 text-sm font-medium">
               Ada
               <Input
@@ -462,6 +470,7 @@ function ProjectsPage() {
             disabled={
               !form.customerId ||
               !form.name.trim() ||
+              !safeHttpsMapUrl(form.locationUrl) ||
               form.processes.length === 0 ||
               createProject.isPending
             }
@@ -504,9 +513,16 @@ function ProjectsPage() {
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {filteredProjects.map((project) => {
-            const progress = projectProgress(
-              (tasksByProject.get(project.id) ?? []).map((task) => task.status),
-            );
+            const projectProcesses = processesByProject.get(project.id) ?? [];
+            const projectTasks = tasksByProject.get(project.id) ?? [];
+            const processProgresses = projectProcesses.map((process) => ({
+              ...process,
+              progress: projectProgress(
+                projectTasks
+                  .filter((task) => task.process_id === process.id)
+                  .map((task) => task.status),
+              ),
+            }));
             const location = [project.province, project.district, project.neighborhood]
               .filter(Boolean)
               .join(" / ");
@@ -537,7 +553,9 @@ function ProjectsPage() {
                 <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4 text-primary" />
-                    <span className="truncate">{customerById.get(project.customer_id) || "Müşteri"}</span>
+                    <span className="truncate">
+                      {customerById.get(project.customer_id) || "Müşteri"}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CalendarDays className="h-4 w-4 text-primary" />
@@ -553,21 +571,31 @@ function ProjectsPage() {
                 </div>
 
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {(processesByProject.get(project.id) ?? []).map((process) => (
-                    <Badge key={process} variant="secondary">
-                      {projectTypeLabel[process]}
+                  {projectProcesses.map((process) => (
+                    <Badge key={process.id} variant="secondary">
+                      {projectTypeLabel[process.process_type]}
                     </Badge>
                   ))}
                 </div>
 
-                <div className="mt-5">
-                  <div className="mb-2 flex items-center justify-between text-xs">
-                    <span className="font-bold">Görev ilerlemesi</span>
-                    <span className="text-muted-foreground">
-                      {progress.completed}/{progress.total} · %{progress.percentage}
-                    </span>
-                  </div>
-                  <Progress value={progress.percentage} className="h-2" />
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  {processProgresses.map((process) => (
+                    <div
+                      key={process.id}
+                      className="rounded-lg border border-border bg-muted/20 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2 text-xs">
+                        <span className="font-bold">{projectTypeLabel[process.process_type]}</span>
+                        <span className="shrink-0 font-black text-primary">
+                          %{process.progress.percentage}
+                        </span>
+                      </div>
+                      <Progress value={process.progress.percentage} className="mt-2 h-2" />
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {process.progress.completed}/{process.progress.total} görev
+                      </p>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="mt-4 flex items-center justify-end gap-1 text-sm font-bold text-primary">
