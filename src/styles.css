@@ -178,22 +178,26 @@
   }
 
   .login-layout {
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: start;
     height: 100%;
     min-height: 0;
+    background-color: #f8fafc;
+    background-image: url("/login-energy-light.webp");
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
   }
 
-  .login-energy-light {
-    background-position: 62% center;
-  }
-
+  .login-energy-light,
   .login-energy-dark {
-    background-position: 72% center;
+    background-color: transparent;
+    background-image: none;
   }
 
   .login-intro {
     align-items: flex-start;
-    padding: 0.65rem 1rem 0.55rem;
+    padding: 1rem 1rem 0.75rem;
   }
 
   .login-intro-content {
@@ -226,22 +230,22 @@
   }
 
   .login-headline {
-    margin-top: 0.55rem;
-    font-size: clamp(1.35rem, 6vw, 1.75rem);
+    margin-top: 0.75rem;
+    font-size: clamp(1.5rem, 6.5vw, 1.9rem);
     line-height: 1.08;
   }
 
   .login-description {
-    margin-top: 0.35rem;
+    margin-top: 0.5rem;
     max-width: 38rem;
-    font-size: 0.72rem;
-    line-height: 1.05rem;
+    font-size: 0.78rem;
+    line-height: 1.15rem;
   }
 
   .login-role-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.35rem;
-    margin-top: 0.5rem;
+    margin-top: 0.7rem;
   }
 
   .login-role-card {
@@ -274,8 +278,10 @@
   }
 
   .login-form-section {
+    align-items: flex-start;
     min-height: 0;
-    padding: 0.55rem 0.75rem 0.7rem;
+    border-top: 0;
+    padding: 0.75rem 0.75rem 0.7rem;
   }
 
   .login-card {
