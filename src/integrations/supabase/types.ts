@@ -19,6 +19,9 @@ export type Database = {
           contact: string | null
           contact_user_id: string | null
           created_at: string
+          completion_note: string | null
+          completion_submitted_at: string | null
+          completion_submitted_by: string | null
           created_by: string | null
           id: string
           name: string
@@ -725,6 +728,9 @@ export type Database = {
       }
       work_orders: {
         Row: {
+          completion_note: string | null
+          completion_submitted_at: string | null
+          completion_submitted_by: string | null
           created_at: string
           created_by: string | null
           customer_id: string
@@ -733,6 +739,9 @@ export type Database = {
           location: string | null
           location_url: string | null
           progress_pct: number
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           scheduled_at: string
           show_to_customer: boolean
           status: Database["public"]["Enums"]["work_status"]
@@ -742,6 +751,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          completion_note?: string | null
+          completion_submitted_at?: string | null
+          completion_submitted_by?: string | null
           created_by?: string | null
           customer_id: string
           description?: string | null
@@ -749,6 +761,9 @@ export type Database = {
           location?: string | null
           location_url?: string | null
           progress_pct?: number
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           scheduled_at: string
           show_to_customer?: boolean
           status?: Database["public"]["Enums"]["work_status"]
@@ -758,6 +773,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          completion_note?: string | null
+          completion_submitted_at?: string | null
+          completion_submitted_by?: string | null
           created_by?: string | null
           customer_id?: string
           description?: string | null
@@ -765,6 +783,9 @@ export type Database = {
           location?: string | null
           location_url?: string | null
           progress_pct?: number
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           scheduled_at?: string
           show_to_customer?: boolean
           status?: Database["public"]["Enums"]["work_status"]
@@ -905,6 +926,21 @@ export type Database = {
         }
         Returns: undefined
       }
+      submit_work_for_review: {
+        Args: {
+          submitted_completion_note: string
+          target_work_order_id: string
+        }
+        Returns: undefined
+      }
+      review_work_completion: {
+        Args: {
+          approve_completion: boolean
+          manager_review_note?: string
+          target_work_order_id: string
+        }
+        Returns: undefined
+      }
       delete_draft_project: {
         Args: { target_project_id: string }
         Returns: undefined
@@ -964,7 +1000,7 @@ export type Database = {
         | "not_applicable"
       project_type: "electric_permit" | "site_project" | "connection_line"
       stock_unit: "adet" | "metre"
-      work_status: "planned" | "in_progress" | "completed" | "cancelled"
+      work_status: "planned" | "in_progress" | "review_pending" | "completed" | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1106,8 +1142,7 @@ export const Constants = {
       ],
       project_type: ["electric_permit", "site_project", "connection_line"],
       stock_unit: ["adet", "metre"],
-      work_status: ["planned", "in_progress", "completed", "cancelled"],
+      work_status: ["planned", "in_progress", "review_pending", "completed", "cancelled"],
     },
   },
 } as const
-
