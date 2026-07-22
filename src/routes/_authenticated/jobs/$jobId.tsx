@@ -46,6 +46,8 @@ function JobDetailPage() {
   const galleryInput = useRef<HTMLInputElement>(null);
   const [progressPct, setProgressPct] = useState("0");
   const [progressNote, setProgressNote] = useState("");
+  const [completionNote, setCompletionNote] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
   const [photoType, setPhotoType] = useState<PhotoType>("saha");
   const [photoCaption, setPhotoCaption] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -164,7 +166,11 @@ function JobDetailPage() {
     onSuccess: async () => {
       await refresh();
       setProgressNote("");
-      toast.success("İlerleme kaydedildi");
+      toast.success(
+        Number(progressPct) === 100
+          ? "İlerleme %100 kaydedildi. Fotoğraf ve açıklama ekleyip kontrole gönderin."
+          : "İlerleme kaydedildi",
+      );
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -181,6 +187,39 @@ function JobDetailPage() {
     onSuccess: async () => {
       await refresh();
       toast.success("Hakediş ilerlemesi onaylandı");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const submitForReviewMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("submit_work_for_review", {
+        target_work_order_id: jobId,
+        submitted_completion_note: completionNote,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await refresh();
+      setCompletionNote("");
+      toast.success("İş yönetici kontrolüne gönderildi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const reviewCompletionMutation = useMutation({
+    mutationFn: async (approve: boolean) => {
+      const { error } = await supabase.rpc("review_work_completion", {
+        target_work_order_id: jobId,
+        approve_completion: approve,
+        manager_review_note: reviewNote,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async (_data, approved) => {
+      await refresh();
+      setReviewNote("");
+      toast.success(approved ? "İş tamamlandı olarak onaylandı" : "İş revizyona gönderildi");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -303,6 +342,10 @@ function JobDetailPage() {
 
   const { order, photos, progress, materials, stockItems } = detailQuery.data;
   const canOperate = role === "admin" || role === "contractor";
+  const isReviewPending = order.status === "review_pending";
+  const isFinalized = order.status === "completed" || order.status === "cancelled";
+  const canSubmitForReview =
+    role === "contractor" && order.progress_pct === 100 && !isReviewPending && !isFinalized;
   const financials = order.work_order_financials;
   const payableAmount =
     (financials?.total_amount ?? 0) * ((financials?.approved_progress_pct ?? 0) / 100);
@@ -412,10 +455,16 @@ function JobDetailPage() {
               <Button
                 className="w-full h-12"
                 onClick={() => progressMutation.mutate()}
-                disabled={progressMutation.isPending}
+                disabled={progressMutation.isPending || isReviewPending || isFinalized}
               >
                 {progressMutation.isPending ? "Kaydediliyor..." : "İlerlemeyi Kaydet"}
               </Button>
+              {Number(progressPct) === 100 && !isReviewPending && !isFinalized ? (
+                <p className="text-xs text-muted-foreground">
+                  %100, işi kapatmaz. Montaj Sonrası fotoğrafı ve bitiş açıklamasıyla yönetici
+                  kontrolüne göndermeniz gerekir.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -493,6 +542,73 @@ function JobDetailPage() {
             </CardContent>
           </Card>
         </div>
+      ) : null}
+
+      {canSubmitForReview ? (
+        <Card className="mt-6 border-primary/30">
+          <CardHeader>
+            <CardTitle>İşi Yönetici Kontrolüne Gönder</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Göndermek için ilerleme %100 olmalı, en az bir <strong>Montaj Sonrası</strong>
+              fotoğrafı yüklenmeli ve iş bitişi açıklanmalıdır.
+            </p>
+            <Textarea
+              value={completionNote}
+              onChange={(event) => setCompletionNote(event.target.value)}
+              placeholder="İşin nasıl tamamlandığını, varsa önemli notları yazın"
+            />
+            <Button
+              className="w-full"
+              onClick={() => submitForReviewMutation.mutate()}
+              disabled={submitForReviewMutation.isPending}
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              {submitForReviewMutation.isPending ? "Gönderiliyor..." : "Kontrole Gönder"}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {role === "admin" && isReviewPending ? (
+        <Card className="mt-6 border-primary/30">
+          <CardHeader>
+            <CardTitle>İş Bitirme Kontrolü</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-md bg-muted/60 p-3 text-sm">
+              <p className="font-semibold">Taşeronun bitiş açıklaması</p>
+              <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                {order.completion_note || "Açıklama bulunamadı."}
+              </p>
+            </div>
+            <Textarea
+              value={reviewNote}
+              onChange={(event) => setReviewNote(event.target.value)}
+              placeholder="Onay notu veya revizyon talebinizi yazın"
+            />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                onClick={() => reviewCompletionMutation.mutate(false)}
+                disabled={reviewCompletionMutation.isPending}
+              >
+                Revizyona Gönder
+              </Button>
+              <Button
+                onClick={() => reviewCompletionMutation.mutate(true)}
+                disabled={reviewCompletionMutation.isPending}
+              >
+                <CheckCircle2 className="mr-2 h-4 w-4" /> Tamamlandı Olarak Onayla
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Revizyona gönderirken açıklama zorunludur. Onaydan sonra iş müşteriye açıksa müşteri
+              panelinde görünür.
+            </p>
+          </CardContent>
+        </Card>
       ) : null}
 
       {canOperate ? (
