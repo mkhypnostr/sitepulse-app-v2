@@ -148,25 +148,40 @@ export type Database = {
         Row: {
           contractor_id: string
           created_at: string
+          evidence_photo_id: string | null
           id: string
           note: string | null
           pct: number
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
           work_order_id: string
         }
         Insert: {
           contractor_id: string
           created_at?: string
+          evidence_photo_id?: string | null
           id?: string
           note?: string | null
           pct: number
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
           work_order_id: string
         }
         Update: {
           contractor_id?: string
           created_at?: string
+          evidence_photo_id?: string | null
           id?: string
           note?: string | null
           pct?: number
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
           work_order_id?: string
         }
         Relationships: [
@@ -1054,9 +1069,19 @@ export type Database = {
       }
       submit_progress_update: {
         Args: {
+          evidence_photo_type?: Database["public"]["Enums"]["photo_type"]
+          evidence_storage_path: string
           new_pct: number
-          progress_note?: string
+          progress_note: string
           target_work_order_id: string
+        }
+        Returns: string
+      }
+      review_progress_update: {
+        Args: {
+          approve_update: boolean
+          manager_review_note?: string
+          target_progress_update_id: string
         }
         Returns: undefined
       }

@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage, photoTypeLabels, statusLabels, type PhotoType } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
+import { formatProjectDateTime } from "@/lib/projects";
 import { compressImage } from "@/lib/image-compress";
 import { EmptyState, LoadingState, PageHeader } from "@/components/page-states";
 import { MapPreview } from "@/components/map-preview";
@@ -44,8 +45,11 @@ function JobDetailPage() {
   const queryClient = useQueryClient();
   const cameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
+  const progressEvidenceInput = useRef<HTMLInputElement>(null);
   const [progressPct, setProgressPct] = useState("0");
   const [progressNote, setProgressNote] = useState("");
+  const [progressEvidence, setProgressEvidence] = useState<File | null>(null);
+  const [progressReviewNote, setProgressReviewNote] = useState("");
   const [completionNote, setCompletionNote] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [photoType, setPhotoType] = useState<PhotoType>("saha");
@@ -132,10 +136,19 @@ function JobDetailPage() {
         stockItems = stockResult.data;
       }
 
+      const progressUserIds = [...new Set((progressResult.data ?? []).flatMap((item) =>
+        [item.contractor_id, item.reviewed_by].filter(Boolean) as string[],
+      ))];
+      const progressProfilesResult = progressUserIds.length
+        ? await supabase.from("profiles").select("id, full_name").in("id", progressUserIds)
+        : { data: [], error: null };
+      if (progressProfilesResult.error) throw progressProfilesResult.error;
+
       return {
         order: orderResult.data,
         photos,
         progress: progressResult.data ?? [],
+        progressProfiles: progressProfilesResult.data ?? [],
         materials,
         stockItems,
       };
@@ -153,40 +166,62 @@ function JobDetailPage() {
   const progressMutation = useMutation({
     mutationFn: async () => {
       const pct = Number(progressPct);
-      if (!Number.isInteger(pct) || pct < 0 || pct > 100) {
-        throw new Error("İlerleme 0–100 arasında tam sayı olmalıdır");
+      const approvedPct = detailQuery.data?.order.progress_pct ?? 0;
+      const normalizedNote = progressNote.trim();
+      if (!Number.isInteger(pct) || pct <= approvedPct || pct > 100) {
+        throw new Error(`İlerleme mevcut onaylı %${approvedPct} değerinden yüksek ve en fazla %100 olmalıdır`);
       }
+      if (normalizedNote.length < 10) {
+        throw new Error("Yapılan iş açıklaması en az 10 karakter olmalıdır");
+      }
+      if (!progressEvidence) throw new Error("Yeni bir kanıt fotoğrafı ekleyin");
+      if (!user) throw new Error("Oturum bulunamadı");
+
+      const compressed = await compressImage(progressEvidence);
+      const storagePath = `${user.id}/${jobId}/${crypto.randomUUID()}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from("work-photos")
+        .upload(storagePath, compressed, { contentType: "image/jpeg", upsert: false });
+      if (uploadError) throw uploadError;
+
       const { error } = await supabase.rpc("submit_progress_update", {
         target_work_order_id: jobId,
         new_pct: pct,
-        progress_note: progressNote,
+        progress_note: normalizedNote,
+        evidence_storage_path: storagePath,
+        evidence_photo_type: "saha",
       });
-      if (error) throw error;
+      if (error) {
+        await supabase.storage.from("work-photos").remove([storagePath]);
+        throw error;
+      }
     },
     onSuccess: async () => {
       await refresh();
       setProgressNote("");
-      toast.success(
-        Number(progressPct) === 100
-          ? "İlerleme %100 kaydedildi. Fotoğraf ve açıklama ekleyip kontrole gönderin."
-          : "İlerleme kaydedildi",
-      );
+      setProgressEvidence(null);
+      if (progressEvidenceInput.current) progressEvidenceInput.current.value = "";
+      toast.success(`%${progressPct} ilerleme talebiniz yönetici onayına gönderildi. Onaylandıktan sonra iş ilerlemesine eklenecektir.`);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const approvalMutation = useMutation({
-    mutationFn: async () => {
-      const pct = detailQuery.data?.order.progress_pct ?? 0;
-      const { error } = await supabase.rpc("approve_progress", {
-        target_work_order_id: jobId,
-        approved_pct_value: pct,
+  const reviewProgressMutation = useMutation({
+    mutationFn: async (approve: boolean) => {
+      const pending = detailQuery.data?.progress.find((item) => item.status === "pending");
+      if (!pending) throw new Error("Onay bekleyen ilerleme bulunamadı");
+      if (!approve && !progressReviewNote.trim()) throw new Error("Reddetme açıklaması zorunludur");
+      const { error } = await supabase.rpc("review_progress_update", {
+        target_progress_update_id: pending.id,
+        approve_update: approve,
+        manager_review_note: progressReviewNote.trim() || undefined,
       });
       if (error) throw error;
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, approved) => {
       await refresh();
-      toast.success("Hakediş ilerlemesi onaylandı");
+      setProgressReviewNote("");
+      toast.success(approved ? "İlerleme onaylandı ve işe yansıtıldı" : "İlerleme talebi reddedildi");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -340,12 +375,17 @@ function JobDetailPage() {
     );
   }
 
-  const { order, photos, progress, materials, stockItems } = detailQuery.data;
+  const { order, photos, progress, progressProfiles, materials, stockItems } = detailQuery.data;
   const canOperate = role === "admin" || role === "contractor";
   const isReviewPending = order.status === "review_pending";
   const isFinalized = order.status === "completed" || order.status === "cancelled";
+  const pendingProgress = progress.find((item) => item.status === "pending");
+  const pendingEvidence = pendingProgress
+    ? photos.find((photo) => photo.id === pendingProgress.evidence_photo_id)
+    : undefined;
+  const progressProfileById = new Map(progressProfiles.map((profile) => [profile.id, profile.full_name]));
   const canSubmitForReview =
-    role === "contractor" && order.progress_pct === 100 && !isReviewPending && !isFinalized;
+    role === "contractor" && order.progress_pct === 100 && !pendingProgress && !isReviewPending && !isFinalized;
   const financials = order.work_order_financials;
   const payableAmount =
     (financials?.total_amount ?? 0) * ((financials?.approved_progress_pct ?? 0) / 100);
@@ -410,17 +450,6 @@ function JobDetailPage() {
                 <p className="text-xs text-muted-foreground">Onaylı Hakediş</p>
                 <p className="text-xl font-black text-primary">{formatTRY(payableAmount)}</p>
               </div>
-              <Button
-                className="w-full"
-                onClick={() => approvalMutation.mutate()}
-                disabled={
-                  (financials?.approved_progress_pct ?? 0) === order.progress_pct ||
-                  approvalMutation.isPending
-                }
-              >
-                <CheckCircle2 className="mr-2 h-4 w-4" /> Mevcut %{order.progress_pct} İlerlemeyi
-                Onayla
-              </Button>
             </CardContent>
           </Card>
         ) : null}
@@ -433,6 +462,14 @@ function JobDetailPage() {
               <CardTitle>İlerleme Bildir</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {pendingProgress ? (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                  <p className="font-black text-amber-300">%{pendingProgress.pct} YÖNETİCİ ONAYI BEKLİYOR</p>
+                  <p className="mt-1 text-muted-foreground">
+                    İlerleme onaylandıktan sonra mevcut %{order.progress_pct} değerine yansıtılacaktır.
+                  </p>
+                </div>
+              ) : null}
               <label className="grid gap-1 text-sm">
                 İlerleme Yüzdesi
                 <Input
@@ -449,22 +486,31 @@ function JobDetailPage() {
                 <Textarea
                   value={progressNote}
                   onChange={(event) => setProgressNote(event.target.value)}
-                  placeholder="Bugün tamamlanan işleri yazın"
+                  placeholder="Yapılan işi en az 10 karakterle açıklayın"
+                  minLength={10}
                 />
               </label>
+              <label className="grid gap-1 text-sm">
+                Yeni Kanıt Fotoğrafı
+                <Input
+                  ref={progressEvidenceInput}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => setProgressEvidence(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <p className="text-xs text-muted-foreground">
+                İlerleme talebi için yeni fotoğraf ve en az 10 karakter açıklama zorunludur.
+                Yönetici onaylamadan yüzde değişmez.
+              </p>
               <Button
                 className="w-full h-12"
                 onClick={() => progressMutation.mutate()}
-                disabled={progressMutation.isPending || isReviewPending || isFinalized}
+                disabled={progressMutation.isPending || Boolean(pendingProgress) || isReviewPending || isFinalized}
               >
-                {progressMutation.isPending ? "Kaydediliyor..." : "İlerlemeyi Kaydet"}
+                {progressMutation.isPending ? "Gönderiliyor..." : "Yönetici Onayına Gönder"}
               </Button>
-              {Number(progressPct) === 100 && !isReviewPending && !isFinalized ? (
-                <p className="text-xs text-muted-foreground">
-                  %100, işi kapatmaz. Montaj Sonrası fotoğrafı ve bitiş açıklamasıyla yönetici
-                  kontrolüne göndermeniz gerekir.
-                </p>
-              ) : null}
             </CardContent>
           </Card>
 
@@ -542,6 +588,57 @@ function JobDetailPage() {
             </CardContent>
           </Card>
         </div>
+      ) : null}
+
+      {role === "admin" && pendingProgress ? (
+        <Card id="progress-approval" className="mt-6 scroll-mt-6 border-red-500/40 bg-red-500/5">
+          <CardHeader>
+            <CardTitle className="text-red-200">İlerleme Onayı Bekliyor · %{pendingProgress.pct}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-[minmax(0,320px)_1fr]">
+              {pendingEvidence?.signedUrl ? (
+                <img
+                  src={pendingEvidence.signedUrl}
+                  alt="İlerleme kanıtı"
+                  className="aspect-video w-full rounded-lg border object-cover"
+                />
+              ) : (
+                <div className="flex aspect-video items-center justify-center rounded-lg border bg-muted text-sm text-muted-foreground">
+                  Kanıt fotoğrafı açılamadı
+                </div>
+              )}
+              <div>
+                <p className="font-semibold">Taşeron açıklaması</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{pendingProgress.note}</p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {progressProfileById.get(pendingProgress.contractor_id) || "Taşeron"} · {formatProjectDateTime(pendingProgress.created_at)}
+                </p>
+              </div>
+            </div>
+            <Textarea
+              value={progressReviewNote}
+              onChange={(event) => setProgressReviewNote(event.target.value)}
+              placeholder="Onay notu veya reddetme gerekçesi"
+            />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                onClick={() => reviewProgressMutation.mutate(false)}
+                disabled={reviewProgressMutation.isPending}
+              >
+                Reddet
+              </Button>
+              <Button
+                onClick={() => reviewProgressMutation.mutate(true)}
+                disabled={reviewProgressMutation.isPending}
+              >
+                <CheckCircle2 className="mr-2 h-4 w-4" /> %{pendingProgress.pct} İlerlemeyi Onayla
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Reddetme işleminde açıklama zorunludur.</p>
+          </CardContent>
+        </Card>
       ) : null}
 
       {canSubmitForReview ? (
@@ -784,12 +881,35 @@ function JobDetailPage() {
                 className="surface-panel flex items-start justify-between gap-4 p-4"
               >
                 <div>
-                  <strong>%{item.pct}</strong>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong>%{item.pct}</strong>
+                    <Badge
+                      variant="outline"
+                      className={
+                        item.status === "pending"
+                          ? "border-amber-500/50 text-amber-300"
+                          : item.status === "approved"
+                            ? "border-emerald-500/50 text-emerald-300"
+                            : "border-red-500/50 text-red-300"
+                      }
+                    >
+                      {item.status === "pending" ? "Onay Bekliyor" : item.status === "approved" ? "Onaylandı" : "Reddedildi"}
+                    </Badge>
+                  </div>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {item.note || "Not girilmedi"}
                   </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Gönderen: {progressProfileById.get(item.contractor_id) || "Kullanıcı"}
+                    {item.reviewed_at
+                      ? ` · ${progressProfileById.get(item.reviewed_by ?? "") || "Yönetici"} · ${formatProjectDateTime(item.reviewed_at)}`
+                      : ""}
+                  </p>
+                  {item.review_note ? (
+                    <p className="mt-1 text-xs text-muted-foreground">Yönetici notu: {item.review_note}</p>
+                  ) : null}
                 </div>
-                <span className="text-xs text-muted-foreground">{formatDate(item.created_at)}</span>
+                <span className="text-xs text-muted-foreground">{formatProjectDateTime(item.created_at)}</span>
               </div>
             ))}
           </div>

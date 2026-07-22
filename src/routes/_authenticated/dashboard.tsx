@@ -27,6 +27,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 type ProjectSubmission = Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
+type WorkSubmission = Database["public"]["Tables"]["progress_updates"]["Row"];
 type ProjectTaskSummary = Pick<
   Database["public"]["Tables"]["project_tasks"]["Row"],
   "id" | "project_id" | "task_name" | "phase_name"
@@ -50,6 +51,7 @@ function DashboardPage() {
 
       let stock: { quantity: number; min_quantity: number }[] = [];
       let projectSubmissions: ProjectSubmission[] = [];
+      let workSubmissions: WorkSubmission[] = [];
       let projectTasks: ProjectTaskSummary[] = [];
       let projects: ProjectSummary[] = [];
       let profileNames: Array<{ id: string; full_name: string }> = [];
@@ -59,7 +61,7 @@ function DashboardPage() {
         stock = data;
       }
       if (role === "admin") {
-        const [pendingResult, approvedResult] = await Promise.all([
+        const [pendingResult, approvedResult, workPendingResult, workApprovedResult] = await Promise.all([
           supabase
             .from("project_task_progress_submissions")
             .select("*")
@@ -71,10 +73,25 @@ function DashboardPage() {
             .eq("status", "approved")
             .order("reviewed_at", { ascending: false })
             .limit(8),
+          supabase
+            .from("progress_updates")
+            .select("*")
+            .eq("status", "pending")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("progress_updates")
+            .select("*")
+            .eq("status", "approved")
+            .not("reviewed_at", "is", null)
+            .order("reviewed_at", { ascending: false })
+            .limit(8),
         ]);
         if (pendingResult.error) throw pendingResult.error;
         if (approvedResult.error) throw approvedResult.error;
+        if (workPendingResult.error) throw workPendingResult.error;
+        if (workApprovedResult.error) throw workApprovedResult.error;
         projectSubmissions = [...pendingResult.data, ...approvedResult.data];
+        workSubmissions = [...workPendingResult.data, ...workApprovedResult.data];
 
         const taskIds = [...new Set(projectSubmissions.map((item) => item.project_task_id))];
         if (taskIds.length) {
@@ -86,24 +103,26 @@ function DashboardPage() {
           projectTasks = taskResult.data;
 
           const projectIds = [...new Set(projectTasks.map((item) => item.project_id))];
-          const userIds = [...new Set(projectSubmissions.flatMap((item) =>
-            [item.submitted_by, item.reviewed_by].filter(Boolean) as string[],
-          ))];
-          const [projectsResult, profilesResult] = await Promise.all([
+          const projectsResult = await (
             projectIds.length
               ? supabase.from("projects").select("id, name, project_no").in("id", projectIds)
-              : Promise.resolve({ data: [], error: null }),
-            userIds.length
-              ? supabase.from("profiles").select("id, full_name").in("id", userIds)
-              : Promise.resolve({ data: [], error: null }),
-          ]);
+              : Promise.resolve({ data: [], error: null })
+          );
           if (projectsResult.error) throw projectsResult.error;
-          if (profilesResult.error) throw profilesResult.error;
           projects = projectsResult.data ?? [];
+        }
+
+        const userIds = [...new Set([
+          ...projectSubmissions.flatMap((item) => [item.submitted_by, item.reviewed_by]),
+          ...workSubmissions.flatMap((item) => [item.contractor_id, item.reviewed_by]),
+        ].filter(Boolean) as string[])];
+        if (userIds.length) {
+          const profilesResult = await supabase.from("profiles").select("id, full_name").in("id", userIds);
+          if (profilesResult.error) throw profilesResult.error;
           profileNames = profilesResult.data ?? [];
         }
       }
-      return { orders, stock, projectSubmissions, projectTasks, projects, profileNames };
+      return { orders, stock, projectSubmissions, workSubmissions, projectTasks, projects, profileNames };
     },
   });
 
@@ -115,12 +134,10 @@ function DashboardPage() {
   const orders = query.data?.orders ?? [];
   const active = orders.filter((order) => order.status === "in_progress").length;
   const completed = orders.filter((order) => order.status === "completed").length;
-  const pendingApproval = orders.filter(
-    (order) =>
-      role === "admin" &&
-      order.progress_pct > (order.work_order_financials?.approved_progress_pct ?? 0),
-  ).length;
   const projectSubmissions = query.data?.projectSubmissions ?? [];
+  const workSubmissions = query.data?.workSubmissions ?? [];
+  const pendingWorkSubmissions = workSubmissions.filter((item) => item.status === "pending");
+  const approvedWorkSubmissions = workSubmissions.filter((item) => item.status === "approved");
   const pendingProjectSubmissions = projectSubmissions.filter((item) => item.status === "pending");
   const approvedProjectSubmissions = projectSubmissions.filter((item) => item.status === "approved");
   const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
@@ -135,7 +152,7 @@ function DashboardPage() {
       ? [
           { label: "Toplam İş Emri", value: orders.length, icon: BriefcaseBusiness },
           { label: "Devam Eden", value: active, icon: Clock3 },
-          { label: "Onay Bekleyen", value: pendingApproval + pendingProjectSubmissions.length, icon: AlertTriangle },
+          { label: "Onay Bekleyen", value: pendingWorkSubmissions.length + pendingProjectSubmissions.length, icon: AlertTriangle },
           { label: "Kritik Stok", value: lowStock, icon: Package },
         ]
       : [
@@ -205,12 +222,83 @@ function DashboardPage() {
             </Card>
           );
           return metric.label === "Onay Bekleyen" ? (
-            <a key={metric.label} href="#project-approvals" className="block">{card}</a>
+            <a
+              key={metric.label}
+              href={pendingWorkSubmissions.length ? "#work-order-approvals" : "#project-approvals"}
+              className="block"
+            >
+              {card}
+            </a>
           ) : (
             <div key={metric.label}>{card}</div>
           );
         })}
       </div>
+
+      {role === "admin" ? (
+        <section id="work-order-approvals" className="mt-7 scroll-mt-6">
+          <div className="mb-3">
+            <h2 className="text-lg font-bold">İş Emri İlerleme Bildirimleri</h2>
+            <p className="text-sm text-muted-foreground">
+              Bekleyen ve son onaylanan ilerlemeler. Kayda dokunduğunuzda doğrudan onay alanı açılır.
+            </p>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {pendingWorkSubmissions.map((submission) => {
+              const order = orders.find((item) => item.id === submission.work_order_id);
+              if (!order) return null;
+              return (
+                <a
+                  key={submission.id}
+                  href={`/jobs/${order.id}#progress-approval`}
+                  className="surface-panel block border-red-500/40 bg-red-500/5 p-4 transition-colors hover:bg-red-500/10"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-red-300 animate-pulse">ONAY BEKLİYOR</p>
+                      <p className="mt-1 font-black">%{submission.pct} · #{order.work_order_no} · {order.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{submission.note}</p>
+                    </div>
+                    <AlertTriangle className="h-5 w-5 shrink-0 text-red-300" />
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {profileNameById.get(submission.contractor_id) || "Taşeron"} · {formatProjectDateTime(submission.created_at)}
+                  </p>
+                </a>
+              );
+            })}
+
+            {approvedWorkSubmissions.map((submission) => {
+              const order = orders.find((item) => item.id === submission.work_order_id);
+              if (!order) return null;
+              return (
+                <a
+                  key={submission.id}
+                  href={`/jobs/${order.id}`}
+                  className="surface-panel block border-emerald-500/30 bg-emerald-500/5 p-4 transition-colors hover:bg-emerald-500/10"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black text-emerald-300">ONAYLANDI</p>
+                      <p className="mt-1 font-black">%{submission.pct} · #{order.work_order_no} · {order.title}</p>
+                    </div>
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
+                  </div>
+                  <p className="mt-3 text-xs text-emerald-200/80">
+                    {profileNameById.get(submission.reviewed_by ?? "") || "Yönetici"} tarafından {formatProjectDateTime(submission.reviewed_at)} tarihinde onaylandı
+                  </p>
+                </a>
+              );
+            })}
+
+            {pendingWorkSubmissions.length === 0 && approvedWorkSubmissions.length === 0 ? (
+              <div className="surface-panel p-5 text-sm text-muted-foreground xl:col-span-2">
+                Henüz iş emri ilerleme bildirimi yok.
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {role === "admin" ? (
         <section id="project-approvals" className="mt-7 scroll-mt-6">
