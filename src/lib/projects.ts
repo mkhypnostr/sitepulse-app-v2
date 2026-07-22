@@ -98,3 +98,19 @@ export function projectProgress(statuses: ProjectTaskStatus[]) {
     percentage: applicable.length ? Math.round((completed / applicable.length) * 100) : 0,
   };
 }
+
+export function projectApprovedProgress(
+  tasks: Array<{ approved_progress_pct: number; status: ProjectTaskStatus }>,
+) {
+  const applicable = tasks.filter((task) => task.status !== "not_applicable");
+  const completed = applicable.filter((task) => task.approved_progress_pct === 100).length;
+  const approvedTotal = applicable.reduce(
+    (total, task) => total + task.approved_progress_pct,
+    0,
+  );
+  return {
+    completed,
+    total: applicable.length,
+    percentage: applicable.length ? Math.round(approvedTotal / applicable.length) : 0,
+  };
+}
