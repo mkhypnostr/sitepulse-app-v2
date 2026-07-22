@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Plus } from "lucide-react";
+import { Eye, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -32,13 +32,19 @@ import {
 } from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/work-orders")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    create: search.create === true || search.create === "true",
+  }),
   component: WorkOrdersPage,
 });
 
 function WorkOrdersPage() {
   const { role } = useAuth();
+  const { create } = Route.useSearch();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [form, setForm] = useState({
     customerId: "",
     title: "",
@@ -86,6 +92,10 @@ function WorkOrdersPage() {
       };
     },
   });
+
+  useEffect(() => {
+    if (create) setOpen(true);
+  }, [create]);
 
   const createOrder = useMutation({
     mutationFn: async () => {
@@ -144,6 +154,25 @@ function WorkOrdersPage() {
   const assignmentByOrder = new Map(
     data.assignments.map((item) => [item.work_order_id, item.contractor_id]),
   );
+  const filteredOrders = (() => {
+    const needle = searchText.trim().toLocaleLowerCase("tr-TR");
+    return data.orders.filter((order) => {
+      if (statusFilter !== "all" && order.status !== statusFilter) return false;
+      if (!needle) return true;
+      const contractor = contractorById.get(assignmentByOrder.get(order.id) ?? "");
+      return [
+        order.work_order_no,
+        order.title,
+        order.customers?.name,
+        order.location,
+        contractor?.full_name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("tr-TR")
+        .includes(needle);
+    });
+  })();
   const createButton = (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -280,6 +309,38 @@ function WorkOrdersPage() {
           İş emri oluşturmak için önce Müşteriler ekranından müşteri ekleyin.
         </p>
       ) : null}
+      {data.orders.length > 0 ? (
+        <div className="mb-4 grid gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-[1fr_220px]">
+          <label className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="İş no, müşteri, konum veya taşeron ara"
+              className="h-11 pl-10"
+            />
+          </label>
+          <div className="relative">
+            <SlidersHorizontal className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-11 pl-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Bütün durumlar</SelectItem>
+                {Object.entries(statusLabels).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            {filteredOrders.length} iş emri gösteriliyor.
+          </p>
+        </div>
+      ) : null}
       {data.orders.length === 0 ? (
         <EmptyState
           title="Henüz iş emri yok"
@@ -288,7 +349,7 @@ function WorkOrdersPage() {
         />
       ) : (
         <div className="grid gap-4">
-          {data.orders.map((order) => {
+          {filteredOrders.map((order) => {
             const contractor = contractorById.get(assignmentByOrder.get(order.id) ?? "");
             return (
               <div key={order.id} className="surface-panel p-4 sm:p-5">
@@ -343,6 +404,11 @@ function WorkOrdersPage() {
               </div>
             );
           })}
+          {filteredOrders.length === 0 ? (
+            <div className="surface-panel p-8 text-center text-sm text-muted-foreground">
+              Aramanıza veya seçtiğiniz duruma uygun iş emri bulunamadı.
+            </div>
+          ) : null}
         </div>
       )}
     </>

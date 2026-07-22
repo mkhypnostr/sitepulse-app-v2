@@ -1,6 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, BriefcaseBusiness, CheckCircle2, Clock3, Package } from "lucide-react";
+import {
+  AlertTriangle,
+  Boxes,
+  BriefcaseBusiness,
+  CheckCircle2,
+  Clock3,
+  Package,
+  PlusCircle,
+  UserCog,
+  UsersRound,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage, statusLabels } from "@/lib/domain";
@@ -67,6 +77,34 @@ function DashboardPage() {
           { label: "Toplam İş", value: orders.length, icon: Clock3 },
         ];
 
+  const quickActions = [
+    {
+      label: "Yeni İş Emri",
+      description: "Planla ve taşerona ata",
+      to: "/work-orders" as const,
+      search: { create: true },
+      icon: PlusCircle,
+    },
+    {
+      label: "Müşteri Ekle",
+      description: "Firma ve portal bağlantısı",
+      to: "/customers" as const,
+      icon: UsersRound,
+    },
+    {
+      label: "Stok Yönetimi",
+      description: "Malzeme ve kritik stok",
+      to: "/stock" as const,
+      icon: Boxes,
+    },
+    {
+      label: "Ekip ve Yetkiler",
+      description: "Yönetici, taşeron, müşteri",
+      to: "/team" as const,
+      icon: UserCog,
+    },
+  ];
+
   return (
     <>
       <PageHeader
@@ -93,6 +131,33 @@ function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      {role === "admin" ? (
+        <section className="mt-7">
+          <div className="mb-3">
+            <h2 className="text-lg font-bold">Hızlı İşlemler</h2>
+            <p className="text-sm text-muted-foreground">Sık kullandığınız alanlara tek dokunuşla gidin.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {quickActions.map((action) => (
+              <Link
+                key={action.label}
+                to={action.to}
+                search={"search" in action ? action.search : undefined}
+                className="group surface-panel flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:bg-accent/40"
+              >
+                <span className="rounded-xl bg-primary/15 p-3 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                  <action.icon className="h-6 w-6" />
+                </span>
+                <span>
+                  <span className="block font-bold">{action.label}</span>
+                  <span className="block text-xs text-muted-foreground">{action.description}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-7">
         <div className="mb-3 flex items-center justify-between">

@@ -63,45 +63,45 @@
 
 :root {
   --radius: 0.5rem;
-  /* NES Enerji — kurumsal koyu tema (siyah/sarı/gri) */
-  --background: oklch(0.16 0.005 260);
-  --foreground: oklch(0.98 0.005 90);
-  --card: oklch(0.21 0.006 260);
-  --card-foreground: oklch(0.98 0.005 90);
-  --popover: oklch(0.21 0.006 260);
-  --popover-foreground: oklch(0.98 0.005 90);
-  --primary: oklch(0.86 0.18 95);
-  --primary-foreground: oklch(0.14 0.01 260);
-  --secondary: oklch(0.28 0.008 260);
-  --secondary-foreground: oklch(0.98 0.005 90);
-  --muted: oklch(0.26 0.008 260);
-  --muted-foreground: oklch(0.72 0.02 90);
-  --accent: oklch(0.32 0.02 90);
-  --accent-foreground: oklch(0.98 0.005 90);
+  /* NES Enerji — logodaki mavi, beyaz ve koyu lacivert */
+  --background: oklch(0.14 0.025 250);
+  --foreground: oklch(0.98 0.004 250);
+  --card: oklch(0.19 0.028 250);
+  --card-foreground: oklch(0.98 0.004 250);
+  --popover: oklch(0.19 0.028 250);
+  --popover-foreground: oklch(0.98 0.004 250);
+  --primary: oklch(0.46 0.17 257);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.25 0.03 250);
+  --secondary-foreground: oklch(0.98 0.004 250);
+  --muted: oklch(0.24 0.026 250);
+  --muted-foreground: oklch(0.75 0.025 250);
+  --accent: oklch(0.27 0.055 252);
+  --accent-foreground: oklch(0.98 0.004 250);
   --destructive: oklch(0.64 0.24 27);
   --destructive-foreground: oklch(0.98 0.005 90);
-  --border: oklch(0.32 0.01 260);
-  --input: oklch(0.24 0.008 260);
-  --ring: oklch(0.86 0.18 95);
-  --chart-1: oklch(0.86 0.18 95);
-  --chart-2: oklch(0.72 0.02 90);
-  --chart-3: oklch(0.55 0.02 260);
+  --border: oklch(0.31 0.035 250);
+  --input: oklch(0.23 0.03 250);
+  --ring: oklch(0.55 0.18 257);
+  --chart-1: oklch(0.55 0.18 257);
+  --chart-2: oklch(0.72 0.12 225);
+  --chart-3: oklch(0.68 0.1 190);
   --chart-4: oklch(0.64 0.24 27);
   --chart-5: oklch(0.98 0.005 90);
-  --sidebar: oklch(0.14 0.005 260);
-  --sidebar-foreground: oklch(0.98 0.005 90);
-  --sidebar-primary: oklch(0.86 0.18 95);
-  --sidebar-primary-foreground: oklch(0.14 0.01 260);
-  --sidebar-accent: oklch(0.24 0.008 260);
-  --sidebar-accent-foreground: oklch(0.98 0.005 90);
-  --sidebar-border: oklch(0.32 0.01 260);
-  --sidebar-ring: oklch(0.86 0.18 95);
+  --sidebar: oklch(0.115 0.022 250);
+  --sidebar-foreground: oklch(0.98 0.004 250);
+  --sidebar-primary: oklch(0.46 0.17 257);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.23 0.04 252);
+  --sidebar-accent-foreground: oklch(0.98 0.004 250);
+  --sidebar-border: oklch(0.29 0.035 250);
+  --sidebar-ring: oklch(0.55 0.18 257);
 }
 
 .dark {
   /* Zaten koyu tema; light/dark toggle yok. */
-  --background: oklch(0.16 0.005 260);
-  --foreground: oklch(0.98 0.005 90);
+  --background: oklch(0.14 0.025 250);
+  --foreground: oklch(0.98 0.004 250);
 }
 
 @layer base {
@@ -145,15 +145,15 @@
   font-size: 1.1rem;
   font-weight: 700;
   border-radius: 0.75rem;
-  border: 2px solid oklch(0.7 0.15 95);
-  box-shadow: 0 4px 0 oklch(0.55 0.12 95);
+  border: 2px solid oklch(0.58 0.17 257);
+  box-shadow: 0 4px 0 oklch(0.32 0.12 257);
   transition:
     transform 0.05s ease,
     box-shadow 0.05s ease;
 }
 @utility btn-primary-glove-active {
   transform: translateY(2px);
-  box-shadow: 0 2px 0 oklch(0.55 0.12 95);
+  box-shadow: 0 2px 0 oklch(0.32 0.12 257);
 }
 
 @utility surface-panel {
