@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileText, ImagePlus, Loader2, Paperclip } from "lucide-react";
+import { Camera, Download, FileText, Images, Loader2, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -10,15 +10,15 @@ import { Button } from "@/components/ui/button";
 type EvidenceType = "photo" | "document";
 
 const maxFileSize = 20 * 1024 * 1024;
-const permittedMimeTypes = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "application/pdf",
-]);
+const permittedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 
 function safeFileName(name: string) {
-  const extension = name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "file";
+  const extension =
+    name
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "") || "file";
   return `${crypto.randomUUID()}.${extension}`;
 }
 
@@ -39,7 +39,8 @@ export function ProjectTaskEvidence({
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const photoInput = useRef<HTMLInputElement>(null);
+  const photoCameraInput = useRef<HTMLInputElement>(null);
+  const photoGalleryInput = useRef<HTMLInputElement>(null);
   const documentInput = useRef<HTMLInputElement>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
 
@@ -123,7 +124,11 @@ export function ProjectTaskEvidence({
   if (!shouldShow) return null;
 
   return (
-    <div className={compact ? "mt-3" : "mt-4 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-3"}>
+    <div
+      className={
+        compact ? "mt-3" : "mt-4 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-3"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-primary">
           <Paperclip className="h-3.5 w-3.5" /> Kanıt Dosyaları
@@ -133,7 +138,15 @@ export function ProjectTaskEvidence({
             {requiresPhoto || !requiresDocument ? (
               <>
                 <input
-                  ref={photoInput}
+                  ref={photoCameraInput}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(event) => startUpload(event, "photo")}
+                />
+                <input
+                  ref={photoGalleryInput}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   className="hidden"
@@ -143,11 +156,25 @@ export function ProjectTaskEvidence({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => photoInput.current?.click()}
+                  onClick={() => photoCameraInput.current?.click()}
                   disabled={uploadEvidence.isPending}
                 >
-                  {uploadEvidence.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="mr-1.5 h-3.5 w-3.5" />}
-                  Fotoğraf Ekle
+                  {uploadEvidence.isPending ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Camera className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Kamera
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => photoGalleryInput.current?.click()}
+                  disabled={uploadEvidence.isPending}
+                >
+                  <Images className="mr-1.5 h-3.5 w-3.5" />
+                  Galeri
                 </Button>
               </>
             ) : null}
@@ -167,7 +194,11 @@ export function ProjectTaskEvidence({
                   onClick={() => documentInput.current?.click()}
                   disabled={uploadEvidence.isPending}
                 >
-                  {uploadEvidence.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1.5 h-3.5 w-3.5" />}
+                  {uploadEvidence.isPending ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="mr-1.5 h-3.5 w-3.5" />
+                  )}
                   Belge Ekle
                 </Button>
               </>
@@ -186,16 +217,26 @@ export function ProjectTaskEvidence({
               disabled={openingId === item.id}
             >
               <span className="flex min-w-0 items-center gap-2">
-                {item.evidence_type === "photo" ? <ImagePlus className="h-3.5 w-3.5 shrink-0 text-primary" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                {item.evidence_type === "photo" ? (
+                  <Images className="h-3.5 w-3.5 shrink-0 text-primary" />
+                ) : (
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                )}
                 <span className="truncate font-semibold">{item.file_name}</span>
               </span>
-              {openingId === item.id ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+              {openingId === item.id ? (
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              )}
             </button>
           ))}
         </div>
       ) : (
         <p className="mt-2 text-xs text-muted-foreground">
-          {requiresPhoto || requiresDocument ? "Bu görev için henüz kanıt dosyası eklenmedi." : "İsteğe bağlı kanıt dosyası ekleyebilirsiniz."}
+          {requiresPhoto || requiresDocument
+            ? "Bu görev için henüz kanıt dosyası eklenmedi."
+            : "İsteğe bağlı kanıt dosyası ekleyebilirsiniz."}
         </p>
       )}
     </div>
