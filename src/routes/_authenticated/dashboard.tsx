@@ -6,6 +6,7 @@ import {
   BriefcaseBusiness,
   CheckCircle2,
   Clock3,
+  FolderKanban,
   Package,
   PlusCircle,
   UserCog,
@@ -36,6 +37,10 @@ type ProjectSummary = Pick<
   Database["public"]["Tables"]["projects"]["Row"],
   "id" | "name" | "project_no"
 >;
+type ProjectDashboardSummary = Pick<
+  Database["public"]["Tables"]["projects"]["Row"],
+  "id" | "status"
+>;
 
 function DashboardPage() {
   const { role } = useAuth();
@@ -56,6 +61,8 @@ function DashboardPage() {
       let workSubmissions: WorkSubmission[] = [];
       let projectTasks: ProjectTaskSummary[] = [];
       let projects: ProjectSummary[] = [];
+      let allProjects: ProjectDashboardSummary[] = [];
+      let assignments: Array<{ work_order_id: string }> = [];
       let profileNames: Array<{ id: string; full_name: string }> = [];
       if (role === "admin" || role === "contractor") {
         const { data, error } = await supabase.from("stock_items").select("quantity, min_quantity");
@@ -63,38 +70,50 @@ function DashboardPage() {
         stock = data;
       }
       if (role === "admin") {
-        const [pendingResult, approvedResult, workPendingResult, workApprovedResult] =
-          await Promise.all([
-            supabase
-              .from("project_task_progress_submissions")
-              .select("*")
-              .eq("status", "pending")
-              .order("submitted_at", { ascending: false }),
-            supabase
-              .from("project_task_progress_submissions")
-              .select("*")
-              .eq("status", "approved")
-              .order("reviewed_at", { ascending: false })
-              .limit(8),
-            supabase
-              .from("progress_updates")
-              .select("*")
-              .eq("status", "pending")
-              .order("created_at", { ascending: false }),
-            supabase
-              .from("progress_updates")
-              .select("*")
-              .eq("status", "approved")
-              .not("reviewed_at", "is", null)
-              .order("reviewed_at", { ascending: false })
-              .limit(8),
-          ]);
+        const [
+          pendingResult,
+          approvedResult,
+          workPendingResult,
+          workApprovedResult,
+          allProjectsResult,
+          assignmentsResult,
+        ] = await Promise.all([
+          supabase
+            .from("project_task_progress_submissions")
+            .select("*")
+            .eq("status", "pending")
+            .order("submitted_at", { ascending: false }),
+          supabase
+            .from("project_task_progress_submissions")
+            .select("*")
+            .eq("status", "approved")
+            .order("reviewed_at", { ascending: false })
+            .limit(8),
+          supabase
+            .from("progress_updates")
+            .select("*")
+            .eq("status", "pending")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("progress_updates")
+            .select("*")
+            .eq("status", "approved")
+            .not("reviewed_at", "is", null)
+            .order("reviewed_at", { ascending: false })
+            .limit(8),
+          supabase.from("projects").select("id, status"),
+          supabase.from("work_order_assignments").select("work_order_id"),
+        ]);
         if (pendingResult.error) throw pendingResult.error;
         if (approvedResult.error) throw approvedResult.error;
         if (workPendingResult.error) throw workPendingResult.error;
         if (workApprovedResult.error) throw workApprovedResult.error;
+        if (allProjectsResult.error) throw allProjectsResult.error;
+        if (assignmentsResult.error) throw assignmentsResult.error;
         projectSubmissions = [...pendingResult.data, ...approvedResult.data];
         workSubmissions = [...workPendingResult.data, ...workApprovedResult.data];
+        allProjects = allProjectsResult.data ?? [];
+        assignments = assignmentsResult.data ?? [];
 
         const taskIds = [...new Set(projectSubmissions.map((item) => item.project_task_id))];
         if (taskIds.length) {
@@ -138,6 +157,8 @@ function DashboardPage() {
         workSubmissions,
         projectTasks,
         projects,
+        allProjects,
+        assignments,
         profileNames,
       };
     },
@@ -151,6 +172,12 @@ function DashboardPage() {
   const orders = query.data?.orders ?? [];
   const active = orders.filter((order) => order.status === "in_progress").length;
   const completed = orders.filter((order) => order.status === "completed").length;
+  const allProjects = query.data?.allProjects ?? [];
+  const activeProjects = allProjects.filter((project) => project.status === "active").length;
+  const assignedOrderIds = new Set(
+    (query.data?.assignments ?? []).map((item) => item.work_order_id),
+  );
+  const unassignedTasks = orders.filter((order) => !assignedOrderIds.has(order.id)).length;
   const projectSubmissions = query.data?.projectSubmissions ?? [];
   const workSubmissions = query.data?.workSubmissions ?? [];
   const pendingWorkSubmissions = workSubmissions.filter((item) => item.status === "pending");
@@ -186,16 +213,21 @@ function DashboardPage() {
         ? `/projects/${firstPendingProjectTask.project_id}#task-${firstPendingProjectTask.id}`
         : undefined;
 
-  const metrics =
+  const projectMetrics =
     role === "admin"
       ? [
           {
-            label: "Toplam Görev",
-            value: orders.length,
-            icon: BriefcaseBusiness,
-            href: "/work-orders",
+            label: "Toplam Proje / Şantiye",
+            value: allProjects.length,
+            icon: FolderKanban,
+            href: "/projects",
           },
-          { label: "Devam Eden Görev", value: active, icon: Clock3, href: "/work-orders" },
+          {
+            label: "Aktif Proje / Şantiye",
+            value: activeProjects,
+            icon: Clock3,
+            href: "/projects",
+          },
           {
             label: "Onay Bekleyen",
             value:
@@ -204,6 +236,14 @@ function DashboardPage() {
               pendingProjectSubmissions.length,
             icon: AlertTriangle,
             href: pendingTarget,
+            attention: "danger",
+          },
+          {
+            label: "Geciken Görevler",
+            value: overdueOrders.length,
+            icon: AlertTriangle,
+            href: "/work-orders",
+            attention: "warning",
           },
           { label: "Kritik Stok", value: lowStock, icon: Package, href: "/stock" },
         ]
@@ -227,6 +267,13 @@ function DashboardPage() {
             href: role === "customer" ? "/my-projects" : "/my-jobs",
           },
         ];
+
+  const taskMetrics = [
+    { label: "Toplam Görev", value: orders.length, icon: BriefcaseBusiness, href: "/work-orders" },
+    { label: "Devam Eden", value: active, icon: Clock3, href: "/work-orders" },
+    { label: "Atama Bekleyen", value: unassignedTasks, icon: UserCog, href: "/work-orders" },
+    { label: "Tamamlanan", value: completed, icon: CheckCircle2, href: "/work-orders" },
+  ];
 
   const quickActions = [
     {
@@ -267,82 +314,157 @@ function DashboardPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => {
-          const card = (
-            <Card
-              className={
-                metric.label === "Onay Bekleyen" && metric.value > 0
-                  ? "border-red-500/40 bg-red-500/5"
-                  : "border-border bg-card"
-              }
-            >
-              <CardContent className="flex items-center gap-4 p-5">
-                <div
+      {role === "admin" ? (
+        <section>
+          <div className="mb-3">
+            <h2 className="text-lg font-bold">Proje ve Şantiye Özeti</h2>
+            <p className="text-sm text-muted-foreground">
+              Portföy, onay, gecikme ve stok durumunu tek bakışta görün.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            {projectMetrics.map((metric) => {
+              const card = (
+                <Card
                   className={
-                    metric.label === "Onay Bekleyen" && metric.value > 0
-                      ? "rounded-lg bg-red-500/15 p-3 text-red-300 animate-pulse"
-                      : "rounded-lg bg-primary/15 p-3 text-primary"
+                    metric.attention === "danger" && metric.value > 0
+                      ? "border-red-500/40 bg-red-500/5"
+                      : metric.attention === "warning" && metric.value > 0
+                        ? "border-amber-500/40 bg-amber-500/5"
+                        : "border-border bg-card"
                   }
                 >
-                  <metric.icon className="h-6 w-6" />
+                  <CardContent className="flex items-center gap-4 p-5">
+                    <div
+                      className={
+                        metric.attention === "danger" && metric.value > 0
+                          ? "rounded-lg bg-red-500/15 p-3 text-red-300 animate-pulse"
+                          : metric.attention === "warning" && metric.value > 0
+                            ? "rounded-lg bg-amber-500/15 p-3 text-amber-300"
+                            : "rounded-lg bg-primary/15 p-3 text-primary"
+                      }
+                    >
+                      <metric.icon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">{metric.label}</p>
+                      <p className="text-3xl font-black">{metric.value}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+              return metric.href ? (
+                <a key={metric.label} href={metric.href} className="block">
+                  {card}
+                </a>
+              ) : (
+                <div key={metric.label} title="Onay bekleyen kayıt yok">
+                  {card}
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">{metric.label}</p>
-                  <p className="text-3xl font-black">{metric.value}</p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-          return metric.href ? (
-            <a key={metric.label} href={metric.href} className="block">
-              {card}
-            </a>
-          ) : (
-            <div key={metric.label} title="Onay bekleyen kayıt yok">
-              {card}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {projectMetrics.map((metric) => {
+            const card = (
+              <Card className="border-border bg-card">
+                <CardContent className="flex items-center gap-4 p-5">
+                  <div className="rounded-lg bg-primary/15 p-3 text-primary">
+                    <metric.icon className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">{metric.label}</p>
+                    <p className="text-3xl font-black">{metric.value}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+            return metric.href ? (
+              <a key={metric.label} href={metric.href} className="block">
+                {card}
+              </a>
+            ) : (
+              <div key={metric.label}>{card}</div>
+            );
+          })}
+        </div>
+      )}
 
       {role === "admin" ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <a
-            href="#work-order-approvals"
-            className="surface-panel p-4 transition-colors hover:border-primary/60"
-          >
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Görev Onayları
+        <section className="mt-7">
+          <div className="mb-3">
+            <h2 className="text-lg font-bold">Görev Özeti</h2>
+            <p className="text-sm text-muted-foreground">
+              Projelere bağlı ve bağımsız operasyon görevlerinin durumu.
             </p>
-            <p className="mt-1 text-2xl font-black">
-              {pendingCompletionOrders.length + pendingWorkSubmissions.length}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {taskMetrics.map((metric) => (
+              <a key={metric.label} href={metric.href} className="block">
+                <Card className="border-border bg-card">
+                  <CardContent className="flex items-center gap-4 p-5">
+                    <div className="rounded-lg bg-primary/15 p-3 text-primary">
+                      <metric.icon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">{metric.label}</p>
+                      <p className="text-3xl font-black">{metric.value}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </a>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {role === "admin" ? (
+        <section className="mt-7">
+          <div className="mb-3">
+            <h2 className="text-lg font-bold">Onay ve Uyarı Merkezi</h2>
+            <p className="text-sm text-muted-foreground">
+              Görev kayıtlarını ve proje süreçlerini ayrı başlıklarda takip edin.
             </p>
-            <p className="text-xs text-muted-foreground">Bekleyen görev kaydı</p>
-          </a>
-          <a
-            href="#project-approvals"
-            className="surface-panel p-4 transition-colors hover:border-primary/60"
-          >
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Süreç Onayları
-            </p>
-            <p className="mt-1 text-2xl font-black">{pendingProjectSubmissions.length}</p>
-            <p className="text-xs text-muted-foreground">Bekleyen proje süreci</p>
-          </a>
-          <Link
-            to="/work-orders"
-            className={`surface-panel p-4 transition-colors hover:border-primary/60 ${
-              overdueOrders.length ? "border-amber-500/40 bg-amber-500/5" : ""
-            }`}
-          >
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Geciken Görevler
-            </p>
-            <p className="mt-1 text-2xl font-black">{overdueOrders.length}</p>
-            <p className="text-xs text-muted-foreground">Planlanan tarihi geçen görev</p>
-          </Link>
-        </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <a
+              href="#work-order-approvals"
+              className="surface-panel p-4 transition-colors hover:border-primary/60"
+            >
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Görev Onayları
+              </p>
+              <p className="mt-1 text-2xl font-black">
+                {pendingCompletionOrders.length + pendingWorkSubmissions.length}
+              </p>
+              <p className="text-xs text-muted-foreground">Bekleyen görev kaydı</p>
+            </a>
+            <a
+              href="#project-approvals"
+              className="surface-panel p-4 transition-colors hover:border-primary/60"
+            >
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Proje Süreç Onayları
+              </p>
+              <p className="mt-1 text-2xl font-black">{pendingProjectSubmissions.length}</p>
+              <p className="text-xs text-muted-foreground">Bekleyen proje süreci</p>
+            </a>
+            <Link
+              to="/work-orders"
+              className={`surface-panel p-4 transition-colors hover:border-primary/60 ${
+                overdueOrders.length ? "border-amber-500/40 bg-amber-500/5" : ""
+              }`}
+            >
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Geciken Görevler
+              </p>
+              <p className="mt-1 text-2xl font-black">{overdueOrders.length}</p>
+              <p className="text-xs text-muted-foreground">Planlanan tarihi geçen görev</p>
+            </Link>
+          </div>
+        </section>
       ) : null}
 
       {role === "admin" ? (
