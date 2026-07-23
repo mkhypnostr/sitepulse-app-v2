@@ -109,7 +109,7 @@ function ReportsPage() {
       ["NES ENERJİ MALZEME VE HAKEDİŞ RAPORU", periodLabel],
       [],
       ["MALZEME KULLANIMLARI"],
-      ["Tarih", "İş Emri No", "İş", "Müşteri", "Kaynak", "Kod", "Malzeme", "Miktar", "Birim"],
+      ["Tarih", "Görev No", "Görev", "Müşteri", "Kaynak", "Kod", "Malzeme", "Miktar", "Birim"],
       ...materials.map((item) => [
         formatDate(item.created_at),
         item.work_orders?.work_order_no,
@@ -123,7 +123,7 @@ function ReportsPage() {
       ]),
       [],
       ["HAKEDİŞ ONAYLARI"],
-      ["Tarih", "İş Emri No", "İş", "Müşteri", "Onaylanan %", "Onaylanan Tutar"],
+      ["Tarih", "Görev No", "Görev", "Müşteri", "Onaylanan %", "Onaylanan Tutar"],
       ...approvals.map((item) => [
         formatDate(item.approved_at),
         item.work_orders?.work_order_no,
@@ -203,7 +203,7 @@ function ReportsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Tarih</TableHead>
-                <TableHead>İş Emri</TableHead>
+                <TableHead>Görev</TableHead>
                 <TableHead>Kaynak</TableHead>
                 <TableHead>Malzeme</TableHead>
                 <TableHead className="text-right">Miktar</TableHead>
@@ -243,7 +243,7 @@ function ReportsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Tarih</TableHead>
-                <TableHead>İş Emri</TableHead>
+                <TableHead>Görev</TableHead>
                 <TableHead>Onay</TableHead>
                 <TableHead className="text-right">Tutar</TableHead>
               </TableRow>
