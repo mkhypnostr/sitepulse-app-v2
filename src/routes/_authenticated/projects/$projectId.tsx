@@ -9,6 +9,7 @@ import {
   Clock3,
   FileText,
   MapPin,
+  Plus,
   Save,
   UserRound,
 } from "lucide-react";
@@ -179,6 +180,13 @@ function ProjectDetailPage() {
         description={`${project.project_no} · ${customer?.name || "Müşteri"}`}
         actions={
           <div className="flex flex-wrap gap-2">
+            {project.status !== "completed" && project.status !== "cancelled" ? (
+              <Button asChild>
+                <Link to="/work-orders" search={{ create: true, projectId: project.id }}>
+                  <Plus className="mr-2 h-4 w-4" /> Yeni Görev Ata
+                </Link>
+              </Button>
+            ) : null}
             <Badge variant="outline" className="px-3 py-1.5">
               {projectStatusLabel[project.status]}
             </Badge>
