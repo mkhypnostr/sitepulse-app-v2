@@ -54,7 +54,11 @@ function WorkOrdersPage() {
     locationUrl: "",
     date: new Date().toISOString().slice(0, 10),
     time: "08:00",
-    amount: "0",
+    customerAmount: "0",
+    contractorLaborAmount: "0",
+    estimatedMaterialCost: "0",
+    workScopeType: "labor_only",
+    materialSource: "none",
     contractorId: "none",
     showToCustomer: false,
   });
@@ -66,7 +70,7 @@ function WorkOrdersPage() {
       const [ordersResult, customersResult, rolesResult, assignmentsResult] = await Promise.all([
         supabase
           .from("work_orders")
-          .select("*, customers(name), work_order_financials(total_amount, approved_progress_pct)")
+          .select("*, customers(name), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)")
           .order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name").order("name"),
         supabase.from("user_roles").select("user_id").eq("role", "contractor"),
@@ -101,8 +105,12 @@ function WorkOrdersPage() {
 
   const createOrder = useMutation({
     mutationFn: async () => {
-      const amount = Number(form.amount.replace(",", "."));
-      if (!Number.isFinite(amount) || amount < 0) throw new Error("İş bedelini kontrol edin");
+      const customerAmount = Number(form.customerAmount.replace(",", "."));
+      const contractorLaborAmount = Number(form.contractorLaborAmount.replace(",", "."));
+      const estimatedMaterialCost = Number(form.estimatedMaterialCost.replace(",", "."));
+      if (![customerAmount, contractorLaborAmount, estimatedMaterialCost].every((value) => Number.isFinite(value) && value >= 0)) {
+        throw new Error("Ticari tutarları kontrol edin");
+      }
       const locationUrl = safeHttpsMapUrl(form.locationUrl);
       if (!locationUrl) throw new Error("Google Maps'ten geçerli bir konum bağlantısı girin");
       const scheduledAt = new Date(`${form.date}T${form.time}:00`).toISOString();
@@ -113,7 +121,11 @@ function WorkOrdersPage() {
         order_location: "",
         order_location_url: locationUrl,
         order_scheduled_at: scheduledAt,
-        order_total_amount: amount,
+        order_customer_amount: customerAmount,
+        order_contractor_labor_amount: contractorLaborAmount,
+        order_estimated_material_cost: estimatedMaterialCost,
+        order_work_scope_type: form.workScopeType,
+        order_default_material_source: form.workScopeType === "labor_only" ? "none" : form.materialSource,
         visible_to_customer: form.showToCustomer,
         assigned_contractor_id: form.contractorId === "none" ? null : form.contractorId,
       });
@@ -130,7 +142,11 @@ function WorkOrdersPage() {
         locationUrl: "",
         date: new Date().toISOString().slice(0, 10),
         time: "08:00",
-        amount: "0",
+        customerAmount: "0",
+        contractorLaborAmount: "0",
+        estimatedMaterialCost: "0",
+        workScopeType: "labor_only",
+        materialSource: "none",
         contractorId: "none",
         showToCustomer: false,
       });
@@ -283,13 +299,72 @@ function WorkOrdersPage() {
             </Select>
           </label>
           <label className="grid gap-1 text-sm">
-            Toplam İş Bedeli (₺)
+            İş Kapsamı
+            <Select
+              value={form.workScopeType}
+              onValueChange={(workScopeType) => setForm({
+                ...form,
+                workScopeType,
+                materialSource: workScopeType === "labor_only" ? "none" : form.materialSource === "none" ? "nes_stock" : form.materialSource,
+              })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="labor_only">Yalnızca işçilik</SelectItem>
+                <SelectItem value="labor_and_material">İşçilik + malzeme</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="grid gap-1 text-sm">
+            Malzeme Kaynağı
+            <Select
+              value={form.materialSource}
+              disabled={form.workScopeType === "labor_only"}
+              onValueChange={(materialSource) => setForm({ ...form, materialSource })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Malzeme kullanılmayacak</SelectItem>
+                <SelectItem value="nes_stock">NES deposu</SelectItem>
+                <SelectItem value="contractor">Taşeron malzemesi</SelectItem>
+                <SelectItem value="customer_site">Müşteri / şantiye malzemesi</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="grid gap-1 text-sm">
+            Müşteriye Satış Bedeli (₺)
             <Input
               inputMode="decimal"
-              value={form.amount}
-              onChange={(event) => setForm({ ...form, amount: event.target.value })}
+              value={form.customerAmount}
+              onChange={(event) => setForm({ ...form, customerAmount: event.target.value })}
             />
           </label>
+          <label className="grid gap-1 text-sm">
+            Taşeron İşçilik Bedeli (₺)
+            <Input
+              inputMode="decimal"
+              value={form.contractorLaborAmount}
+              onChange={(event) => setForm({ ...form, contractorLaborAmount: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            Tahmini Malzeme / Diğer Maliyet (₺)
+            <Input
+              inputMode="decimal"
+              value={form.estimatedMaterialCost}
+              onChange={(event) => setForm({ ...form, estimatedMaterialCost: event.target.value })}
+            />
+          </label>
+          <div className="rounded-md border bg-muted/40 p-3 text-sm">
+            <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
+            <p className="mt-1 text-lg font-black text-primary">
+              {formatTRY(
+                (Number(form.customerAmount.replace(",", ".")) || 0)
+                - (Number(form.contractorLaborAmount.replace(",", ".")) || 0)
+                - (Number(form.estimatedMaterialCost.replace(",", ".")) || 0),
+              )}
+            </p>
+          </div>
           <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
             Müşteriye Göster
             <Switch
@@ -306,6 +381,7 @@ function WorkOrdersPage() {
               !form.title.trim() ||
               !safeHttpsMapUrl(form.locationUrl) ||
               !form.date ||
+              (form.workScopeType === "labor_and_material" && form.materialSource === "none") ||
               createOrder.isPending
             }
           >
@@ -397,9 +473,17 @@ function WorkOrdersPage() {
                       <strong>%{order.progress_pct}</strong>
                     </div>
                     <Progress value={order.progress_pct} />
-                    <p className="mt-2 text-right font-bold">
-                      {formatTRY(order.work_order_financials?.total_amount)}
-                    </p>
+                    <div className="mt-2 space-y-1 text-right text-xs">
+                      <p>Müşteri: <strong>{formatTRY(order.work_order_financials?.customer_amount)}</strong></p>
+                      <p>Taşeron: <strong>{formatTRY(order.work_order_financials?.contractor_labor_amount)}</strong></p>
+                      <p className="text-primary">
+                        Brüt fark: <strong>{formatTRY(
+                          (order.work_order_financials?.customer_amount ?? 0)
+                          - (order.work_order_financials?.contractor_labor_amount ?? 0)
+                          - (order.work_order_financials?.estimated_material_cost ?? 0),
+                        )}</strong>
+                      </p>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 rounded-md border p-3 lg:w-44">
                     <div>
