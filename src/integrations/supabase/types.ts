@@ -798,18 +798,27 @@ export type Database = {
       work_order_financials: {
         Row: {
           approved_progress_pct: number
+          contractor_labor_amount: number
+          customer_amount: number
+          estimated_material_cost: number
           total_amount: number
           updated_at: string
           work_order_id: string
         }
         Insert: {
           approved_progress_pct?: number
+          contractor_labor_amount?: number
+          customer_amount?: number
+          estimated_material_cost?: number
           total_amount?: number
           updated_at?: string
           work_order_id: string
         }
         Update: {
           approved_progress_pct?: number
+          contractor_labor_amount?: number
+          customer_amount?: number
+          estimated_material_cost?: number
           total_amount?: number
           updated_at?: string
           work_order_id?: string
@@ -831,6 +840,7 @@ export type Database = {
           custom_material_name: string | null
           id: string
           is_nes_stock: boolean
+          material_source: string
           quantity: number
           stock_item_id: string | null
           unit: string
@@ -842,6 +852,7 @@ export type Database = {
           custom_material_name?: string | null
           id?: string
           is_nes_stock?: boolean
+          material_source?: string
           quantity: number
           stock_item_id?: string | null
           unit: string
@@ -853,6 +864,7 @@ export type Database = {
           custom_material_name?: string | null
           id?: string
           is_nes_stock?: boolean
+          material_source?: string
           quantity?: number
           stock_item_id?: string | null
           unit?: string
@@ -884,6 +896,7 @@ export type Database = {
           created_by: string | null
           customer_id: string
           description: string | null
+          default_material_source: string
           id: string
           location: string | null
           location_url: string | null
@@ -896,6 +909,7 @@ export type Database = {
           status: Database["public"]["Enums"]["work_status"]
           title: string
           updated_at: string
+          work_scope_type: string
           work_order_no: number
         }
         Insert: {
@@ -906,6 +920,7 @@ export type Database = {
           created_by?: string | null
           customer_id: string
           description?: string | null
+          default_material_source?: string
           id?: string
           location?: string | null
           location_url?: string | null
@@ -918,6 +933,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["work_status"]
           title: string
           updated_at?: string
+          work_scope_type?: string
           work_order_no?: number
         }
         Update: {
@@ -928,6 +944,7 @@ export type Database = {
           created_by?: string | null
           customer_id?: string
           description?: string | null
+          default_material_source?: string
           id?: string
           location?: string | null
           location_url?: string | null
@@ -940,6 +957,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["work_status"]
           title?: string
           updated_at?: string
+          work_scope_type?: string
           work_order_no?: number
         }
         Relationships: [
@@ -1042,12 +1060,16 @@ export type Database = {
       create_work_order: {
         Args: {
           assigned_contractor_id?: string
+          order_contractor_labor_amount: number
+          order_customer_amount: number
+          order_default_material_source?: string
           order_description: string
+          order_estimated_material_cost: number
           order_location: string
           order_location_url?: string
           order_scheduled_at: string
           order_title: string
-          order_total_amount: number
+          order_work_scope_type?: string
           target_customer_id: string
           visible_to_customer: boolean
         }
@@ -1082,6 +1104,17 @@ export type Database = {
           approve_update: boolean
           manager_review_note?: string
           target_progress_update_id: string
+        }
+        Returns: undefined
+      }
+      update_work_order_commercials: {
+        Args: {
+          new_contractor_labor_amount: number
+          new_customer_amount: number
+          new_default_material_source: string
+          new_estimated_material_cost: number
+          new_work_scope_type: string
+          target_work_order_id: string
         }
         Returns: undefined
       }
