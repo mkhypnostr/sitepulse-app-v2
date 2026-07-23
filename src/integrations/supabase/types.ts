@@ -982,6 +982,7 @@ export type Database = {
           id: string;
           location: string | null;
           location_url: string | null;
+          project_id: string | null;
           progress_pct: number;
           review_note: string | null;
           reviewed_at: string | null;
@@ -1006,6 +1007,7 @@ export type Database = {
           id?: string;
           location?: string | null;
           location_url?: string | null;
+          project_id?: string | null;
           progress_pct?: number;
           review_note?: string | null;
           reviewed_at?: string | null;
@@ -1030,6 +1032,7 @@ export type Database = {
           id?: string;
           location?: string | null;
           location_url?: string | null;
+          project_id?: string | null;
           progress_pct?: number;
           review_note?: string | null;
           reviewed_at?: string | null;
@@ -1048,6 +1051,13 @@ export type Database = {
             columns: ["customer_id"];
             isOneToOne: false;
             referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "work_orders_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
             referencedColumns: ["id"];
           },
         ];
@@ -1152,6 +1162,7 @@ export type Database = {
           order_scheduled_at: string;
           order_title: string;
           order_work_scope_type?: string;
+          target_project_id?: string;
           target_customer_id: string;
           visible_to_customer: boolean;
         };

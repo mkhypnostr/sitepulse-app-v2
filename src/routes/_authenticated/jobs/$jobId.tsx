@@ -472,8 +472,8 @@ function JobDetailPage() {
   if (detailQuery.error || !detailQuery.data) {
     return (
       <EmptyState
-        title="İş emri açılamadı"
-        description="Kayıt bulunmuyor veya bu iş emrini görme yetkiniz yok."
+        title="Görev açılamadı"
+        description="Kayıt bulunmuyor veya bu görevi görme yetkiniz yok."
         action={
           <Button asChild variant="outline">
             <Link to="/dashboard">Panele dön</Link>

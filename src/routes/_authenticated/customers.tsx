@@ -171,7 +171,7 @@ function CustomersPage() {
       {customers.length === 0 ? (
         <EmptyState
           title="Henüz müşteri yok"
-          description="İlk iş emrini oluşturabilmek için önce müşteri kaydı ekleyin."
+          description="İlk görevi oluşturabilmek için önce müşteri kaydı ekleyin."
           action={createButton}
         />
       ) : (

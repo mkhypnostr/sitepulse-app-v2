@@ -18,7 +18,7 @@ function MyJobsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("work_orders")
-        .select("*, customers(name)")
+        .select("*, customers(name), projects(name, project_no)")
         .order("scheduled_at");
       if (error) throw error;
       return data;
@@ -32,10 +32,10 @@ function MyJobsPage() {
   return (
     <>
       <PageHeader
-        title="Bana Atanan İşler"
-        description="İlerleme, fotoğraf ve kullanılan malzeme girişlerini iş detayı üzerinden yapın."
+        title="Bana Atanan Görevler"
+        description="İlerleme, fotoğraf ve kullanılan malzeme girişlerini görev detayı üzerinden yapın."
       />
-      <JobList orders={query.data ?? []} emptyLabel="Size atanmış iş bulunmuyor" />
+      <JobList orders={query.data ?? []} emptyLabel="Size atanmış görev bulunmuyor" />
     </>
   );
 }

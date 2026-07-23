@@ -36,18 +36,20 @@ import {
 export const Route = createFileRoute("/_authenticated/work-orders")({
   validateSearch: (search: Record<string, unknown>) => ({
     create: search.create === true || search.create === "true",
+    projectId: typeof search.projectId === "string" ? search.projectId : undefined,
   }),
   component: WorkOrdersPage,
 });
 
 function WorkOrdersPage() {
   const { role } = useAuth();
-  const { create } = Route.useSearch();
+  const { create, projectId } = Route.useSearch();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [form, setForm] = useState({
+    projectId: "",
     customerId: "",
     title: "",
     description: "",
@@ -67,17 +69,26 @@ function WorkOrdersPage() {
     queryKey: ["admin-work-orders"],
     enabled: role === "admin",
     queryFn: async () => {
-      const [ordersResult, customersResult, rolesResult, assignmentsResult] = await Promise.all([
-        supabase
-          .from("work_orders")
-          .select("*, customers(name), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)")
-          .order("created_at", { ascending: false }),
-        supabase.from("customers").select("id, name").order("name"),
-        supabase.from("user_roles").select("user_id").eq("role", "contractor"),
-        supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
-      ]);
+      const [ordersResult, customersResult, projectsResult, rolesResult, assignmentsResult] =
+        await Promise.all([
+          supabase
+            .from("work_orders")
+            .select(
+              "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
+            )
+            .order("created_at", { ascending: false }),
+          supabase.from("customers").select("id, name").order("name"),
+          supabase
+            .from("projects")
+            .select("id, name, project_no, customer_id, location_url, show_to_customer, status")
+            .not("status", "in", '("completed","cancelled")')
+            .order("name"),
+          supabase.from("user_roles").select("user_id").eq("role", "contractor"),
+          supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
+        ]);
       if (ordersResult.error) throw ordersResult.error;
       if (customersResult.error) throw customersResult.error;
+      if (projectsResult.error) throw projectsResult.error;
       if (rolesResult.error) throw rolesResult.error;
       if (assignmentsResult.error) throw assignmentsResult.error;
 
@@ -93,6 +104,7 @@ function WorkOrdersPage() {
       return {
         orders: ordersResult.data,
         customers: customersResult.data,
+        projects: projectsResult.data,
         contractors: contractors.data ?? [],
         assignments: assignmentsResult.data,
       };
@@ -103,12 +115,29 @@ function WorkOrdersPage() {
     if (create) setOpen(true);
   }, [create]);
 
+  useEffect(() => {
+    if (!projectId || !pageQuery.data) return;
+    const selectedProject = pageQuery.data.projects.find((project) => project.id === projectId);
+    if (!selectedProject) return;
+    setForm((current) => ({
+      ...current,
+      projectId: selectedProject.id,
+      customerId: selectedProject.customer_id,
+      locationUrl: selectedProject.location_url ?? "",
+      showToCustomer: selectedProject.show_to_customer,
+    }));
+  }, [pageQuery.data, projectId]);
+
   const createOrder = useMutation({
     mutationFn: async () => {
       const customerAmount = Number(form.customerAmount.replace(",", "."));
       const contractorLaborAmount = Number(form.contractorLaborAmount.replace(",", "."));
       const estimatedMaterialCost = Number(form.estimatedMaterialCost.replace(",", "."));
-      if (![customerAmount, contractorLaborAmount, estimatedMaterialCost].every((value) => Number.isFinite(value) && value >= 0)) {
+      if (
+        ![customerAmount, contractorLaborAmount, estimatedMaterialCost].every(
+          (value) => Number.isFinite(value) && value >= 0,
+        )
+      ) {
         throw new Error("Ticari tutarları kontrol edin");
       }
       const locationUrl = safeHttpsMapUrl(form.locationUrl);
@@ -125,9 +154,11 @@ function WorkOrdersPage() {
         order_contractor_labor_amount: contractorLaborAmount,
         order_estimated_material_cost: estimatedMaterialCost,
         order_work_scope_type: form.workScopeType,
-        order_default_material_source: form.workScopeType === "labor_only" ? "none" : form.materialSource,
+        order_default_material_source:
+          form.workScopeType === "labor_only" ? "none" : form.materialSource,
         visible_to_customer: form.showToCustomer,
         assigned_contractor_id: form.contractorId === "none" ? null : form.contractorId,
+        target_project_id: form.projectId || null,
       });
       if (error) throw error;
     },
@@ -136,6 +167,7 @@ function WorkOrdersPage() {
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setOpen(false);
       setForm({
+        projectId: "",
         customerId: "",
         title: "",
         description: "",
@@ -150,7 +182,7 @@ function WorkOrdersPage() {
         contractorId: "none",
         showToCustomer: false,
       });
-      toast.success("İş emri oluşturuldu");
+      toast.success("Görev oluşturuldu");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -170,7 +202,14 @@ function WorkOrdersPage() {
   if (role !== "admin") return <AccessDenied />;
   if (pageQuery.isLoading) return <LoadingState />;
 
-  const data = pageQuery.data ?? { orders: [], customers: [], contractors: [], assignments: [] };
+  const data = pageQuery.data ?? {
+    orders: [],
+    customers: [],
+    projects: [],
+    contractors: [],
+    assignments: [],
+  };
+  const selectedProject = data.projects.find((project) => project.id === form.projectId);
   const contractorById = new Map(data.contractors.map((item) => [item.id, item]));
   const assignmentByOrder = new Map(
     data.assignments.map((item) => [item.work_order_id, item.contractor_id]),
@@ -185,6 +224,7 @@ function WorkOrdersPage() {
         order.work_order_no,
         order.title,
         order.customers?.name,
+        order.projects?.name,
         order.location,
         order.location_url,
         contractor?.full_name,
@@ -199,21 +239,63 @@ function WorkOrdersPage() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="h-12 font-bold" disabled={data.customers.length === 0}>
-          <Plus className="mr-2 h-4 w-4" /> Yeni İş Emri
+          <Plus className="mr-2 h-4 w-4" /> Yeni Görev
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Yeni iş emri</DialogTitle>
+          <DialogTitle>Yeni görev</DialogTitle>
           <DialogDescription>
-            Planlama, müşteri ve taşeron atamasını tek kayıtta oluşturun.
+            Bağımsız bir görev oluşturun veya görevi mevcut bir projeye bağlayın.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm sm:col-span-2">
+            Bağlı Proje / Şantiye
+            <Select
+              value={form.projectId || "independent"}
+              onValueChange={(value) => {
+                if (value === "independent") {
+                  setForm({
+                    ...form,
+                    projectId: "",
+                    customerId: "",
+                    locationUrl: "",
+                  });
+                  return;
+                }
+                const project = data.projects.find((item) => item.id === value);
+                if (!project) return;
+                setForm({
+                  ...form,
+                  projectId: project.id,
+                  customerId: project.customer_id,
+                  locationUrl: project.location_url ?? "",
+                  showToCustomer: project.show_to_customer,
+                });
+              }}
+            >
+              <SelectTrigger className="h-11">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="independent">Bağımsız görev</SelectItem>
+                {data.projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.project_no} · {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">
+              Proje seçildiğinde müşteri ve konum otomatik alınır.
+            </span>
+          </label>
           <label className="grid gap-1 text-sm">
             Müşteri
             <Select
               value={form.customerId}
+              disabled={Boolean(selectedProject)}
               onValueChange={(customerId) => setForm({ ...form, customerId })}
             >
               <SelectTrigger className="h-11">
@@ -265,6 +347,7 @@ function WorkOrdersPage() {
             Google Maps Konumu <span className="text-destructive">*</span>
             <Input
               value={form.locationUrl}
+              disabled={Boolean(selectedProject)}
               onChange={(event) => setForm({ ...form, locationUrl: event.target.value })}
               placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
             />
@@ -302,13 +385,22 @@ function WorkOrdersPage() {
             İş Kapsamı
             <Select
               value={form.workScopeType}
-              onValueChange={(workScopeType) => setForm({
-                ...form,
-                workScopeType,
-                materialSource: workScopeType === "labor_only" ? "none" : form.materialSource === "none" ? "nes_stock" : form.materialSource,
-              })}
+              onValueChange={(workScopeType) =>
+                setForm({
+                  ...form,
+                  workScopeType,
+                  materialSource:
+                    workScopeType === "labor_only"
+                      ? "none"
+                      : form.materialSource === "none"
+                        ? "nes_stock"
+                        : form.materialSource,
+                })
+              }
             >
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="labor_only">Yalnızca işçilik</SelectItem>
                 <SelectItem value="labor_and_material">İşçilik + malzeme</SelectItem>
@@ -322,7 +414,9 @@ function WorkOrdersPage() {
               disabled={form.workScopeType === "labor_only"}
               onValueChange={(materialSource) => setForm({ ...form, materialSource })}
             >
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Malzeme kullanılmayacak</SelectItem>
                 <SelectItem value="nes_stock">NES deposu</SelectItem>
@@ -359,9 +453,9 @@ function WorkOrdersPage() {
             <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
             <p className="mt-1 text-lg font-black text-primary">
               {formatTRY(
-                (Number(form.customerAmount.replace(",", ".")) || 0)
-                - (Number(form.contractorLaborAmount.replace(",", ".")) || 0)
-                - (Number(form.estimatedMaterialCost.replace(",", ".")) || 0),
+                (Number(form.customerAmount.replace(",", ".")) || 0) -
+                  (Number(form.contractorLaborAmount.replace(",", ".")) || 0) -
+                  (Number(form.estimatedMaterialCost.replace(",", ".")) || 0),
               )}
             </p>
           </div>
@@ -385,7 +479,7 @@ function WorkOrdersPage() {
               createOrder.isPending
             }
           >
-            {createOrder.isPending ? "Oluşturuluyor..." : "İş Emrini Oluştur"}
+            {createOrder.isPending ? "Oluşturuluyor..." : "Görevi Oluştur"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -395,13 +489,13 @@ function WorkOrdersPage() {
   return (
     <>
       <PageHeader
-        title="İş Emirleri"
-        description="Planlanan, devam eden ve tamamlanan bütün saha işleri."
+        title="Görevler"
+        description="Bağımsız veya projeye bağlı bütün saha görevleri."
         actions={createButton}
       />
       {data.customers.length === 0 ? (
         <p className="mb-4 rounded-md border border-primary/40 bg-primary/10 p-4 text-sm">
-          İş emri oluşturmak için önce Müşteriler ekranından müşteri ekleyin.
+          Görev oluşturmak için önce Müşteriler ekranından müşteri ekleyin.
         </p>
       ) : null}
       {data.orders.length > 0 ? (
@@ -411,7 +505,7 @@ function WorkOrdersPage() {
             <Input
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
-              placeholder="İş no, müşteri, konum veya taşeron ara"
+              placeholder="Görev no, proje, müşteri, konum veya taşeron ara"
               className="h-11 pl-10"
             />
           </label>
@@ -432,14 +526,14 @@ function WorkOrdersPage() {
             </Select>
           </div>
           <p className="text-xs text-muted-foreground sm:col-span-2">
-            {filteredOrders.length} iş emri gösteriliyor.
+            {filteredOrders.length} görev gösteriliyor.
           </p>
         </div>
       ) : null}
       {data.orders.length === 0 ? (
         <EmptyState
-          title="Henüz iş emri yok"
-          description="İlk iş emrini oluşturup taşerona atayın."
+          title="Henüz görev yok"
+          description="İlk görevi oluşturup taşerona atayın."
           action={createButton}
         />
       ) : (
@@ -457,6 +551,15 @@ function WorkOrdersPage() {
                       <Badge variant="outline">{statusLabels[order.status]}</Badge>
                     </div>
                     <h2 className="mt-2 text-lg font-black">{order.title}</h2>
+                    {order.projects ? (
+                      <p className="mt-1 text-sm font-semibold text-primary">
+                        {order.projects.project_no} · {order.projects.name}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                        Bağımsız görev
+                      </p>
+                    )}
                     <p className="text-sm text-muted-foreground">
                       {order.customers?.name} · {formatDate(order.scheduled_at)} ·{" "}
                       {order.location ||
@@ -474,14 +577,25 @@ function WorkOrdersPage() {
                     </div>
                     <Progress value={order.progress_pct} />
                     <div className="mt-2 space-y-1 text-right text-xs">
-                      <p>Müşteri: <strong>{formatTRY(order.work_order_financials?.customer_amount)}</strong></p>
-                      <p>Taşeron: <strong>{formatTRY(order.work_order_financials?.contractor_labor_amount)}</strong></p>
+                      <p>
+                        Müşteri:{" "}
+                        <strong>{formatTRY(order.work_order_financials?.customer_amount)}</strong>
+                      </p>
+                      <p>
+                        Taşeron:{" "}
+                        <strong>
+                          {formatTRY(order.work_order_financials?.contractor_labor_amount)}
+                        </strong>
+                      </p>
                       <p className="text-primary">
-                        Brüt fark: <strong>{formatTRY(
-                          (order.work_order_financials?.customer_amount ?? 0)
-                          - (order.work_order_financials?.contractor_labor_amount ?? 0)
-                          - (order.work_order_financials?.estimated_material_cost ?? 0),
-                        )}</strong>
+                        Brüt fark:{" "}
+                        <strong>
+                          {formatTRY(
+                            (order.work_order_financials?.customer_amount ?? 0) -
+                              (order.work_order_financials?.contractor_labor_amount ?? 0) -
+                              (order.work_order_financials?.estimated_material_cost ?? 0),
+                          )}
+                        </strong>
                       </p>
                     </div>
                   </div>
@@ -510,7 +624,7 @@ function WorkOrdersPage() {
           })}
           {filteredOrders.length === 0 ? (
             <div className="surface-panel p-8 text-center text-sm text-muted-foreground">
-              Aramanıza veya seçtiğiniz duruma uygun iş emri bulunamadı.
+              Aramanıza veya seçtiğiniz duruma uygun görev bulunamadı.
             </div>
           ) : null}
         </div>
