@@ -8,6 +8,67 @@ export type Database = {
   };
   public: {
     Tables: {
+      activity_logs: {
+        Row: {
+          action: string;
+          actor_id: string | null;
+          created_at: string;
+          entity_id: string;
+          entity_type: string;
+          id: string;
+          new_data: Json | null;
+          old_data: Json | null;
+          project_id: string | null;
+          work_order_id: string | null;
+        };
+        Insert: {
+          action: string;
+          actor_id?: string | null;
+          created_at?: string;
+          entity_id: string;
+          entity_type: string;
+          id?: string;
+          new_data?: Json | null;
+          old_data?: Json | null;
+          project_id?: string | null;
+          work_order_id?: string | null;
+        };
+        Update: {
+          action?: string;
+          actor_id?: string | null;
+          created_at?: string;
+          entity_id?: string;
+          entity_type?: string;
+          id?: string;
+          new_data?: Json | null;
+          old_data?: Json | null;
+          project_id?: string | null;
+          work_order_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "activity_logs_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "activity_logs_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "activity_logs_work_order_id_fkey";
+            columns: ["work_order_id"];
+            isOneToOne: false;
+            referencedRelation: "work_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       customers: {
         Row: {
           contact: string | null;
@@ -523,7 +584,7 @@ export type Database = {
           block_no: string | null;
           created_at: string;
           created_by: string;
-          customer_id: string;
+          customer_id: string | null;
           description: string | null;
           district: string | null;
           external_reference_no: string | null;
@@ -549,7 +610,7 @@ export type Database = {
           block_no?: string | null;
           created_at?: string;
           created_by: string;
-          customer_id: string;
+          customer_id?: string | null;
           description?: string | null;
           district?: string | null;
           external_reference_no?: string | null;
@@ -575,7 +636,7 @@ export type Database = {
           block_no?: string | null;
           created_at?: string;
           created_by?: string;
-          customer_id?: string;
+          customer_id?: string | null;
           description?: string | null;
           district?: string | null;
           external_reference_no?: string | null;
@@ -1113,6 +1174,16 @@ export type Database = {
         Args: { approved_pct_value: number; target_work_order_id: string };
         Returns: number;
       };
+      add_external_work_order_material: {
+        Args: {
+          material_name: string;
+          material_quantity: number;
+          material_unit: string;
+          source_type: string;
+          target_work_order_id: string;
+        };
+        Returns: string;
+      };
       consume_stock_item: {
         Args: {
           consumed_quantity: number;
@@ -1151,7 +1222,7 @@ export type Database = {
       };
       create_work_order: {
         Args: {
-          assigned_contractor_id?: string;
+          assigned_contractor_id?: string | null;
           order_contractor_labor_amount: number;
           order_customer_amount: number;
           order_default_material_source?: string;
@@ -1162,8 +1233,8 @@ export type Database = {
           order_scheduled_at: string;
           order_title: string;
           order_work_scope_type?: string;
-          target_project_id?: string;
-          target_customer_id: string;
+          target_project_id?: string | null;
+          target_customer_id: string | null;
           visible_to_customer: boolean;
         };
         Returns: string;
@@ -1207,6 +1278,13 @@ export type Database = {
           new_default_material_source: string;
           new_estimated_material_cost: number;
           new_work_scope_type: string;
+          target_work_order_id: string;
+        };
+        Returns: undefined;
+      };
+      update_work_order_schedule: {
+        Args: {
+          new_scheduled_at: string;
           target_work_order_id: string;
         };
         Returns: undefined;

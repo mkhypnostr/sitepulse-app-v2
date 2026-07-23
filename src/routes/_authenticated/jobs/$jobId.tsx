@@ -3,9 +3,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  CalendarClock,
   Camera,
   CheckCircle2,
   FileDown,
+  History,
   Images,
   MapPin,
   PackageMinus,
@@ -16,7 +18,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage, photoTypeLabels, statusLabels, type PhotoType } from "@/lib/domain";
-import { formatDate, formatTRY } from "@/lib/format";
+import { formatDate, formatTRY, halfHourOptions } from "@/lib/format";
 import { formatProjectDateTime } from "@/lib/projects";
 import { compressImage } from "@/lib/image-compress";
 import { EmptyState, LoadingState, PageHeader } from "@/components/page-states";
@@ -70,6 +72,8 @@ function JobDetailPage() {
   const [customQuantity, setCustomQuantity] = useState("");
   const [customUnit, setCustomUnit] = useState("adet");
   const [customSource, setCustomSource] = useState("contractor");
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("08:00");
   const [commercialForm, setCommercialForm] = useState({
     customerAmount: "0",
     contractorLaborAmount: "0",
@@ -193,6 +197,26 @@ function JobDetailPage() {
         : { data: [], error: null };
       if (completionEvidenceResult.error) throw completionEvidenceResult.error;
 
+      const activityResult =
+        role === "admin"
+          ? await supabase
+              .from("activity_logs")
+              .select("*")
+              .eq("work_order_id", jobId)
+              .order("created_at", { ascending: false })
+              .limit(50)
+          : { data: [], error: null };
+      if (activityResult.error) throw activityResult.error;
+      const activityActorIds = [
+        ...new Set(
+          (activityResult.data ?? []).map((item) => item.actor_id).filter(Boolean) as string[],
+        ),
+      ];
+      const activityProfilesResult = activityActorIds.length
+        ? await supabase.from("profiles").select("id, full_name").in("id", activityActorIds)
+        : { data: [], error: null };
+      if (activityProfilesResult.error) throw activityProfilesResult.error;
+
       return {
         order: orderResult.data,
         photos,
@@ -203,6 +227,8 @@ function JobDetailPage() {
         completionEvidence: completionEvidenceResult.data ?? [],
         materials,
         stockItems,
+        activityLogs: activityResult.data ?? [],
+        activityProfiles: activityProfilesResult.data ?? [],
       };
     },
   });
@@ -219,6 +245,19 @@ function JobDetailPage() {
       materialSource: order.default_material_source,
     });
   }, [detailQuery.data?.order, role]);
+
+  useEffect(() => {
+    const scheduledAt = detailQuery.data?.order.scheduled_at;
+    if (!scheduledAt || role !== "admin") return;
+    const value = new Date(scheduledAt);
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    const hours = String(value.getHours()).padStart(2, "0");
+    const minutes = String(value.getMinutes()).padStart(2, "0");
+    setScheduleDate(`${year}-${month}-${day}`);
+    setScheduleTime(`${hours}:${minutes}`);
+  }, [detailQuery.data?.order.scheduled_at, role]);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["job-detail", jobId] });
@@ -396,15 +435,12 @@ function JobDetailPage() {
       if (!customName.trim() || !Number.isFinite(quantity) || quantity <= 0) {
         throw new Error("Malzeme adı ve miktar zorunludur");
       }
-      if (!user) throw new Error("Oturum bulunamadı");
-      const { error } = await supabase.from("work_order_materials").insert({
-        work_order_id: jobId,
-        custom_material_name: customName.trim(),
-        quantity,
-        unit: customUnit,
-        is_nes_stock: false,
-        material_source: customSource,
-        added_by: user.id,
+      const { error } = await supabase.rpc("add_external_work_order_material", {
+        target_work_order_id: jobId,
+        material_name: customName.trim(),
+        material_quantity: quantity,
+        material_unit: customUnit,
+        source_type: customSource,
       });
       if (error) throw error;
     },
@@ -412,7 +448,24 @@ function JobDetailPage() {
       await refresh();
       setCustomName("");
       setCustomQuantity("");
-      toast.success("Taşerona ait malzeme kaydedildi");
+      toast.success("Harici saha malzemesi kaydedildi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const scheduleMutation = useMutation({
+    mutationFn: async () => {
+      if (!scheduleDate || !scheduleTime) throw new Error("Tarih ve saat zorunludur");
+      const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00`).toISOString();
+      const { error } = await supabase.rpc("update_work_order_schedule", {
+        target_work_order_id: jobId,
+        new_scheduled_at: scheduledAt,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Planlanan tarih güncellendi; gecikme durumu yeniden hesaplandı");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -493,6 +546,8 @@ function JobDetailPage() {
     completionEvidence,
     materials,
     stockItems,
+    activityLogs,
+    activityProfiles,
   } = detailQuery.data;
   const canOperate = role === "admin" || role === "contractor";
   const isReviewPending = order.status === "review_pending";
@@ -506,6 +561,9 @@ function JobDetailPage() {
   );
   const completionProfileById = new Map(
     completionProfiles.map((profile) => [profile.id, profile.full_name]),
+  );
+  const activityProfileById = new Map(
+    activityProfiles.map((profile) => [profile.id, profile.full_name]),
   );
   const pendingCompletion = completionSubmissions.find((item) => item.status === "pending");
   const pendingCompletionPhotoIds = new Set(
@@ -546,7 +604,7 @@ function JobDetailPage() {
       </Button>
       <PageHeader
         title={`#${order.work_order_no} · ${order.title}`}
-        description={`${order.customers?.name} · ${formatDate(order.scheduled_at)}`}
+        description={`${order.customers?.name || "Müşteri yok"} · ${formatDate(order.scheduled_at)}`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline" className="px-3 py-2">
@@ -562,6 +620,41 @@ function JobDetailPage() {
           </div>
         }
       />
+
+      {role === "admin" ? (
+        <Card className="mb-6 border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-primary" /> Planlanan Tarih
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <Input
+              type="date"
+              value={scheduleDate}
+              onChange={(event) => setScheduleDate(event.target.value)}
+            />
+            <Select value={scheduleTime} onValueChange={setScheduleTime}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {halfHourOptions().map((time) => (
+                  <SelectItem key={time} value={time}>
+                    {time}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={() => scheduleMutation.mutate()}
+              disabled={!scheduleDate || scheduleMutation.isPending}
+            >
+              {scheduleMutation.isPending ? "Kaydediliyor..." : "Tarihi Güncelle"}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -1144,7 +1237,7 @@ function JobDetailPage() {
             </strong>
             {order.work_scope_type === "labor_and_material"
               ? ` · Varsayılan kaynak: ${materialSourceLabels[order.default_material_source]}`
-              : " · Malzeme kaydı yöneticinin kapsamı değiştirmesinden sonra açılır."}
+              : " · Harici malzeme eklenirse kapsam otomatik olarak işçilik + malzeme olur."}
           </p>
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
@@ -1229,9 +1322,7 @@ function JobDetailPage() {
                   variant="outline"
                   className="w-full"
                   onClick={() => customMaterialMutation.mutate()}
-                  disabled={
-                    customMaterialMutation.isPending || order.work_scope_type === "labor_only"
-                  }
+                  disabled={customMaterialMutation.isPending}
                 >
                   <Plus className="mr-2 h-4 w-4" /> Malzeme Kaydet
                 </Button>
@@ -1327,6 +1418,53 @@ function JobDetailPage() {
           </div>
         )}
       </section>
+
+      {role === "admin" ? (
+        <section className="mt-7">
+          <h2 className="mb-3 flex items-center gap-2 text-xl font-black">
+            <History className="h-5 w-5 text-primary" /> Değişiklik Geçmişi
+          </h2>
+          {activityLogs.length === 0 ? (
+            <div className="surface-panel p-4 text-sm text-muted-foreground">
+              Bu görev için henüz değişiklik kaydı yok.
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {activityLogs.map((log) => {
+                const entityLabels: Record<string, string> = {
+                  work_orders: "Görev",
+                  work_order_assignments: "Sorumlu ataması",
+                  work_order_materials: "Malzeme",
+                };
+                const actionLabels: Record<string, string> = {
+                  created: "oluşturuldu",
+                  updated: "güncellendi",
+                  deleted: "silindi",
+                };
+                return (
+                  <div
+                    key={log.id}
+                    className="surface-panel flex flex-col justify-between gap-2 p-4 sm:flex-row"
+                  >
+                    <div>
+                      <p className="font-semibold">
+                        {entityLabels[log.entity_type] || log.entity_type}{" "}
+                        {actionLabels[log.action] || log.action}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        İşlemi yapan: {activityProfileById.get(log.actor_id ?? "") || "Sistem"}
+                      </p>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {formatProjectDateTime(log.created_at)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {role !== "customer" && progress.length > 0 ? (
         <section className="mt-7">
