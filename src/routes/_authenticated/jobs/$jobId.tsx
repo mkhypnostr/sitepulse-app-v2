@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -61,6 +61,14 @@ function JobDetailPage() {
   const [customName, setCustomName] = useState("");
   const [customQuantity, setCustomQuantity] = useState("");
   const [customUnit, setCustomUnit] = useState("adet");
+  const [customSource, setCustomSource] = useState("contractor");
+  const [commercialForm, setCommercialForm] = useState({
+    customerAmount: "0",
+    contractorLaborAmount: "0",
+    estimatedMaterialCost: "0",
+    workScopeType: "labor_only",
+    materialSource: "none",
+  });
 
   const detailQuery = useQuery({
     queryKey: ["job-detail", jobId, role],
@@ -70,7 +78,7 @@ function JobDetailPage() {
         supabase
           .from("work_orders")
           .select(
-            "*, customers(name, contact), work_order_financials(total_amount, approved_progress_pct)",
+            "*, customers(name, contact), work_order_financials(total_amount, customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
           )
           .eq("id", jobId)
           .single(),
@@ -104,6 +112,7 @@ function JobDetailPage() {
         quantity: number;
         unit: string;
         is_nes_stock: boolean;
+        material_source: string;
         created_at: string;
         stock_items: { name: string; code: string | null } | null;
       }> = [];
@@ -120,7 +129,7 @@ function JobDetailPage() {
           supabase
             .from("work_order_materials")
             .select(
-              "id, custom_material_name, quantity, unit, is_nes_stock, created_at, stock_items(name, code)",
+              "id, custom_material_name, quantity, unit, is_nes_stock, material_source, created_at, stock_items(name, code)",
             )
             .eq("work_order_id", jobId)
             .order("created_at", { ascending: false }),
@@ -154,6 +163,19 @@ function JobDetailPage() {
       };
     },
   });
+
+  useEffect(() => {
+    const order = detailQuery.data?.order;
+    const financials = order?.work_order_financials;
+    if (!order || !financials || role !== "admin") return;
+    setCommercialForm({
+      customerAmount: String(financials.customer_amount ?? 0),
+      contractorLaborAmount: String(financials.contractor_labor_amount ?? 0),
+      estimatedMaterialCost: String(financials.estimated_material_cost ?? 0),
+      workScopeType: order.work_scope_type,
+      materialSource: order.default_material_source,
+    });
+  }, [detailQuery.data?.order, role]);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["job-detail", jobId] });
@@ -283,6 +305,31 @@ function JobDetailPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const commercialMutation = useMutation({
+    mutationFn: async () => {
+      const customerAmount = Number(commercialForm.customerAmount.replace(",", "."));
+      const contractorLaborAmount = Number(commercialForm.contractorLaborAmount.replace(",", "."));
+      const estimatedMaterialCost = Number(commercialForm.estimatedMaterialCost.replace(",", "."));
+      if (![customerAmount, contractorLaborAmount, estimatedMaterialCost].every((value) => Number.isFinite(value) && value >= 0)) {
+        throw new Error("Ticari tutarları kontrol edin");
+      }
+      const { error } = await supabase.rpc("update_work_order_commercials", {
+        target_work_order_id: jobId,
+        new_customer_amount: customerAmount,
+        new_contractor_labor_amount: contractorLaborAmount,
+        new_estimated_material_cost: estimatedMaterialCost,
+        new_work_scope_type: commercialForm.workScopeType,
+        new_default_material_source: commercialForm.workScopeType === "labor_only" ? "none" : commercialForm.materialSource,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Ticari bilgiler ve iş kapsamı güncellendi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const customMaterialMutation = useMutation({
     mutationFn: async () => {
       const quantity = Number(customQuantity.replace(",", "."));
@@ -296,6 +343,7 @@ function JobDetailPage() {
         quantity,
         unit: customUnit,
         is_nes_stock: false,
+        material_source: customSource,
         added_by: user.id,
       });
       if (error) throw error;
@@ -387,8 +435,18 @@ function JobDetailPage() {
   const canSubmitForReview =
     role === "contractor" && order.progress_pct === 100 && !pendingProgress && !isReviewPending && !isFinalized;
   const financials = order.work_order_financials;
+  const materialSourceLabels: Record<string, string> = {
+    none: "Malzeme kullanılmıyor",
+    nes_stock: "NES deposu",
+    contractor: "Taşeron malzemesi",
+    customer_site: "Müşteri / şantiye malzemesi",
+  };
   const payableAmount =
-    (financials?.total_amount ?? 0) * ((financials?.approved_progress_pct ?? 0) / 100);
+    (financials?.contractor_labor_amount ?? 0) * ((financials?.approved_progress_pct ?? 0) / 100);
+  const estimatedGrossMargin =
+    (financials?.customer_amount ?? 0)
+    - (financials?.contractor_labor_amount ?? 0)
+    - (financials?.estimated_material_cost ?? 0);
 
   return (
     <>
@@ -416,6 +474,12 @@ function JobDetailPage() {
             <p className="whitespace-pre-wrap text-sm text-muted-foreground">
               {order.description || "Açıklama girilmemiş."}
             </p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">
+                {order.work_scope_type === "labor_only" ? "Yalnızca işçilik" : "İşçilik + malzeme"}
+              </Badge>
+              <Badge variant="outline">{materialSourceLabels[order.default_material_source] || order.default_material_source}</Badge>
+            </div>
             {order.location_url ? (
               <MapPreview mapUrl={order.location_url} />
             ) : order.location ? (
@@ -439,8 +503,18 @@ function JobDetailPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <p className="text-xs text-muted-foreground">Toplam İş Bedeli</p>
-                <p className="text-xl font-black">{formatTRY(financials?.total_amount)}</p>
+                <p className="text-xs text-muted-foreground">Müşteriye Satış Bedeli</p>
+                <p className="text-xl font-black">{formatTRY(financials?.customer_amount)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Taşeron İşçilik</p>
+                  <p className="font-black">{formatTRY(financials?.contractor_labor_amount)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Tahmini Malzeme/Diğer</p>
+                  <p className="font-black">{formatTRY(financials?.estimated_material_cost)}</p>
+                </div>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Onaylı İlerleme</p>
@@ -450,10 +524,97 @@ function JobDetailPage() {
                 <p className="text-xs text-muted-foreground">Onaylı Hakediş</p>
                 <p className="text-xl font-black text-primary">{formatTRY(payableAmount)}</p>
               </div>
+              <div className="rounded-md border bg-muted/40 p-3">
+                <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
+                <p className={`text-xl font-black ${estimatedGrossMargin < 0 ? "text-red-400" : "text-emerald-400"}`}>
+                  {formatTRY(estimatedGrossMargin)}
+                </p>
+              </div>
             </CardContent>
           </Card>
         ) : null}
       </div>
+
+      {role === "admin" ? (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Yönetici Ticari Bilgileri</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Bu tutarlar yalnızca yöneticilere görünür. Müşteri ve taşeron ekranlarında paylaşılmaz.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="grid gap-1 text-sm">
+                Müşteri Satış Bedeli (₺)
+                <Input
+                  inputMode="decimal"
+                  value={commercialForm.customerAmount}
+                  onChange={(event) => setCommercialForm({ ...commercialForm, customerAmount: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Taşeron İşçilik Bedeli (₺)
+                <Input
+                  inputMode="decimal"
+                  value={commercialForm.contractorLaborAmount}
+                  onChange={(event) => setCommercialForm({ ...commercialForm, contractorLaborAmount: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Tahmini Malzeme/Diğer (₺)
+                <Input
+                  inputMode="decimal"
+                  value={commercialForm.estimatedMaterialCost}
+                  onChange={(event) => setCommercialForm({ ...commercialForm, estimatedMaterialCost: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                İş Kapsamı
+                <Select
+                  value={commercialForm.workScopeType}
+                  onValueChange={(workScopeType) => setCommercialForm({
+                    ...commercialForm,
+                    workScopeType,
+                    materialSource: workScopeType === "labor_only" ? "none" : commercialForm.materialSource === "none" ? "nes_stock" : commercialForm.materialSource,
+                  })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="labor_only">Yalnızca işçilik</SelectItem>
+                    <SelectItem value="labor_and_material">İşçilik + malzeme</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="grid gap-1 text-sm">
+                Varsayılan Malzeme Kaynağı
+                <Select
+                  value={commercialForm.materialSource}
+                  disabled={commercialForm.workScopeType === "labor_only"}
+                  onValueChange={(materialSource) => setCommercialForm({ ...commercialForm, materialSource })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Malzeme kullanılmayacak</SelectItem>
+                    <SelectItem value="nes_stock">NES deposu</SelectItem>
+                    <SelectItem value="contractor">Taşeron malzemesi</SelectItem>
+                    <SelectItem value="customer_site">Müşteri / şantiye malzemesi</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+              <div className="flex items-end">
+                <Button
+                  className="w-full"
+                  onClick={() => commercialMutation.mutate()}
+                  disabled={commercialMutation.isPending || (commercialForm.workScopeType === "labor_and_material" && commercialForm.materialSource === "none")}
+                >
+                  {commercialMutation.isPending ? "Kaydediliyor..." : "Ticari Bilgileri Kaydet"}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {canOperate ? (
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
@@ -711,6 +872,12 @@ function JobDetailPage() {
       {canOperate ? (
         <section className="mt-6">
           <h2 className="mb-3 text-xl font-black">Kullanılan Malzemeler</h2>
+          <p className="mb-3 text-sm text-muted-foreground">
+            İş kapsamı: <strong>{order.work_scope_type === "labor_only" ? "Yalnızca işçilik" : "İşçilik + malzeme"}</strong>
+            {order.work_scope_type === "labor_and_material"
+              ? ` · Varsayılan kaynak: ${materialSourceLabels[order.default_material_source]}`
+              : " · Malzeme kaydı yöneticinin kapsamı değiştirmesinden sonra açılır."}
+          </p>
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader>
@@ -746,7 +913,7 @@ function JobDetailPage() {
                 <Button
                   className="w-full"
                   onClick={() => stockMutation.mutate()}
-                  disabled={stockMutation.isPending}
+                  disabled={stockMutation.isPending || order.work_scope_type === "labor_only"}
                 >
                   <PackageMinus className="mr-2 h-4 w-4" /> Stoktan Düş
                 </Button>
@@ -754,9 +921,16 @@ function JobDetailPage() {
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Taşerona Ait Malzeme</CardTitle>
+                <CardTitle>Harici / Saha Malzemesi</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                <Select value={customSource} onValueChange={setCustomSource}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="contractor">Taşeron malzemesi</SelectItem>
+                    <SelectItem value="customer_site">Müşteri / şantiye malzemesi</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Input
                   value={customName}
                   onChange={(event) => setCustomName(event.target.value)}
@@ -785,7 +959,7 @@ function JobDetailPage() {
                   variant="outline"
                   className="w-full"
                   onClick={() => customMaterialMutation.mutate()}
-                  disabled={customMaterialMutation.isPending}
+                  disabled={customMaterialMutation.isPending || order.work_scope_type === "labor_only"}
                 >
                   <Plus className="mr-2 h-4 w-4" /> Malzeme Kaydet
                 </Button>
@@ -805,7 +979,7 @@ function JobDetailPage() {
                       : material.custom_material_name}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {material.is_nes_stock ? "NES stoğu" : "Taşeron malzemesi"} ·{" "}
+                    {materialSourceLabels[material.material_source] || material.material_source} ·{" "}
                     {formatDate(material.created_at)}
                   </p>
                 </div>
