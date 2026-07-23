@@ -5,7 +5,7 @@ import { Eye, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { errorMessage, statusLabels } from "@/lib/domain";
+import { errorMessage, roleLabels, statusLabels } from "@/lib/domain";
 import { formatDate, formatTRY, halfHourOptions } from "@/lib/format";
 import { safeHttpsMapUrl } from "@/lib/map-location";
 import { MapPreview } from "@/components/map-preview";
@@ -61,7 +61,7 @@ function WorkOrdersPage() {
     estimatedMaterialCost: "0",
     workScopeType: "labor_only",
     materialSource: "none",
-    contractorId: "none",
+    assigneeId: "none",
     showToCustomer: false,
   });
 
@@ -83,7 +83,7 @@ function WorkOrdersPage() {
             .select("id, name, project_no, customer_id, location_url, show_to_customer, status")
             .not("status", "in", '("completed","cancelled")')
             .order("name"),
-          supabase.from("user_roles").select("user_id").eq("role", "contractor"),
+          supabase.from("user_roles").select("user_id, role"),
           supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
         ]);
       if (ordersResult.error) throw ordersResult.error;
@@ -92,20 +92,26 @@ function WorkOrdersPage() {
       if (rolesResult.error) throw rolesResult.error;
       if (assignmentsResult.error) throw assignmentsResult.error;
 
-      const contractorIds = rolesResult.data.map((item) => item.user_id);
-      const contractors = contractorIds.length
+      const assigneeIds = rolesResult.data.map((item) => item.user_id);
+      const profiles = assigneeIds.length
         ? await supabase
             .from("profiles")
             .select("id, full_name, company_name")
-            .in("id", contractorIds)
+            .in("id", assigneeIds)
             .order("full_name")
         : { data: [], error: null };
-      if (contractors.error) throw contractors.error;
+      if (profiles.error) throw profiles.error;
+      const roleByUserId = new Map(
+        rolesResult.data.map((item) => [item.user_id, item.role] as const),
+      );
       return {
         orders: ordersResult.data,
         customers: customersResult.data,
         projects: projectsResult.data,
-        contractors: contractors.data ?? [],
+        assignees: (profiles.data ?? []).map((profile) => ({
+          ...profile,
+          role: roleByUserId.get(profile.id) ?? "customer",
+        })),
         assignments: assignmentsResult.data,
       };
     },
@@ -144,7 +150,7 @@ function WorkOrdersPage() {
       if (!locationUrl) throw new Error("Google Maps'ten geçerli bir konum bağlantısı girin");
       const scheduledAt = new Date(`${form.date}T${form.time}:00`).toISOString();
       const { error } = await supabase.rpc("create_work_order", {
-        target_customer_id: form.customerId,
+        target_customer_id: form.customerId || null,
         order_title: form.title,
         order_description: form.description,
         order_location: "",
@@ -157,7 +163,7 @@ function WorkOrdersPage() {
         order_default_material_source:
           form.workScopeType === "labor_only" ? "none" : form.materialSource,
         visible_to_customer: form.showToCustomer,
-        assigned_contractor_id: form.contractorId === "none" ? null : form.contractorId,
+        assigned_contractor_id: form.assigneeId === "none" ? null : form.assigneeId,
         target_project_id: form.projectId || null,
       });
       if (error) throw error;
@@ -179,7 +185,7 @@ function WorkOrdersPage() {
         estimatedMaterialCost: "0",
         workScopeType: "labor_only",
         materialSource: "none",
-        contractorId: "none",
+        assigneeId: "none",
         showToCustomer: false,
       });
       toast.success("Görev oluşturuldu");
@@ -206,11 +212,11 @@ function WorkOrdersPage() {
     orders: [],
     customers: [],
     projects: [],
-    contractors: [],
+    assignees: [],
     assignments: [],
   };
   const selectedProject = data.projects.find((project) => project.id === form.projectId);
-  const contractorById = new Map(data.contractors.map((item) => [item.id, item]));
+  const assigneeById = new Map(data.assignees.map((item) => [item.id, item]));
   const assignmentByOrder = new Map(
     data.assignments.map((item) => [item.work_order_id, item.contractor_id]),
   );
@@ -219,7 +225,7 @@ function WorkOrdersPage() {
     return data.orders.filter((order) => {
       if (statusFilter !== "all" && order.status !== statusFilter) return false;
       if (!needle) return true;
-      const contractor = contractorById.get(assignmentByOrder.get(order.id) ?? "");
+      const assignee = assigneeById.get(assignmentByOrder.get(order.id) ?? "");
       return [
         order.work_order_no,
         order.title,
@@ -227,7 +233,7 @@ function WorkOrdersPage() {
         order.projects?.name,
         order.location,
         order.location_url,
-        contractor?.full_name,
+        assignee?.full_name,
       ]
         .filter(Boolean)
         .join(" ")
@@ -238,7 +244,7 @@ function WorkOrdersPage() {
   const createButton = (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="h-12 font-bold" disabled={data.customers.length === 0}>
+        <Button className="h-12 font-bold">
           <Plus className="mr-2 h-4 w-4" /> Yeni Görev
         </Button>
       </DialogTrigger>
@@ -261,6 +267,7 @@ function WorkOrdersPage() {
                     projectId: "",
                     customerId: "",
                     locationUrl: "",
+                    showToCustomer: false,
                   });
                   return;
                 }
@@ -294,14 +301,21 @@ function WorkOrdersPage() {
           <label className="grid gap-1 text-sm">
             Müşteri
             <Select
-              value={form.customerId}
+              value={form.customerId || "none"}
               disabled={Boolean(selectedProject)}
-              onValueChange={(customerId) => setForm({ ...form, customerId })}
+              onValueChange={(customerId) =>
+                setForm({
+                  ...form,
+                  customerId: customerId === "none" ? "" : customerId,
+                  showToCustomer: customerId === "none" ? false : form.showToCustomer,
+                })
+              }
             >
               <SelectTrigger className="h-11">
                 <SelectValue placeholder="Müşteri seçin" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">Müşteri yok (bağımsız görev)</SelectItem>
                 {data.customers.map((customer) => (
                   <SelectItem key={customer.id} value={customer.id}>
                     {customer.name}
@@ -311,19 +325,19 @@ function WorkOrdersPage() {
             </Select>
           </label>
           <label className="grid gap-1 text-sm">
-            Taşeron
+            Sorumlu Kişi
             <Select
-              value={form.contractorId}
-              onValueChange={(contractorId) => setForm({ ...form, contractorId })}
+              value={form.assigneeId}
+              onValueChange={(assigneeId) => setForm({ ...form, assigneeId })}
             >
               <SelectTrigger className="h-11">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Henüz atama</SelectItem>
-                {data.contractors.map((contractor) => (
-                  <SelectItem key={contractor.id} value={contractor.id}>
-                    {contractor.full_name || "İsimsiz taşeron"}
+                {data.assignees.map((assignee) => (
+                  <SelectItem key={assignee.id} value={assignee.id}>
+                    {assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -463,6 +477,7 @@ function WorkOrdersPage() {
             Müşteriye Göster
             <Switch
               checked={form.showToCustomer}
+              disabled={!form.customerId}
               onCheckedChange={(showToCustomer) => setForm({ ...form, showToCustomer })}
             />
           </label>
@@ -471,7 +486,6 @@ function WorkOrdersPage() {
           <Button
             onClick={() => createOrder.mutate()}
             disabled={
-              !form.customerId ||
               !form.title.trim() ||
               !safeHttpsMapUrl(form.locationUrl) ||
               !form.date ||
@@ -493,11 +507,6 @@ function WorkOrdersPage() {
         description="Bağımsız veya projeye bağlı bütün saha görevleri."
         actions={createButton}
       />
-      {data.customers.length === 0 ? (
-        <p className="mb-4 rounded-md border border-primary/40 bg-primary/10 p-4 text-sm">
-          Görev oluşturmak için önce Müşteriler ekranından müşteri ekleyin.
-        </p>
-      ) : null}
       {data.orders.length > 0 ? (
         <div className="mb-4 grid gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-[1fr_220px]">
           <label className="relative">
@@ -505,7 +514,7 @@ function WorkOrdersPage() {
             <Input
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Görev no, proje, müşteri, konum veya taşeron ara"
+              placeholder="Görev no, proje, müşteri, konum veya sorumlu ara"
               className="h-11 pl-10"
             />
           </label>
@@ -533,13 +542,13 @@ function WorkOrdersPage() {
       {data.orders.length === 0 ? (
         <EmptyState
           title="Henüz görev yok"
-          description="İlk görevi oluşturup taşerona atayın."
+          description="İlk bağımsız veya projeye bağlı görevi oluşturun."
           action={createButton}
         />
       ) : (
         <div className="grid gap-4">
           {filteredOrders.map((order) => {
-            const contractor = contractorById.get(assignmentByOrder.get(order.id) ?? "");
+            const assignee = assigneeById.get(assignmentByOrder.get(order.id) ?? "");
             return (
               <div key={order.id} className="surface-panel p-4 sm:p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
@@ -561,13 +570,16 @@ function WorkOrdersPage() {
                       </p>
                     )}
                     <p className="text-sm text-muted-foreground">
-                      {order.customers?.name} · {formatDate(order.scheduled_at)} ·{" "}
+                      {order.customers?.name || "Müşteri yok"} · {formatDate(order.scheduled_at)} ·{" "}
                       {order.location ||
                         (order.location_url ? "Harita konumu eklendi" : "Konum yok")}
                     </p>
                     <p className="mt-1 text-sm">
-                      Taşeron:{" "}
-                      <span className="font-semibold">{contractor?.full_name || "Atanmadı"}</span>
+                      Sorumlu:{" "}
+                      <span className="font-semibold">
+                        {assignee?.full_name || "Atanmadı"}
+                        {assignee ? ` · ${roleLabels[assignee.role]}` : ""}
+                      </span>
                     </p>
                   </div>
                   <div className="w-full lg:w-56">
@@ -608,6 +620,7 @@ function WorkOrdersPage() {
                     </div>
                     <Switch
                       checked={order.show_to_customer}
+                      disabled={!order.customer_id}
                       onCheckedChange={(visible) =>
                         visibilityMutation.mutate({ id: order.id, visible })
                       }
