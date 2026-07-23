@@ -77,7 +77,13 @@ function ProjectDetailPage() {
       if (!projectResult.data) throw new Error("Proje bulunamadı");
 
       const project = projectResult.data;
-      const [customerResult, processesResult, tasksResult, managerRolesResult, contractorRolesResult] = await Promise.all([
+      const [
+        customerResult,
+        processesResult,
+        tasksResult,
+        managerRolesResult,
+        contractorRolesResult,
+      ] = await Promise.all([
         supabase.from("customers").select("id, name").eq("id", project.customer_id).maybeSingle(),
         supabase
           .from("project_processes")
@@ -104,10 +110,10 @@ function ProjectDetailPage() {
       const [managersResult, contractorsResult] = await Promise.all([
         managerIds.length
           ? supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", managerIds)
-            .order("full_name")
+              .from("profiles")
+              .select("id, full_name")
+              .in("id", managerIds)
+              .order("full_name")
           : Promise.resolve({ data: [], error: null }),
         contractorIds.length
           ? supabase
@@ -151,9 +157,7 @@ function ProjectDetailPage() {
   ];
   const processProgresses = processes.map((process) => ({
     ...process,
-    progress: projectApprovedProgress(
-      tasks.filter((task) => task.process_id === process.id),
-    ),
+    progress: projectApprovedProgress(tasks.filter((task) => task.process_id === process.id)),
   }));
   const managerById = new Map(managers.map((manager) => [manager.id, manager.full_name]));
   const location = [project.province, project.district, project.neighborhood]
@@ -481,7 +485,10 @@ function TaskEditor({
   });
 
   return (
-    <div id={`task-${task.id}`} className="scroll-mt-6 rounded-xl border border-border bg-background/35 p-4">
+    <div
+      id={`task-${task.id}`}
+      className="scroll-mt-6 rounded-xl border border-border bg-background/35 p-4"
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -539,7 +546,8 @@ function TaskEditor({
               <SelectItem value="none">Atanmadı</SelectItem>
               {assignees.map((assignee) => (
                 <SelectItem key={assignee.id} value={assignee.id}>
-                  {(assignee.full_name || "İsimsiz kullanıcı")} · {assignee.role === "admin" ? "NES Teknik Ofis" : "Taşeron"}
+                  {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
+                  {assignee.role === "admin" ? "NES Teknik Ofis" : "Taşeron"}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -577,6 +585,8 @@ function TaskEditor({
         </label>
       </div>
 
+      <ProjectTaskProgress task={task} canSubmit={false} canReview={editable} />
+
       <ProjectTaskEvidence
         taskId={task.id}
         projectId={task.project_id}
@@ -584,8 +594,6 @@ function TaskEditor({
         requiresDocument={task.requires_document}
         canUpload={editable}
       />
-
-      <ProjectTaskProgress task={task} canSubmit={editable} canReview={editable} />
 
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
         <label className="grid gap-1 text-xs font-bold">
