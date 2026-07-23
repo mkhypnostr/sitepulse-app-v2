@@ -95,7 +95,7 @@ function JobReportPage() {
     return (
       <EmptyState
         title="Rapor açılamadı"
-        description={reportQuery.error ? errorMessage(reportQuery.error) : "İş emri bulunamadı."}
+        description={reportQuery.error ? errorMessage(reportQuery.error) : "Görev bulunamadı."}
       />
     );
   }
@@ -176,7 +176,7 @@ function JobReportPage() {
       <div className="print:hidden mb-5 flex flex-wrap items-center justify-between gap-3">
         <Button asChild variant="ghost">
           <Link to="/jobs/$jobId" params={{ jobId }}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> İş emrine dön
+            <ArrowLeft className="mr-2 h-4 w-4" /> Göreve dön
           </Link>
         </Button>
         <div className="flex flex-wrap gap-2">
