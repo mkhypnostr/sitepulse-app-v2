@@ -45,7 +45,7 @@ function DashboardPage() {
     queryFn: async () => {
       const { data: orders, error: orderError } = await supabase
         .from("work_orders")
-        .select("*, customers(name), work_order_financials(total_amount, approved_progress_pct)")
+        .select("*, customers(name), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)")
         .order("scheduled_at", { ascending: false });
       if (orderError) throw orderError;
 
@@ -444,7 +444,7 @@ function DashboardPage() {
                   <Progress value={order.progress_pct} />
                   {role === "admin" ? (
                     <p className="mt-2 text-right text-xs text-muted-foreground">
-                      {formatTRY(order.work_order_financials?.total_amount)}
+                      Müşteri: {formatTRY(order.work_order_financials?.customer_amount)}
                     </p>
                   ) : null}
                 </div>
