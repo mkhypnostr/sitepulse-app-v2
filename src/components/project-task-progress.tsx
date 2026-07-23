@@ -32,14 +32,14 @@ export function ProjectTaskProgress({
 }) {
   const queryClient = useQueryClient();
   const [proposedPct, setProposedPct] = useState(
-    String(Math.min(100, Math.max(task.approved_progress_pct + 10, 10))),
+    String(Math.min(100, Math.max(task.approved_progress_pct + 5, 5))),
   );
   const [note, setNote] = useState("");
   const [actualDate, setActualDate] = useState("");
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setProposedPct(String(Math.min(100, Math.max(task.approved_progress_pct + 10, 10))));
+    setProposedPct(String(Math.min(100, Math.max(task.approved_progress_pct + 5, 5))));
   }, [task.approved_progress_pct]);
 
   const submissionsQuery = useQuery({
@@ -52,11 +52,13 @@ export function ProjectTaskProgress({
         .order("submitted_at", { ascending: false });
       if (submissionsResult.error) throw submissionsResult.error;
 
-      const userIds = [...new Set(
-        submissionsResult.data.flatMap((item) =>
-          [item.submitted_by, item.reviewed_by].filter(Boolean) as string[],
+      const userIds = [
+        ...new Set(
+          submissionsResult.data.flatMap(
+            (item) => [item.submitted_by, item.reviewed_by].filter(Boolean) as string[],
+          ),
         ),
-      )];
+      ];
       const profilesResult = userIds.length
         ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
         : { data: [], error: null };
@@ -87,10 +89,18 @@ export function ProjectTaskProgress({
   const submitProgress = useMutation({
     mutationFn: async () => {
       const pct = Number(proposedPct);
-      if (!Number.isInteger(pct) || pct <= task.approved_progress_pct || pct > 100) {
-        throw new Error(`İlerleme %${task.approved_progress_pct} değerinden yüksek ve en fazla %100 olmalıdır.`);
+      if (
+        !Number.isInteger(pct) ||
+        pct <= task.approved_progress_pct ||
+        pct > 100 ||
+        pct % 5 !== 0
+      ) {
+        throw new Error(
+          `İlerleme %${task.approved_progress_pct} değerinden yüksek ve 5'in katı olmalıdır.`,
+        );
       }
-      if (!note.trim()) throw new Error("Yapılan işi açıklayın.");
+      if (note.trim().length < 10)
+        throw new Error("Yapılan iş açıklaması en az 10 karakter olmalıdır.");
       const { error } = await supabase.rpc("submit_project_task_progress", {
         target_task_id: task.id,
         proposed_progress: pct,
@@ -129,7 +139,10 @@ export function ProjectTaskProgress({
   const submissions = submissionsQuery.data?.submissions ?? [];
   const profileById = submissionsQuery.data?.profileById ?? new Map<string, string>();
   const submissionFormVisible =
-    canSubmit && !pendingSubmission && task.approved_progress_pct < 100 && task.status !== "not_applicable";
+    canSubmit &&
+    !pendingSubmission &&
+    task.approved_progress_pct < 100 &&
+    task.status !== "not_applicable";
 
   return (
     <div className="mt-4 rounded-xl border border-border bg-muted/15 p-4">
@@ -158,20 +171,25 @@ export function ProjectTaskProgress({
             <div>
               <p className="font-black">%{pendingSubmission.proposed_pct} ilerleme talebi</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {profileById.get(pendingSubmission.submitted_by) || "Kullanıcı"} · {formatProjectDateTime(pendingSubmission.submitted_at)}
+                {profileById.get(pendingSubmission.submitted_by) || "Kullanıcı"} ·{" "}
+                {formatProjectDateTime(pendingSubmission.submitted_at)}
               </p>
             </div>
-            <Badge variant="outline" className="border-red-500/40 text-red-300">Onay Bekliyor</Badge>
+            <Badge variant="outline" className="border-red-500/40 text-red-300">
+              Onay Bekliyor
+            </Badge>
           </div>
           <p className="mt-3 whitespace-pre-wrap rounded-lg bg-background/50 p-3 text-sm">
             {pendingSubmission.note}
           </p>
           <Textarea
             value={reviewNotes[pendingSubmission.id] ?? ""}
-            onChange={(event) => setReviewNotes((current) => ({
-              ...current,
-              [pendingSubmission.id]: event.target.value,
-            }))}
+            onChange={(event) =>
+              setReviewNotes((current) => ({
+                ...current,
+                [pendingSubmission.id]: event.target.value,
+              }))
+            }
             placeholder="Onay notu (isteğe bağlı) veya revizyon nedeni"
             className="mt-3 min-h-20"
           />
@@ -179,7 +197,9 @@ export function ProjectTaskProgress({
             <Button
               type="button"
               variant="outline"
-              onClick={() => reviewProgress.mutate({ submission: pendingSubmission, approve: false })}
+              onClick={() =>
+                reviewProgress.mutate({ submission: pendingSubmission, approve: false })
+              }
               disabled={reviewProgress.isPending}
               className="border-orange-500/40 text-orange-300"
             >
@@ -187,11 +207,14 @@ export function ProjectTaskProgress({
             </Button>
             <Button
               type="button"
-              onClick={() => reviewProgress.mutate({ submission: pendingSubmission, approve: true })}
+              onClick={() =>
+                reviewProgress.mutate({ submission: pendingSubmission, approve: true })
+              }
               disabled={reviewProgress.isPending}
               className="bg-emerald-600 text-white hover:bg-emerald-500"
             >
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Onayla ve %{pendingSubmission.proposed_pct} Yap
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Onayla ve %{pendingSubmission.proposed_pct}{" "}
+              Yap
             </Button>
           </div>
         </div>
@@ -201,22 +224,28 @@ export function ProjectTaskProgress({
         <div className="mt-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
           <p className="font-black">İlerlemeyi onaya gönder</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Önce yukarıdan yeni fotoğraf veya belge ekleyin. Onay verilene kadar proje yüzdesi değişmez.
+            Önce yukarıdan yeni fotoğraf veya belge ekleyin. Onay verilene kadar proje yüzdesi
+            değişmez.
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-xs font-bold">
               Önerilen İlerleme (%)
               <Input
                 type="number"
-                min={task.approved_progress_pct + 1}
+                min={Math.min(100, task.approved_progress_pct + 5)}
                 max={100}
+                step={5}
                 value={proposedPct}
                 onChange={(event) => setProposedPct(event.target.value)}
               />
             </label>
             <label className="grid gap-1 text-xs font-bold">
               Gerçekleşen Tarih (isteğe bağlı)
-              <Input type="date" value={actualDate} onChange={(event) => setActualDate(event.target.value)} />
+              <Input
+                type="date"
+                value={actualDate}
+                onChange={(event) => setActualDate(event.target.value)}
+              />
             </label>
           </div>
           <label className="mt-3 grid gap-1 text-xs font-bold">
@@ -225,6 +254,7 @@ export function ProjectTaskProgress({
               value={note}
               onChange={(event) => setNote(event.target.value)}
               placeholder="Ne yapıldı, sahadaki durum nedir, hangi belge eklendi?"
+              minLength={10}
               className="min-h-24"
             />
           </label>
@@ -247,20 +277,37 @@ export function ProjectTaskProgress({
           </p>
           <div className="mt-2 space-y-2">
             {submissions.map((submission) => (
-              <div key={submission.id} className="rounded-lg border border-border bg-background/45 p-3 text-xs">
+              <div
+                key={submission.id}
+                className="rounded-lg border border-border bg-background/45 p-3 text-xs"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-black">%{submission.proposed_pct} · {submissionLabel[submission.status]}</span>
-                  <span className="text-muted-foreground">{formatProjectDateTime(submission.submitted_at)}</span>
+                  <span className="font-black">
+                    %{submission.proposed_pct} · {submissionLabel[submission.status]}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {formatProjectDateTime(submission.submitted_at)}
+                  </span>
                 </div>
                 <p className="mt-1 text-muted-foreground">
                   Gönderen: {profileById.get(submission.submitted_by) || "Kullanıcı"}
                 </p>
                 {submission.reviewed_by ? (
-                  <p className={submission.status === "approved" ? "mt-1 text-emerald-300" : "mt-1 text-orange-300"}>
-                    {submission.status === "approved" ? "Onaylayan" : "İnceleyen"}: {profileById.get(submission.reviewed_by) || "Yönetici"} · {formatProjectDateTime(submission.reviewed_at)}
+                  <p
+                    className={
+                      submission.status === "approved"
+                        ? "mt-1 text-emerald-300"
+                        : "mt-1 text-orange-300"
+                    }
+                  >
+                    {submission.status === "approved" ? "Onaylayan" : "İnceleyen"}:{" "}
+                    {profileById.get(submission.reviewed_by) || "Yönetici"} ·{" "}
+                    {formatProjectDateTime(submission.reviewed_at)}
                   </p>
                 ) : null}
-                {submission.review_note ? <p className="mt-2 whitespace-pre-wrap">{submission.review_note}</p> : null}
+                {submission.review_note ? (
+                  <p className="mt-2 whitespace-pre-wrap">{submission.review_note}</p>
+                ) : null}
               </div>
             ))}
           </div>
