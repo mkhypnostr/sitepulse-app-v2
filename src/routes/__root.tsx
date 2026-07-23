@@ -83,7 +83,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "NES Enerji saha, taşeron ve müşteri yönetim platformu — iş emirleri, hakediş, stok ve şantiye fotoğrafları tek panelde.",
+          "NES Enerji saha, taşeron ve müşteri yönetim platformu — görevler, hakediş, stok ve şantiye fotoğrafları tek panelde.",
       },
       { name: "author", content: "NES Enerji" },
       { name: "theme-color", content: "#0046a4" },
