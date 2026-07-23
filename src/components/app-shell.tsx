@@ -70,6 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         : [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
             { to: "/my-projects", label: "Projelerim", icon: FolderKanban },
+            { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
           ];
 
   const handleSignOut = async () => {
