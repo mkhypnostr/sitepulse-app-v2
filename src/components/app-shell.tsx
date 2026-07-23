@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       ? [
           { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
           { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
-          { to: "/work-orders", label: "İş Emirleri", icon: ClipboardList },
+          { to: "/work-orders", label: "Görevler", icon: ClipboardList },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
           { to: "/stock", label: "Stok", icon: Boxes },
           { to: "/team", label: "Ekip ve Yetkiler", icon: UserCog },
@@ -64,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       : role === "contractor"
         ? [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-            { to: "/my-jobs", label: "İşlerim", icon: BriefcaseBusiness },
+            { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
             { to: "/my-project-tasks", label: "Proje Görevlerim", icon: ClipboardList },
           ]
         : [
