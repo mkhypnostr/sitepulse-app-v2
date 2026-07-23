@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Camera,
   CheckCircle2,
+  FileDown,
   Images,
   MapPin,
   PackageMinus,
@@ -23,6 +24,7 @@ import { MapPreview } from "@/components/map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -45,16 +47,22 @@ function JobDetailPage() {
   const queryClient = useQueryClient();
   const cameraInput = useRef<HTMLInputElement>(null);
   const galleryInput = useRef<HTMLInputElement>(null);
-  const progressEvidenceInput = useRef<HTMLInputElement>(null);
+  const progressCameraInput = useRef<HTMLInputElement>(null);
+  const progressGalleryInput = useRef<HTMLInputElement>(null);
   const [progressPct, setProgressPct] = useState("0");
   const [progressNote, setProgressNote] = useState("");
   const [progressEvidence, setProgressEvidence] = useState<File | null>(null);
   const [progressReviewNote, setProgressReviewNote] = useState("");
   const [completionNote, setCompletionNote] = useState("");
+  const [completionPhotoIds, setCompletionPhotoIds] = useState<string[]>([]);
   const [reviewNote, setReviewNote] = useState("");
   const [photoType, setPhotoType] = useState<PhotoType>("saha");
   const [photoCaption, setPhotoCaption] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<{
+    url: string;
+    label: string;
+  } | null>(null);
   const [stockItemId, setStockItemId] = useState("");
   const [stockQuantity, setStockQuantity] = useState("");
   const [stockNote, setStockNote] = useState("");
@@ -74,7 +82,7 @@ function JobDetailPage() {
     queryKey: ["job-detail", jobId, role],
     enabled: Boolean(role),
     queryFn: async () => {
-      const [orderResult, photosResult, progressResult] = await Promise.all([
+      const [orderResult, photosResult, progressResult, completionResult] = await Promise.all([
         supabase
           .from("work_orders")
           .select(
@@ -92,10 +100,16 @@ function JobDetailPage() {
           .select("*")
           .eq("work_order_id", jobId)
           .order("created_at", { ascending: false }),
+        supabase
+          .from("work_completion_submissions")
+          .select("*")
+          .eq("work_order_id", jobId)
+          .order("submitted_at", { ascending: false }),
       ]);
       if (orderResult.error) throw orderResult.error;
       if (photosResult.error) throw photosResult.error;
       if (progressResult.error && role !== "customer") throw progressResult.error;
+      if (completionResult.error && role !== "customer") throw completionResult.error;
 
       const photos = await Promise.all(
         photosResult.data.map(async (photo) => {
@@ -145,19 +159,48 @@ function JobDetailPage() {
         stockItems = stockResult.data;
       }
 
-      const progressUserIds = [...new Set((progressResult.data ?? []).flatMap((item) =>
-        [item.contractor_id, item.reviewed_by].filter(Boolean) as string[],
-      ))];
+      const progressUserIds = [
+        ...new Set(
+          (progressResult.data ?? []).flatMap(
+            (item) => [item.contractor_id, item.reviewed_by].filter(Boolean) as string[],
+          ),
+        ),
+      ];
       const progressProfilesResult = progressUserIds.length
         ? await supabase.from("profiles").select("id, full_name").in("id", progressUserIds)
         : { data: [], error: null };
       if (progressProfilesResult.error) throw progressProfilesResult.error;
+
+      const completionSubmissions = completionResult.data ?? [];
+      const completionUserIds = [
+        ...new Set(
+          completionSubmissions.flatMap(
+            (item) => [item.submitted_by, item.reviewed_by].filter(Boolean) as string[],
+          ),
+        ),
+      ];
+      const completionProfilesResult = completionUserIds.length
+        ? await supabase.from("profiles").select("id, full_name").in("id", completionUserIds)
+        : { data: [], error: null };
+      if (completionProfilesResult.error) throw completionProfilesResult.error;
+
+      const completionIds = completionSubmissions.map((item) => item.id);
+      const completionEvidenceResult = completionIds.length
+        ? await supabase
+            .from("work_completion_evidence")
+            .select("submission_id, photo_id")
+            .in("submission_id", completionIds)
+        : { data: [], error: null };
+      if (completionEvidenceResult.error) throw completionEvidenceResult.error;
 
       return {
         order: orderResult.data,
         photos,
         progress: progressResult.data ?? [],
         progressProfiles: progressProfilesResult.data ?? [],
+        completionSubmissions,
+        completionProfiles: completionProfilesResult.data ?? [],
+        completionEvidence: completionEvidenceResult.data ?? [],
         materials,
         stockItems,
       };
@@ -190,8 +233,13 @@ function JobDetailPage() {
       const pct = Number(progressPct);
       const approvedPct = detailQuery.data?.order.progress_pct ?? 0;
       const normalizedNote = progressNote.trim();
-      if (!Number.isInteger(pct) || pct <= approvedPct || pct > 100) {
-        throw new Error(`İlerleme mevcut onaylı %${approvedPct} değerinden yüksek ve en fazla %100 olmalıdır`);
+      if (role !== "contractor") {
+        throw new Error("İlerleme bildirimini yalnızca atanmış taşeron gönderebilir");
+      }
+      if (!Number.isInteger(pct) || pct <= approvedPct || pct > 100 || pct % 5 !== 0) {
+        throw new Error(
+          `İlerleme mevcut onaylı %${approvedPct} değerinden yüksek ve 5'in katı olmalıdır`,
+        );
       }
       if (normalizedNote.length < 10) {
         throw new Error("Yapılan iş açıklaması en az 10 karakter olmalıdır");
@@ -222,8 +270,11 @@ function JobDetailPage() {
       await refresh();
       setProgressNote("");
       setProgressEvidence(null);
-      if (progressEvidenceInput.current) progressEvidenceInput.current.value = "";
-      toast.success(`%${progressPct} ilerleme talebiniz yönetici onayına gönderildi. Onaylandıktan sonra iş ilerlemesine eklenecektir.`);
+      if (progressCameraInput.current) progressCameraInput.current.value = "";
+      if (progressGalleryInput.current) progressGalleryInput.current.value = "";
+      toast.success(
+        `%${progressPct} ilerleme talebiniz yönetici onayına gönderildi. Onaylandıktan sonra iş ilerlemesine eklenecektir.`,
+      );
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -243,7 +294,9 @@ function JobDetailPage() {
     onSuccess: async (_data, approved) => {
       await refresh();
       setProgressReviewNote("");
-      toast.success(approved ? "İlerleme onaylandı ve işe yansıtıldı" : "İlerleme talebi reddedildi");
+      toast.success(
+        approved ? "İlerleme onaylandı ve işe yansıtıldı" : "İlerleme talebi reddedildi",
+      );
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -253,12 +306,14 @@ function JobDetailPage() {
       const { error } = await supabase.rpc("submit_work_for_review", {
         target_work_order_id: jobId,
         submitted_completion_note: completionNote,
+        completion_photo_ids: completionPhotoIds,
       });
       if (error) throw error;
     },
     onSuccess: async () => {
       await refresh();
       setCompletionNote("");
+      setCompletionPhotoIds([]);
       toast.success("İş yönetici kontrolüne gönderildi");
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -310,7 +365,11 @@ function JobDetailPage() {
       const customerAmount = Number(commercialForm.customerAmount.replace(",", "."));
       const contractorLaborAmount = Number(commercialForm.contractorLaborAmount.replace(",", "."));
       const estimatedMaterialCost = Number(commercialForm.estimatedMaterialCost.replace(",", "."));
-      if (![customerAmount, contractorLaborAmount, estimatedMaterialCost].every((value) => Number.isFinite(value) && value >= 0)) {
+      if (
+        ![customerAmount, contractorLaborAmount, estimatedMaterialCost].every(
+          (value) => Number.isFinite(value) && value >= 0,
+        )
+      ) {
         throw new Error("Ticari tutarları kontrol edin");
       }
       const { error } = await supabase.rpc("update_work_order_commercials", {
@@ -319,7 +378,8 @@ function JobDetailPage() {
         new_contractor_labor_amount: contractorLaborAmount,
         new_estimated_material_cost: estimatedMaterialCost,
         new_work_scope_type: commercialForm.workScopeType,
-        new_default_material_source: commercialForm.workScopeType === "labor_only" ? "none" : commercialForm.materialSource,
+        new_default_material_source:
+          commercialForm.workScopeType === "labor_only" ? "none" : commercialForm.materialSource,
       });
       if (error) throw error;
     },
@@ -423,7 +483,17 @@ function JobDetailPage() {
     );
   }
 
-  const { order, photos, progress, progressProfiles, materials, stockItems } = detailQuery.data;
+  const {
+    order,
+    photos,
+    progress,
+    progressProfiles,
+    completionSubmissions,
+    completionProfiles,
+    completionEvidence,
+    materials,
+    stockItems,
+  } = detailQuery.data;
   const canOperate = role === "admin" || role === "contractor";
   const isReviewPending = order.status === "review_pending";
   const isFinalized = order.status === "completed" || order.status === "cancelled";
@@ -431,9 +501,28 @@ function JobDetailPage() {
   const pendingEvidence = pendingProgress
     ? photos.find((photo) => photo.id === pendingProgress.evidence_photo_id)
     : undefined;
-  const progressProfileById = new Map(progressProfiles.map((profile) => [profile.id, profile.full_name]));
+  const progressProfileById = new Map(
+    progressProfiles.map((profile) => [profile.id, profile.full_name]),
+  );
+  const completionProfileById = new Map(
+    completionProfiles.map((profile) => [profile.id, profile.full_name]),
+  );
+  const pendingCompletion = completionSubmissions.find((item) => item.status === "pending");
+  const pendingCompletionPhotoIds = new Set(
+    completionEvidence
+      .filter((item) => item.submission_id === pendingCompletion?.id)
+      .map((item) => item.photo_id),
+  );
+  const pendingCompletionPhotos = photos.filter((photo) => pendingCompletionPhotoIds.has(photo.id));
+  const completionCandidatePhotos = photos.filter(
+    (photo) => photo.uploaded_by === user?.id && Boolean(photo.signedUrl),
+  );
   const canSubmitForReview =
-    role === "contractor" && order.progress_pct === 100 && !pendingProgress && !isReviewPending && !isFinalized;
+    role === "contractor" &&
+    order.progress_pct === 100 &&
+    !pendingProgress &&
+    !isReviewPending &&
+    !isFinalized;
   const financials = order.work_order_financials;
   const materialSourceLabels: Record<string, string> = {
     none: "Malzeme kullanılmıyor",
@@ -444,9 +533,9 @@ function JobDetailPage() {
   const payableAmount =
     (financials?.contractor_labor_amount ?? 0) * ((financials?.approved_progress_pct ?? 0) / 100);
   const estimatedGrossMargin =
-    (financials?.customer_amount ?? 0)
-    - (financials?.contractor_labor_amount ?? 0)
-    - (financials?.estimated_material_cost ?? 0);
+    (financials?.customer_amount ?? 0) -
+    (financials?.contractor_labor_amount ?? 0) -
+    (financials?.estimated_material_cost ?? 0);
 
   return (
     <>
@@ -459,9 +548,18 @@ function JobDetailPage() {
         title={`#${order.work_order_no} · ${order.title}`}
         description={`${order.customers?.name} · ${formatDate(order.scheduled_at)}`}
         actions={
-          <Badge variant="outline" className="px-3 py-2">
-            {statusLabels[order.status]}
-          </Badge>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="px-3 py-2">
+              {statusLabels[order.status]}
+            </Badge>
+            {order.status === "completed" ? (
+              <Button asChild variant="outline">
+                <Link to="/job-report/$jobId" params={{ jobId }}>
+                  <FileDown className="mr-2 h-4 w-4" /> Fotoğraflı Rapor
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
@@ -478,7 +576,10 @@ function JobDetailPage() {
               <Badge variant="outline">
                 {order.work_scope_type === "labor_only" ? "Yalnızca işçilik" : "İşçilik + malzeme"}
               </Badge>
-              <Badge variant="outline">{materialSourceLabels[order.default_material_source] || order.default_material_source}</Badge>
+              <Badge variant="outline">
+                {materialSourceLabels[order.default_material_source] ||
+                  order.default_material_source}
+              </Badge>
             </div>
             {order.location_url ? (
               <MapPreview mapUrl={order.location_url} />
@@ -526,7 +627,9 @@ function JobDetailPage() {
               </div>
               <div className="rounded-md border bg-muted/40 p-3">
                 <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
-                <p className={`text-xl font-black ${estimatedGrossMargin < 0 ? "text-red-400" : "text-emerald-400"}`}>
+                <p
+                  className={`text-xl font-black ${estimatedGrossMargin < 0 ? "text-red-400" : "text-emerald-400"}`}
+                >
                   {formatTRY(estimatedGrossMargin)}
                 </p>
               </div>
@@ -542,7 +645,8 @@ function JobDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-xs text-muted-foreground">
-              Bu tutarlar yalnızca yöneticilere görünür. Müşteri ve taşeron ekranlarında paylaşılmaz.
+              Bu tutarlar yalnızca yöneticilere görünür. Müşteri ve taşeron ekranlarında
+              paylaşılmaz.
             </p>
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="grid gap-1 text-sm">
@@ -550,7 +654,9 @@ function JobDetailPage() {
                 <Input
                   inputMode="decimal"
                   value={commercialForm.customerAmount}
-                  onChange={(event) => setCommercialForm({ ...commercialForm, customerAmount: event.target.value })}
+                  onChange={(event) =>
+                    setCommercialForm({ ...commercialForm, customerAmount: event.target.value })
+                  }
                 />
               </label>
               <label className="grid gap-1 text-sm">
@@ -558,7 +664,12 @@ function JobDetailPage() {
                 <Input
                   inputMode="decimal"
                   value={commercialForm.contractorLaborAmount}
-                  onChange={(event) => setCommercialForm({ ...commercialForm, contractorLaborAmount: event.target.value })}
+                  onChange={(event) =>
+                    setCommercialForm({
+                      ...commercialForm,
+                      contractorLaborAmount: event.target.value,
+                    })
+                  }
                 />
               </label>
               <label className="grid gap-1 text-sm">
@@ -566,20 +677,34 @@ function JobDetailPage() {
                 <Input
                   inputMode="decimal"
                   value={commercialForm.estimatedMaterialCost}
-                  onChange={(event) => setCommercialForm({ ...commercialForm, estimatedMaterialCost: event.target.value })}
+                  onChange={(event) =>
+                    setCommercialForm({
+                      ...commercialForm,
+                      estimatedMaterialCost: event.target.value,
+                    })
+                  }
                 />
               </label>
               <label className="grid gap-1 text-sm">
                 İş Kapsamı
                 <Select
                   value={commercialForm.workScopeType}
-                  onValueChange={(workScopeType) => setCommercialForm({
-                    ...commercialForm,
-                    workScopeType,
-                    materialSource: workScopeType === "labor_only" ? "none" : commercialForm.materialSource === "none" ? "nes_stock" : commercialForm.materialSource,
-                  })}
+                  onValueChange={(workScopeType) =>
+                    setCommercialForm({
+                      ...commercialForm,
+                      workScopeType,
+                      materialSource:
+                        workScopeType === "labor_only"
+                          ? "none"
+                          : commercialForm.materialSource === "none"
+                            ? "nes_stock"
+                            : commercialForm.materialSource,
+                    })
+                  }
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="labor_only">Yalnızca işçilik</SelectItem>
                     <SelectItem value="labor_and_material">İşçilik + malzeme</SelectItem>
@@ -591,9 +716,13 @@ function JobDetailPage() {
                 <Select
                   value={commercialForm.materialSource}
                   disabled={commercialForm.workScopeType === "labor_only"}
-                  onValueChange={(materialSource) => setCommercialForm({ ...commercialForm, materialSource })}
+                  onValueChange={(materialSource) =>
+                    setCommercialForm({ ...commercialForm, materialSource })
+                  }
                 >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Malzeme kullanılmayacak</SelectItem>
                     <SelectItem value="nes_stock">NES deposu</SelectItem>
@@ -606,7 +735,11 @@ function JobDetailPage() {
                 <Button
                   className="w-full"
                   onClick={() => commercialMutation.mutate()}
-                  disabled={commercialMutation.isPending || (commercialForm.workScopeType === "labor_and_material" && commercialForm.materialSource === "none")}
+                  disabled={
+                    commercialMutation.isPending ||
+                    (commercialForm.workScopeType === "labor_and_material" &&
+                      commercialForm.materialSource === "none")
+                  }
                 >
                   {commercialMutation.isPending ? "Kaydediliyor..." : "Ticari Bilgileri Kaydet"}
                 </Button>
@@ -618,62 +751,96 @@ function JobDetailPage() {
 
       {canOperate ? (
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>İlerleme Bildir</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {pendingProgress ? (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                  <p className="font-black text-amber-300">%{pendingProgress.pct} YÖNETİCİ ONAYI BEKLİYOR</p>
-                  <p className="mt-1 text-muted-foreground">
-                    İlerleme onaylandıktan sonra mevcut %{order.progress_pct} değerine yansıtılacaktır.
-                  </p>
-                </div>
-              ) : null}
-              <label className="grid gap-1 text-sm">
-                İlerleme Yüzdesi
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={progressPct}
-                  onChange={(event) => setProgressPct(event.target.value)}
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                Yapılan İş / Açıklama
-                <Textarea
-                  value={progressNote}
-                  onChange={(event) => setProgressNote(event.target.value)}
-                  placeholder="Yapılan işi en az 10 karakterle açıklayın"
-                  minLength={10}
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                Yeni Kanıt Fotoğrafı
-                <Input
-                  ref={progressEvidenceInput}
+          {role === "contractor" ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>İlerleme Bildir</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {pendingProgress ? (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                    <p className="font-black text-amber-300">
+                      %{pendingProgress.pct} YÖNETİCİ ONAYI BEKLİYOR
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      İlerleme onaylandıktan sonra mevcut %{order.progress_pct} değerine
+                      yansıtılacaktır.
+                    </p>
+                  </div>
+                ) : null}
+                <label className="grid gap-1 text-sm">
+                  İlerleme Yüzdesi
+                  <Input
+                    type="number"
+                    min={Math.min(100, order.progress_pct + 5)}
+                    max="100"
+                    step="5"
+                    value={progressPct}
+                    onChange={(event) => setProgressPct(event.target.value)}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Yapılan İş / Açıklama
+                  <Textarea
+                    value={progressNote}
+                    onChange={(event) => setProgressNote(event.target.value)}
+                    placeholder="Yapılan işi en az 10 karakterle açıklayın"
+                    minLength={10}
+                  />
+                </label>
+                <input
+                  ref={progressCameraInput}
                   type="file"
                   accept="image/*"
                   capture="environment"
+                  className="hidden"
                   onChange={(event) => setProgressEvidence(event.target.files?.[0] ?? null)}
                 />
-              </label>
-              <p className="text-xs text-muted-foreground">
-                İlerleme talebi için yeni fotoğraf ve en az 10 karakter açıklama zorunludur.
-                Yönetici onaylamadan yüzde değişmez.
-              </p>
-              <Button
-                className="w-full h-12"
-                onClick={() => progressMutation.mutate()}
-                disabled={progressMutation.isPending || Boolean(pendingProgress) || isReviewPending || isFinalized}
-              >
-                {progressMutation.isPending ? "Gönderiliyor..." : "Yönetici Onayına Gönder"}
-              </Button>
-            </CardContent>
-          </Card>
+                <input
+                  ref={progressGalleryInput}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => setProgressEvidence(event.target.files?.[0] ?? null)}
+                />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => progressCameraInput.current?.click()}
+                  >
+                    <Camera className="mr-2 h-4 w-4" /> Kanıt Fotoğrafı Çek
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => progressGalleryInput.current?.click()}
+                  >
+                    <Images className="mr-2 h-4 w-4" /> Galeriden Kanıt Seç
+                  </Button>
+                </div>
+                {progressEvidence ? (
+                  <p className="text-xs font-semibold text-primary">{progressEvidence.name}</p>
+                ) : null}
+                <p className="text-xs text-muted-foreground">
+                  İlerleme talebi için yeni fotoğraf ve en az 10 karakter açıklama zorunludur.
+                  Yönetici onaylamadan yüzde değişmez.
+                </p>
+                <Button
+                  className="w-full h-12"
+                  onClick={() => progressMutation.mutate()}
+                  disabled={
+                    progressMutation.isPending ||
+                    Boolean(pendingProgress) ||
+                    isReviewPending ||
+                    isFinalized
+                  }
+                >
+                  {progressMutation.isPending ? "Gönderiliyor..." : "Yönetici Onayına Gönder"}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
@@ -754,16 +921,29 @@ function JobDetailPage() {
       {role === "admin" && pendingProgress ? (
         <Card id="progress-approval" className="mt-6 scroll-mt-6 border-red-500/40 bg-red-500/5">
           <CardHeader>
-            <CardTitle className="text-red-200">İlerleme Onayı Bekliyor · %{pendingProgress.pct}</CardTitle>
+            <CardTitle className="text-red-200">
+              İlerleme Onayı Bekliyor · %{pendingProgress.pct}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-[minmax(0,320px)_1fr]">
               {pendingEvidence?.signedUrl ? (
-                <img
-                  src={pendingEvidence.signedUrl}
-                  alt="İlerleme kanıtı"
-                  className="aspect-video w-full rounded-lg border object-cover"
-                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedPhoto({
+                      url: pendingEvidence.signedUrl!,
+                      label: "İlerleme kanıtı",
+                    })
+                  }
+                  className="overflow-hidden rounded-lg border"
+                >
+                  <img
+                    src={pendingEvidence.signedUrl}
+                    alt="İlerleme kanıtı"
+                    className="aspect-video w-full object-cover"
+                  />
+                </button>
               ) : (
                 <div className="flex aspect-video items-center justify-center rounded-lg border bg-muted text-sm text-muted-foreground">
                   Kanıt fotoğrafı açılamadı
@@ -771,9 +951,12 @@ function JobDetailPage() {
               )}
               <div>
                 <p className="font-semibold">Taşeron açıklaması</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{pendingProgress.note}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                  {pendingProgress.note}
+                </p>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  {progressProfileById.get(pendingProgress.contractor_id) || "Taşeron"} · {formatProjectDateTime(pendingProgress.created_at)}
+                  {progressProfileById.get(pendingProgress.contractor_id) || "Taşeron"} ·{" "}
+                  {formatProjectDateTime(pendingProgress.created_at)}
                 </p>
               </div>
             </div>
@@ -809,18 +992,66 @@ function JobDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Göndermek için ilerleme %100 olmalı, en az bir <strong>Montaj Sonrası</strong>
-              fotoğrafı yüklenmeli ve iş bitişi açıklanmalıdır.
+              Göndermek için onaylı ilerleme %100 olmalı; aşağıdan kategori verilmiş en az 1, en
+              fazla 5 fotoğraf seçilmeli ve en az 10 karakter açıklama yazılmalıdır.
             </p>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {completionCandidatePhotos.map((photo) => {
+                const selected = completionPhotoIds.includes(photo.id);
+                return (
+                  <button
+                    type="button"
+                    key={photo.id}
+                    onClick={() =>
+                      setCompletionPhotoIds((current) =>
+                        selected
+                          ? current.filter((id) => id !== photo.id)
+                          : current.length < 5
+                            ? [...current, photo.id]
+                            : current,
+                      )
+                    }
+                    className={`overflow-hidden rounded-lg border text-left transition-colors ${
+                      selected ? "border-primary ring-2 ring-primary/30" : "border-border"
+                    }`}
+                  >
+                    <img
+                      src={photo.signedUrl ?? ""}
+                      alt={photo.caption || photoTypeLabels[photo.photo_type]}
+                      className="aspect-video w-full object-cover"
+                    />
+                    <span className="block p-2 text-xs font-bold">
+                      {selected ? "✓ " : ""}
+                      {photoTypeLabels[photo.photo_type]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {completionCandidatePhotos.length === 0 ? (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200">
+                Önce “Fotoğraf Ekle” alanından en az bir fotoğraf yükleyin.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {completionPhotoIds.length}/5 fotoğraf seçildi.
+              </p>
+            )}
             <Textarea
               value={completionNote}
               onChange={(event) => setCompletionNote(event.target.value)}
               placeholder="İşin nasıl tamamlandığını, varsa önemli notları yazın"
+              minLength={10}
             />
             <Button
               className="w-full"
               onClick={() => submitForReviewMutation.mutate()}
-              disabled={submitForReviewMutation.isPending}
+              disabled={
+                submitForReviewMutation.isPending ||
+                completionPhotoIds.length < 1 ||
+                completionPhotoIds.length > 5 ||
+                completionNote.trim().length < 10
+              }
             >
               <CheckCircle2 className="mr-2 h-4 w-4" />
               {submitForReviewMutation.isPending ? "Gönderiliyor..." : "Kontrole Gönder"}
@@ -830,16 +1061,49 @@ function JobDetailPage() {
       ) : null}
 
       {role === "admin" && isReviewPending ? (
-        <Card className="mt-6 border-primary/30">
+        <Card id="completion-approval" className="mt-6 scroll-mt-6 border-red-500/40 bg-red-500/5">
           <CardHeader>
-            <CardTitle>İş Bitirme Kontrolü</CardTitle>
+            <CardTitle className="text-red-200">İş Bitirme Onayı Bekliyor</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-md bg-muted/60 p-3 text-sm">
-              <p className="font-semibold">Taşeronun bitiş açıklaması</p>
-              <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
-                {order.completion_note || "Açıklama bulunamadı."}
+              <p className="font-semibold">
+                Gönderen:{" "}
+                {completionProfileById.get(pendingCompletion?.submitted_by ?? "") || "Taşeron"}
               </p>
+              <p className="text-xs text-muted-foreground">
+                {pendingCompletion
+                  ? formatProjectDateTime(pendingCompletion.submitted_at)
+                  : "Gönderim zamanı bulunamadı"}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap text-muted-foreground">
+                {pendingCompletion?.note || order.completion_note || "Açıklama bulunamadı."}
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {pendingCompletionPhotos.map((photo) => (
+                <button
+                  type="button"
+                  key={photo.id}
+                  onClick={() =>
+                    photo.signedUrl &&
+                    setSelectedPhoto({
+                      url: photo.signedUrl,
+                      label: photo.caption || photoTypeLabels[photo.photo_type],
+                    })
+                  }
+                  className="overflow-hidden rounded-lg border border-border text-left"
+                >
+                  <img
+                    src={photo.signedUrl ?? ""}
+                    alt={photo.caption || photoTypeLabels[photo.photo_type]}
+                    className="aspect-video w-full object-cover"
+                  />
+                  <span className="block p-2 text-xs font-bold">
+                    {photoTypeLabels[photo.photo_type]}
+                  </span>
+                </button>
+              ))}
             </div>
             <Textarea
               value={reviewNote}
@@ -857,6 +1121,7 @@ function JobDetailPage() {
               <Button
                 onClick={() => reviewCompletionMutation.mutate(true)}
                 disabled={reviewCompletionMutation.isPending}
+                className="bg-emerald-600 text-white hover:bg-emerald-500"
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Tamamlandı Olarak Onayla
               </Button>
@@ -873,7 +1138,10 @@ function JobDetailPage() {
         <section className="mt-6">
           <h2 className="mb-3 text-xl font-black">Kullanılan Malzemeler</h2>
           <p className="mb-3 text-sm text-muted-foreground">
-            İş kapsamı: <strong>{order.work_scope_type === "labor_only" ? "Yalnızca işçilik" : "İşçilik + malzeme"}</strong>
+            İş kapsamı:{" "}
+            <strong>
+              {order.work_scope_type === "labor_only" ? "Yalnızca işçilik" : "İşçilik + malzeme"}
+            </strong>
             {order.work_scope_type === "labor_and_material"
               ? ` · Varsayılan kaynak: ${materialSourceLabels[order.default_material_source]}`
               : " · Malzeme kaydı yöneticinin kapsamı değiştirmesinden sonra açılır."}
@@ -925,7 +1193,9 @@ function JobDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <Select value={customSource} onValueChange={setCustomSource}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="contractor">Taşeron malzemesi</SelectItem>
                     <SelectItem value="customer_site">Müşteri / şantiye malzemesi</SelectItem>
@@ -959,7 +1229,9 @@ function JobDetailPage() {
                   variant="outline"
                   className="w-full"
                   onClick={() => customMaterialMutation.mutate()}
-                  disabled={customMaterialMutation.isPending || order.work_scope_type === "labor_only"}
+                  disabled={
+                    customMaterialMutation.isPending || order.work_scope_type === "labor_only"
+                  }
                 >
                   <Plus className="mr-2 h-4 w-4" /> Malzeme Kaydet
                 </Button>
@@ -1009,11 +1281,22 @@ function JobDetailPage() {
             {photos.map((photo) => (
               <Card key={photo.id} className="overflow-hidden">
                 {photo.signedUrl ? (
-                  <img
-                    src={photo.signedUrl}
-                    alt={photo.caption || photoTypeLabels[photo.photo_type]}
-                    className="aspect-video w-full bg-muted object-cover"
-                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedPhoto({
+                        url: photo.signedUrl!,
+                        label: photo.caption || photoTypeLabels[photo.photo_type],
+                      })
+                    }
+                    className="block w-full cursor-zoom-in"
+                  >
+                    <img
+                      src={photo.signedUrl}
+                      alt={photo.caption || photoTypeLabels[photo.photo_type]}
+                      className="aspect-video w-full bg-muted object-cover transition-transform hover:scale-[1.02]"
+                    />
+                  </button>
                 ) : (
                   <div className="flex aspect-video items-center justify-center bg-muted text-sm text-muted-foreground">
                     Fotoğraf açılamadı
@@ -1067,7 +1350,11 @@ function JobDetailPage() {
                             : "border-red-500/50 text-red-300"
                       }
                     >
-                      {item.status === "pending" ? "Onay Bekliyor" : item.status === "approved" ? "Onaylandı" : "Reddedildi"}
+                      {item.status === "pending"
+                        ? "Onay Bekliyor"
+                        : item.status === "approved"
+                          ? "Onaylandı"
+                          : "Reddedildi"}
                     </Badge>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -1080,15 +1367,82 @@ function JobDetailPage() {
                       : ""}
                   </p>
                   {item.review_note ? (
-                    <p className="mt-1 text-xs text-muted-foreground">Yönetici notu: {item.review_note}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Yönetici notu: {item.review_note}
+                    </p>
                   ) : null}
                 </div>
-                <span className="text-xs text-muted-foreground">{formatProjectDateTime(item.created_at)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatProjectDateTime(item.created_at)}
+                </span>
               </div>
             ))}
           </div>
         </section>
       ) : null}
+
+      {role !== "customer" && completionSubmissions.length > 0 ? (
+        <section className="mt-7">
+          <h2 className="mb-3 text-xl font-black">İş Bitirme Onay Geçmişi</h2>
+          <div className="grid gap-2">
+            {completionSubmissions.map((submission) => (
+              <div key={submission.id} className="surface-panel p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Badge
+                    variant="outline"
+                    className={
+                      submission.status === "pending"
+                        ? "border-amber-500/50 text-amber-300"
+                        : submission.status === "approved"
+                          ? "border-emerald-500/50 text-emerald-300"
+                          : "border-red-500/50 text-red-300"
+                    }
+                  >
+                    {submission.status === "pending"
+                      ? "Onay Bekliyor"
+                      : submission.status === "approved"
+                        ? "Onaylandı"
+                        : "Revizyon İstendi"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {formatProjectDateTime(submission.submitted_at)}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm">{submission.note}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Gönderen: {completionProfileById.get(submission.submitted_by) || "Taşeron"}
+                  {submission.reviewed_at
+                    ? ` · Onaylayan: ${completionProfileById.get(submission.reviewed_by ?? "") || "Yönetici"} · ${formatProjectDateTime(submission.reviewed_at)}`
+                    : ""}
+                </p>
+                {submission.review_note ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Yönetici notu: {submission.review_note}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <Dialog
+        open={Boolean(selectedPhoto)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPhoto(null);
+        }}
+      >
+        <DialogContent className="max-w-5xl">
+          <DialogTitle>{selectedPhoto?.label || "Saha fotoğrafı"}</DialogTitle>
+          {selectedPhoto ? (
+            <img
+              src={selectedPhoto.url}
+              alt={selectedPhoto.label}
+              className="max-h-[78vh] w-full rounded-lg bg-muted object-contain"
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
