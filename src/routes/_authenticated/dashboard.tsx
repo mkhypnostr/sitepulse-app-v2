@@ -46,7 +46,7 @@ function DashboardPage() {
       const { data: orders, error: orderError } = await supabase
         .from("work_orders")
         .select(
-          "*, customers(name), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
+          "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
         )
         .order("scheduled_at", { ascending: false });
       if (orderError) throw orderError;
@@ -160,6 +160,11 @@ function DashboardPage() {
     (item) => item.status === "approved",
   );
   const pendingCompletionOrders = orders.filter((order) => order.status === "review_pending");
+  const overdueOrders = orders.filter(
+    (order) =>
+      new Date(order.scheduled_at).getTime() < Date.now() &&
+      !["completed", "cancelled"].includes(order.status),
+  );
   const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
   const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
   const profileNameById = new Map(
@@ -179,18 +184,18 @@ function DashboardPage() {
       ? `/jobs/${firstPendingWork.work_order_id}#progress-approval`
       : firstPendingProjectTask
         ? `/projects/${firstPendingProjectTask.project_id}#task-${firstPendingProjectTask.id}`
-        : "/work-orders";
+        : undefined;
 
   const metrics =
     role === "admin"
       ? [
           {
-            label: "Toplam İş Emri",
+            label: "Toplam Görev",
             value: orders.length,
             icon: BriefcaseBusiness,
             href: "/work-orders",
           },
-          { label: "Devam Eden", value: active, icon: Clock3, href: "/work-orders" },
+          { label: "Devam Eden Görev", value: active, icon: Clock3, href: "/work-orders" },
           {
             label: "Onay Bekleyen",
             value:
@@ -225,8 +230,8 @@ function DashboardPage() {
 
   const quickActions = [
     {
-      label: "Yeni İş Emri",
-      description: "Planla ve taşerona ata",
+      label: "Yeni Görev",
+      description: "Projeye bağla veya bağımsız ata",
       to: "/work-orders" as const,
       search: { create: true },
       icon: PlusCircle,
@@ -289,13 +294,56 @@ function DashboardPage() {
               </CardContent>
             </Card>
           );
-          return (
+          return metric.href ? (
             <a key={metric.label} href={metric.href} className="block">
               {card}
             </a>
+          ) : (
+            <div key={metric.label} title="Onay bekleyen kayıt yok">
+              {card}
+            </div>
           );
         })}
       </div>
+
+      {role === "admin" ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <a
+            href="#work-order-approvals"
+            className="surface-panel p-4 transition-colors hover:border-primary/60"
+          >
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Görev Onayları
+            </p>
+            <p className="mt-1 text-2xl font-black">
+              {pendingCompletionOrders.length + pendingWorkSubmissions.length}
+            </p>
+            <p className="text-xs text-muted-foreground">Bekleyen görev kaydı</p>
+          </a>
+          <a
+            href="#project-approvals"
+            className="surface-panel p-4 transition-colors hover:border-primary/60"
+          >
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Süreç Onayları
+            </p>
+            <p className="mt-1 text-2xl font-black">{pendingProjectSubmissions.length}</p>
+            <p className="text-xs text-muted-foreground">Bekleyen proje süreci</p>
+          </a>
+          <Link
+            to="/work-orders"
+            className={`surface-panel p-4 transition-colors hover:border-primary/60 ${
+              overdueOrders.length ? "border-amber-500/40 bg-amber-500/5" : ""
+            }`}
+          >
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Geciken Görevler
+            </p>
+            <p className="mt-1 text-2xl font-black">{overdueOrders.length}</p>
+            <p className="text-xs text-muted-foreground">Planlanan tarihi geçen görev</p>
+          </Link>
+        </div>
+      ) : null}
 
       {role === "admin" ? (
         <section className="mt-7">
@@ -346,7 +394,7 @@ function DashboardPage() {
       {role === "admin" ? (
         <section id="work-order-approvals" className="mt-7 scroll-mt-6">
           <div className="mb-3">
-            <h2 className="text-lg font-bold">İş Emri İlerleme Bildirimleri</h2>
+            <h2 className="text-lg font-bold">Görev İlerleme Bildirimleri</h2>
             <p className="text-sm text-muted-foreground">
               Bekleyen ve son onaylanan ilerlemeler. Kayda dokunduğunuzda doğrudan onay alanı
               açılır.
@@ -408,7 +456,7 @@ function DashboardPage() {
 
             {pendingWorkSubmissions.length === 0 && approvedWorkSubmissions.length === 0 ? (
               <div className="surface-panel p-5 text-sm text-muted-foreground xl:col-span-2">
-                Henüz iş emri ilerleme bildirimi yok.
+                Henüz görev ilerleme bildirimi yok.
               </div>
             ) : null}
           </div>
@@ -524,7 +572,7 @@ function DashboardPage() {
 
       <section className="mt-7">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold">Son İş Emirleri</h2>
+          <h2 className="text-lg font-bold">Son Görevler</h2>
           <Link
             to={
               role === "customer"
@@ -555,6 +603,11 @@ function DashboardPage() {
                     <Badge variant="outline">{statusLabels[order.status]}</Badge>
                   </div>
                   <h3 className="mt-2 truncate font-bold">{order.title}</h3>
+                  {order.projects ? (
+                    <p className="text-xs font-semibold text-primary">
+                      {order.projects.project_no} · {order.projects.name}
+                    </p>
+                  ) : null}
                   <p className="text-sm text-muted-foreground">
                     {order.customers?.name} · {formatDate(order.scheduled_at)}
                   </p>
@@ -576,7 +629,7 @@ function DashboardPage() {
           ))}
           {orders.length === 0 ? (
             <div className="surface-panel p-8 text-center text-sm text-muted-foreground">
-              Henüz görüntülenecek iş emri yok.
+              Henüz görüntülenecek görev yok.
             </div>
           ) : null}
         </div>
