@@ -41,6 +41,17 @@ type ProjectTask = {
   planned_date: string | null;
   approved_progress_pct: number;
 };
+type AssignedWorkOrder = {
+  id: string;
+  work_order_no: number | null;
+  title: string;
+  project_id: string | null;
+  customer_id: string | null;
+  status: string;
+  scheduled_at: string | null;
+  progress_pct: number;
+};
+type WorkOrderAssignment = { work_order_id: string; contractor_id: string };
 
 const statusLabel: Record<string, string> = {
   not_started: "Planlandı",
@@ -51,30 +62,39 @@ const statusLabel: Record<string, string> = {
 
 function TasksPage() {
   const { role } = useAuth();
-  const canManage = isOperationalManager(role);
+  const canViewTasks = isOperationalManager(role);
+  // Teknik ofis görevleri ve taşeron atamalarını takip eder. Görev açma,
+  // atama ve onay yönetici işlemleridir.
+  const canCreateTasks = role === "admin";
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", projectId: "none", customerId: "none", assigneeId: "none", plannedDate: "" });
 
   const tasksQuery = useQuery({
     queryKey: ["unified-tasks"],
-    enabled: canManage,
+    enabled: canViewTasks,
     queryFn: async () => {
-      const [independentResult, projectTasksResult, projectsResult, customersResult, assigneesResult] = await Promise.all([
+      const [independentResult, projectTasksResult, workOrdersResult, assignmentsResult, projectsResult, customersResult, assigneesResult] = await Promise.all([
         supabase.from("operational_tasks" as never).select("id, title, description, project_id, customer_id, assigned_to, status, planned_date").order("planned_date", { ascending: true, nullsFirst: false }),
         supabase.from("project_tasks").select("id, project_id, task_name, phase_name, responsible_id, status, planned_date, approved_progress_pct").order("planned_date", { ascending: true, nullsFirst: false }),
+        supabase.from("work_orders").select("id, work_order_no, title, project_id, customer_id, status, scheduled_at, progress_pct").order("scheduled_at", { ascending: true, nullsFirst: false }),
+        supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
         supabase.from("projects").select("id, name, project_no").order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name").order("name"),
         supabase.rpc("list_task_assignees"),
       ]);
-      if (independentResult.error) throw independentResult.error;
-      if (projectTasksResult.error) throw projectTasksResult.error;
+        if (independentResult.error) throw independentResult.error;
+        if (projectTasksResult.error) throw projectTasksResult.error;
+        if (workOrdersResult.error) throw workOrdersResult.error;
+        if (assignmentsResult.error) throw assignmentsResult.error;
       if (projectsResult.error) throw projectsResult.error;
       if (customersResult.error) throw customersResult.error;
       if (assigneesResult.error) throw assigneesResult.error;
       return {
         independent: (independentResult.data ?? []) as unknown as IndependentTask[],
         projectTasks: (projectTasksResult.data ?? []) as ProjectTask[],
+        workOrders: (workOrdersResult.data ?? []) as AssignedWorkOrder[],
+        assignments: (assignmentsResult.data ?? []) as WorkOrderAssignment[],
         projects: projectsResult.data ?? [],
         customers: customersResult.data ?? [],
         assignees: (assigneesResult.data ?? []) as Assignee[],
@@ -104,15 +124,15 @@ function TasksPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  if (!canManage) return <AccessDenied />;
+  if (!canViewTasks) return <AccessDenied />;
   if (tasksQuery.isLoading) return <LoadingState label="Görevler yükleniyor..." />;
   if (tasksQuery.error) return <p className="surface-panel p-5 text-destructive">{errorMessage(tasksQuery.error)}</p>;
 
-  const data = tasksQuery.data ?? { independent: [], projectTasks: [], projects: [], customers: [], assignees: [] };
+  const data = tasksQuery.data ?? { independent: [], projectTasks: [], workOrders: [], assignments: [], projects: [], customers: [], assignees: [] };
   const projectById = new Map(data.projects.map((project) => [project.id, project]));
   const customerById = new Map(data.customers.map((customer) => [customer.id, customer.name]));
   const assigneeById = new Map(data.assignees.map((assignee) => [assignee.id, assignee]));
-  const createButton = (
+  const createButton = canCreateTasks ? (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button className="h-12 font-bold"><Plus className="mr-2 h-4 w-4" /> Yeni Bağımsız Görev</Button></DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
@@ -135,11 +155,21 @@ function TasksPage() {
         <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Vazgeç</Button><Button onClick={() => createTask.mutate()} disabled={createTask.isPending || form.title.trim().length < 3}>{createTask.isPending ? "Kaydediliyor..." : "Görevi Oluştur"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+  ) : null;
+
+  const contractorsByWorkOrder = new Map<string, Assignee>();
+  for (const assignment of data.assignments) {
+    const contractor = assigneeById.get(assignment.contractor_id);
+    if (contractor) contractorsByWorkOrder.set(assignment.work_order_id, contractor);
+  }
 
   return <>
     <PageHeader title="Görevler" description="Projeye bağlı ve bağımsız operasyon görevlerini tek ekranda yönetin." actions={createButton} />
     <section className="mt-6">
+      <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Atanmış Saha Görevleri</h2><p className="text-sm text-muted-foreground">Taşeronlara atanmış görevleri finansal bilgi olmadan takip edin.</p></div>{role === "admin" ? <Link to="/work-orders" className="text-sm font-bold text-primary">Yönetim ekranını aç</Link> : null}</div>
+      {data.workOrders.length === 0 ? <div className="surface-panel p-5 text-sm text-muted-foreground">Atanmış saha görevi yok.</div> : <div className="grid gap-3">{data.workOrders.map((task) => <TaskCard key={task.id} title={`#${task.work_order_no ?? "—"} · ${task.title}`} status={task.status} plannedDate={task.scheduled_at} assignee={contractorsByWorkOrder.get(task.id)} subtitle={`${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız saha görevi"} · İlerleme %${task.progress_pct}`} />)}</div>}
+    </section>
+    <section className="mt-8">
       <div className="mb-3"><h2 className="text-lg font-black">Bağımsız Görevler</h2><p className="text-sm text-muted-foreground">Müşteri veya proje seçmeden açılabilen operasyon kayıtları.</p></div>
       {data.independent.length === 0 ? <EmptyState title="Bağımsız görev yok" description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={createButton} /> : <div className="grid gap-3">{data.independent.map((task) => <TaskCard key={task.id} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} />)}</div>}
     </section>
