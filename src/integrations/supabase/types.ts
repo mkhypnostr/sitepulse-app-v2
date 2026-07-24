@@ -1258,6 +1258,10 @@ export type Database = {
         };
         Returns: boolean;
       };
+      get_my_app_role: {
+        Args: Record<PropertyKey, never>;
+        Returns: Database["public"]["Enums"]["app_role"];
+      };
       list_project_assignees: {
         Args: Record<PropertyKey, never>;
         Returns: {
