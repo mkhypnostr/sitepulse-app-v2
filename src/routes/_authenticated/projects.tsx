@@ -85,6 +85,7 @@ const initialForm = {
 
 function ProjectsPage() {
   const { role } = useAuth();
+  const canManageProjects = role === "admin" || role === "technical_office";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -94,13 +95,13 @@ function ProjectsPage() {
 
   const pageQuery = useQuery({
     queryKey: ["projects-page"],
-    enabled: role === "admin",
+    enabled: canManageProjects,
     queryFn: async () => {
-      const [projectsResult, customersResult, rolesResult, processesResult, tasksResult] =
+      const [projectsResult, customersResult, assigneesResult, processesResult, tasksResult] =
         await Promise.all([
           supabase.from("projects").select("*").order("created_at", { ascending: false }),
-          supabase.from("customers").select("id, name").order("name"),
-          supabase.from("user_roles").select("user_id").eq("role", "admin"),
+          supabase.rpc("list_project_customers"),
+          supabase.rpc("list_project_assignees"),
           supabase.from("project_processes").select("id, project_id, process_type, position"),
           supabase
             .from("project_tasks")
@@ -109,24 +110,16 @@ function ProjectsPage() {
 
       if (projectsResult.error) throw projectsResult.error;
       if (customersResult.error) throw customersResult.error;
-      if (rolesResult.error) throw rolesResult.error;
+      if (assigneesResult.error) throw assigneesResult.error;
       if (processesResult.error) throw processesResult.error;
       if (tasksResult.error) throw tasksResult.error;
 
-      const managerIds = rolesResult.data.map((item) => item.user_id);
-      const managersResult = managerIds.length
-        ? await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", managerIds)
-            .order("full_name")
-        : { data: [], error: null };
-      if (managersResult.error) throw managersResult.error;
-
       return {
         projects: projectsResult.data,
-        customers: customersResult.data,
-        managers: managersResult.data ?? [],
+        customers: customersResult.data ?? [],
+        managers: (assigneesResult.data ?? []).filter(
+          (item) => item.role === "admin" || item.role === "technical_office",
+        ),
         processes: processesResult.data,
         tasks: tasksResult.data,
       };
@@ -185,7 +178,7 @@ function ProjectsPage() {
     }));
   };
 
-  if (role !== "admin") return <AccessDenied />;
+  if (!canManageProjects) return <AccessDenied />;
   if (pageQuery.isLoading) return <LoadingState label="Projeler yükleniyor..." />;
 
   const data = pageQuery.data ?? {
