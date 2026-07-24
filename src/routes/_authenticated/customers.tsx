@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Users } from "lucide-react";
+import { FileText, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -40,15 +40,20 @@ export const Route = createFileRoute("/_authenticated/customers")({
 
 function CustomersPage() {
   const { role, user } = useAuth();
+  const canManageCustomers = role === "admin" || role === "technical_office";
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
   const [contactUserId, setContactUserId] = useState<string>("none");
+  const [billingTitle, setBillingTitle] = useState("");
+  const [taxOffice, setTaxOffice] = useState("");
+  const [taxNo, setTaxNo] = useState("");
+  const [billingAddress, setBillingAddress] = useState("");
 
   const customersQuery = useQuery({
     queryKey: ["customers"],
-    enabled: role === "admin",
+    enabled: canManageCustomers,
     queryFn: async () => {
       const { data, error } = await supabase.from("customers").select("*").order("name");
       if (error) throw error;
@@ -82,7 +87,11 @@ function CustomersPage() {
       const { error } = await supabase.from("customers").insert({
         name: name.trim(),
         contact: contact.trim() || null,
-        contact_user_id: contactUserId === "none" ? null : contactUserId,
+        contact_user_id: role === "admin" && contactUserId !== "none" ? contactUserId : null,
+        billing_title: billingTitle.trim() || null,
+        tax_office: taxOffice.trim() || null,
+        tax_no: taxNo.trim() || null,
+        billing_address: billingAddress.trim() || null,
         created_by: user?.id,
       });
       if (error) throw error;
@@ -92,13 +101,17 @@ function CustomersPage() {
       setName("");
       setContact("");
       setContactUserId("none");
+      setBillingTitle("");
+      setTaxOffice("");
+      setTaxNo("");
+      setBillingAddress("");
       setOpen(false);
       toast.success("Müşteri kaydedildi");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  if (role !== "admin") return <AccessDenied />;
+  if (!canManageCustomers) return <AccessDenied />;
   if (customersQuery.isLoading) return <LoadingState />;
 
   const customers = customersQuery.data ?? [];
@@ -132,22 +145,49 @@ function CustomersPage() {
               placeholder="Telefon veya e-posta"
             />
           </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Portal Kullanıcısı
-            <Select value={contactUserId} onValueChange={setContactUserId}>
-              <SelectTrigger className="h-11">
-                <SelectValue placeholder="Kullanıcı seçin" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Henüz eşleştirme</SelectItem>
-                {customerUsers.map((profile) => (
-                  <SelectItem key={profile.id} value={profile.id}>
-                    {profile.full_name || "İsimsiz kullanıcı"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+          {role === "admin" ? (
+            <label className="grid gap-1.5 text-sm font-medium">
+              Portal Kullanıcısı
+              <Select value={contactUserId} onValueChange={setContactUserId}>
+                <SelectTrigger className="h-11">
+                  <SelectValue placeholder="Kullanıcı seçin" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Henüz eşleştirme</SelectItem>
+                  {customerUsers.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.full_name || "İsimsiz kullanıcı"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          ) : (
+            <p className="rounded-lg border border-border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">
+              Portal hesabı eşleştirmesi yönetici tarafından yapılır.
+            </p>
+          )}
+          <div className="border-t border-border pt-4 sm:col-span-2">
+            <p className="mb-3 flex items-center gap-2 text-sm font-bold"><FileText className="h-4 w-4 text-primary" /> Fatura Bilgileri</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-medium">
+                Fatura Ünvanı
+                <Input value={billingTitle} onChange={(event) => setBillingTitle(event.target.value)} maxLength={180} />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Vergi Dairesi
+                <Input value={taxOffice} onChange={(event) => setTaxOffice(event.target.value)} maxLength={120} />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Vergi Numarası
+                <Input value={taxNo} onChange={(event) => setTaxNo(event.target.value)} maxLength={32} />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+                Fatura Adresi
+                <Input value={billingAddress} onChange={(event) => setBillingAddress(event.target.value)} maxLength={1000} />
+              </label>
+            </div>
+          </div>
         </div>
         <DialogFooter>
           <Button
@@ -181,6 +221,7 @@ function CustomersPage() {
               <TableRow>
                 <TableHead>Firma</TableHead>
                 <TableHead>İletişim</TableHead>
+                <TableHead>Fatura Bilgisi</TableHead>
                 <TableHead>Portal Hesabı</TableHead>
               </TableRow>
             </TableHeader>
@@ -189,6 +230,16 @@ function CustomersPage() {
                 <TableRow key={customer.id}>
                   <TableCell className="font-bold">{customer.name}</TableCell>
                   <TableCell>{customer.contact || "—"}</TableCell>
+                  <TableCell>
+                    {customer.billing_title || customer.tax_no ? (
+                      <div className="space-y-0.5 text-sm">
+                        <p className="font-semibold">{customer.billing_title || "Fatura ünvanı girilmedi"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {[customer.tax_office, customer.tax_no].filter(Boolean).join(" · ") || "Vergi bilgisi girilmedi"}
+                        </p>
+                      </div>
+                    ) : "—"}
+                  </TableCell>
                   <TableCell>
                     {customer.contact_user_id
                       ? profileById.get(customer.contact_user_id)?.full_name || "Bağlı kullanıcı"
