@@ -59,15 +59,16 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 
 type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
 type Manager = Pick<Database["public"]["Tables"]["profiles"]["Row"], "id" | "full_name">;
-type TaskAssignee = Manager & { role: "admin" | "contractor" };
+type TaskAssignee = Manager & { role: "admin" | "technical_office" | "contractor" };
 
 function ProjectDetailPage() {
   const { role } = useAuth();
   const { projectId } = Route.useParams();
+  const canManageProjects = role === "admin" || role === "technical_office";
 
   const projectQuery = useQuery({
     queryKey: ["project-detail", projectId],
-    enabled: role === "admin",
+    enabled: canManageProjects,
     queryFn: async () => {
       const projectResult = await supabase
         .from("projects")
@@ -78,14 +79,8 @@ function ProjectDetailPage() {
       if (!projectResult.data) throw new Error("Proje bulunamadı");
 
       const project = projectResult.data;
-      const [
-        customerResult,
-        processesResult,
-        tasksResult,
-        managerRolesResult,
-        contractorRolesResult,
-      ] = await Promise.all([
-        supabase.from("customers").select("id, name").eq("id", project.customer_id).maybeSingle(),
+      const [customersResult, processesResult, tasksResult, assigneesResult] = await Promise.all([
+        supabase.rpc("list_project_customers"),
         supabase
           .from("project_processes")
           .select("*")
@@ -97,48 +92,27 @@ function ProjectDetailPage() {
           .eq("project_id", projectId)
           .order("phase_order")
           .order("task_order"),
-        supabase.from("user_roles").select("user_id").eq("role", "admin"),
-        supabase.from("user_roles").select("user_id").eq("role", "contractor"),
+        supabase.rpc("list_project_assignees"),
       ]);
-      if (customerResult.error) throw customerResult.error;
+      if (customersResult.error) throw customersResult.error;
       if (processesResult.error) throw processesResult.error;
       if (tasksResult.error) throw tasksResult.error;
-      if (managerRolesResult.error) throw managerRolesResult.error;
-      if (contractorRolesResult.error) throw contractorRolesResult.error;
+      if (assigneesResult.error) throw assigneesResult.error;
 
-      const managerIds = managerRolesResult.data.map((item) => item.user_id);
-      const contractorIds = contractorRolesResult.data.map((item) => item.user_id);
-      const [managersResult, contractorsResult] = await Promise.all([
-        managerIds.length
-          ? supabase
-              .from("profiles")
-              .select("id, full_name")
-              .in("id", managerIds)
-              .order("full_name")
-          : Promise.resolve({ data: [], error: null }),
-        contractorIds.length
-          ? supabase
-              .from("profiles")
-              .select("id, full_name")
-              .in("id", contractorIds)
-              .order("full_name")
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (managersResult.error) throw managersResult.error;
-      if (contractorsResult.error) throw contractorsResult.error;
+      const assignees = assigneesResult.data ?? [];
 
       return {
         project,
-        customer: customerResult.data,
+        customer: (customersResult.data ?? []).find((item) => item.id === project.customer_id) ?? null,
         processes: processesResult.data,
         tasks: tasksResult.data,
-        managers: managersResult.data ?? [],
-        contractors: contractorsResult.data ?? [],
+        managers: assignees.filter((item) => item.role === "admin" || item.role === "technical_office"),
+        contractors: assignees.filter((item) => item.role === "contractor"),
       };
     },
   });
 
-  if (role !== "admin") return <AccessDenied />;
+  if (!canManageProjects) return <AccessDenied />;
   if (projectQuery.isLoading) return <LoadingState label="Proje ayrıntıları yükleniyor..." />;
   if (projectQuery.error || !projectQuery.data) {
     return (
@@ -153,7 +127,10 @@ function ProjectDetailPage() {
 
   const { project, customer, processes, tasks, managers, contractors } = projectQuery.data;
   const assignees: TaskAssignee[] = [
-    ...managers.map((manager) => ({ ...manager, role: "admin" as const })),
+    ...managers.map((manager) => ({
+      ...manager,
+      role: manager.role as "admin" | "technical_office",
+    })),
     ...contractors.map((contractor) => ({ ...contractor, role: "contractor" as const })),
   ];
   const processProgresses = processes.map((process) => ({
@@ -180,7 +157,7 @@ function ProjectDetailPage() {
         description={`${project.project_no} · ${customer?.name || "Müşteri"}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            {project.status !== "completed" && project.status !== "cancelled" ? (
+            {role === "admin" && project.status !== "completed" && project.status !== "cancelled" ? (
               <Button asChild>
                 <Link to="/work-orders" search={{ create: true, projectId: project.id }}>
                   <Plus className="mr-2 h-4 w-4" /> Yeni Görev Ata
@@ -475,6 +452,8 @@ function TaskEditor({
     mutationFn: async () => {
       const { error } = await supabase.rpc("update_project_task", {
         target_task_id: task.id,
+        // İlerleme, dış onay ve tamamlanma durumları yalnızca kanıtlı onay
+        // akışı tarafından değişir. Bu ekran teknik ofisin planlama alanıdır.
         new_status: status,
         assigned_user_id: responsibleId === "none" ? undefined : responsibleId,
         planned_on: plannedDate || undefined,
@@ -524,6 +503,8 @@ function TaskEditor({
         </div>
       </div>
 
+      <ProjectTaskProgress task={task} canSubmit={false} canReview={editable} />
+
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <label className="grid gap-1 text-xs font-bold">
           Durum
@@ -536,11 +517,17 @@ function TaskEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {projectTaskStatusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
+              {projectTaskStatusOptions
+                .filter(
+                  (option) =>
+                    option.value === task.status ||
+                    ["not_started", "blocked", "not_applicable"].includes(option.value),
+                )
+                .map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
         </label>
@@ -555,7 +542,7 @@ function TaskEditor({
               {assignees.map((assignee) => (
                 <SelectItem key={assignee.id} value={assignee.id}>
                   {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
-                  {assignee.role === "admin" ? "NES Teknik Ofis" : "Taşeron"}
+                  {assignee.role === "contractor" ? "Taşeron" : "NES Teknik Ofis"}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -592,8 +579,6 @@ function TaskEditor({
           />
         </label>
       </div>
-
-      <ProjectTaskProgress task={task} canSubmit={false} canReview={editable} />
 
       <ProjectTaskEvidence
         taskId={task.id}
