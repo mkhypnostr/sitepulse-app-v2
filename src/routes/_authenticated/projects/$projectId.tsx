@@ -157,7 +157,7 @@ function ProjectDetailPage() {
         description={`${project.project_no} · ${customer?.name || "Müşteri"}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            {role === "admin" && project.status !== "completed" && project.status !== "cancelled" ? (
+            {canManageProjects && project.status !== "completed" && project.status !== "cancelled" ? (
               <Button asChild>
                 <Link to="/work-orders" search={{ create: true, projectId: project.id }}>
                   <Plus className="mr-2 h-4 w-4" /> Yeni Görev Ata
