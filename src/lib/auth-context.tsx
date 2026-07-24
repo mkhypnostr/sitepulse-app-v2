@@ -3,7 +3,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useRouter } from "@tanstack/react-router";
 
-export type AppRole = "admin" | "contractor" | "customer";
+export type AppRole = "admin" | "technical_office" | "contractor" | "customer";
 
 interface AuthState {
   user: User | null;
@@ -27,16 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRole(null);
       return;
     }
-    const { data } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-    if (!data || data.length === 0) {
-      setRole("customer");
+    // Role lookup is server-side so an RLS/query error can never silently
+    // downgrade a technical-office user to the customer interface.
+    const { data, error } = await supabase.rpc("get_my_app_role");
+    if (error) {
+      console.error("Kullanıcı rolü alınamadı", error);
+      setRole(null);
       return;
     }
-    // priority: admin > contractor > customer
-    const roles = data.map((r) => r.role as AppRole);
-    if (roles.includes("admin")) setRole("admin");
-    else if (roles.includes("contractor")) setRole("contractor");
-    else setRole("customer");
+    setRole((data ?? "customer") as AppRole);
   }
 
   useEffect(() => {
