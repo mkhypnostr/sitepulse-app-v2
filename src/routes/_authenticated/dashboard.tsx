@@ -60,13 +60,21 @@ function DashboardPage() {
     queryKey: ["dashboard", role],
     enabled: Boolean(role),
     queryFn: async () => {
-      const { data: orders, error: orderError } = await supabase
-        .from("work_orders")
-        .select(
-          "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
-        )
-        .order("scheduled_at", { ascending: false });
-      if (orderError) throw orderError;
+      // Technical office must never receive work-order financial joins. Its
+      // dashboard is project/task based, so do not run this query at all.
+      const orders =
+        role === "technical_office"
+          ? []
+          : await (async () => {
+              const { data, error } = await supabase
+                .from("work_orders")
+                .select(
+                  "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
+                )
+                .order("scheduled_at", { ascending: false });
+              if (error) throw error;
+              return data ?? [];
+            })();
 
       let stock: { quantity: number; min_quantity: number }[] = [];
       let projectSubmissions: ProjectSubmission[] = [];
