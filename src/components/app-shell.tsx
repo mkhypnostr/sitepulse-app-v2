@@ -61,6 +61,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: "/team", label: "Ekip ve Yetkiler", icon: UserCog },
           { to: "/reports", label: "Raporlar", icon: BarChart3 },
         ]
+      : role === "technical_office"
+        ? [
+            { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
+            { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
+            { to: "/customers", label: "Müşteriler", icon: UsersRound },
+            { to: "/stock", label: "Stok", icon: Boxes },
+            { to: "/team", label: "Taşeronlar", icon: UserCog },
+          ]
       : role === "contractor"
         ? [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },

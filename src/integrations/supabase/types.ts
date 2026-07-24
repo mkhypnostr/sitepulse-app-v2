@@ -71,6 +71,8 @@ export type Database = {
       };
       customers: {
         Row: {
+          billing_address: string | null;
+          billing_title: string | null;
           contact: string | null;
           contact_user_id: string | null;
           created_at: string;
@@ -80,22 +82,32 @@ export type Database = {
           created_by: string | null;
           id: string;
           name: string;
+          tax_no: string | null;
+          tax_office: string | null;
         };
         Insert: {
+          billing_address?: string | null;
+          billing_title?: string | null;
           contact?: string | null;
           contact_user_id?: string | null;
           created_at?: string;
           created_by?: string | null;
           id?: string;
           name: string;
+          tax_no?: string | null;
+          tax_office?: string | null;
         };
         Update: {
+          billing_address?: string | null;
+          billing_title?: string | null;
           contact?: string | null;
           contact_user_id?: string | null;
           created_at?: string;
           created_by?: string | null;
           id?: string;
           name?: string;
+          tax_no?: string | null;
+          tax_office?: string | null;
         };
         Relationships: [];
       };
@@ -1246,6 +1258,28 @@ export type Database = {
         };
         Returns: boolean;
       };
+      list_project_assignees: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          id: string;
+          full_name: string | null;
+          role: Database["public"]["Enums"]["app_role"];
+        }[];
+      };
+      list_project_customers: {
+        Args: Record<PropertyKey, never>;
+        Returns: { id: string; name: string }[];
+      };
+      list_operational_team_members: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          company_name: string | null;
+          full_name: string | null;
+          id: string;
+          phone: string | null;
+          role: Database["public"]["Enums"]["app_role"];
+        }[];
+      };
       set_user_role: {
         Args: {
           new_role: Database["public"]["Enums"]["app_role"];
@@ -1369,7 +1403,7 @@ export type Database = {
       };
     };
     Enums: {
-      app_role: "admin" | "contractor" | "customer";
+      app_role: "admin" | "technical_office" | "contractor" | "customer";
       photo_type: "saha" | "montaj_sonrasi" | "malzeme" | "diger";
       project_progress_submission_status: "pending" | "approved" | "revision_requested";
       project_status: "draft" | "active" | "on_hold" | "completed" | "cancelled";
@@ -1505,7 +1539,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "contractor", "customer"],
+      app_role: ["admin", "technical_office", "contractor", "customer"],
       photo_type: ["saha", "montaj_sonrasi", "malzeme", "diger"],
       project_progress_submission_status: ["pending", "approved", "revision_requested"],
       project_status: ["draft", "active", "on_hold", "completed", "cancelled"],
