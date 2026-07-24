@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.110.7";
 
-type AppRole = "admin" | "contractor" | "customer";
+type AppRole = "admin" | "technical_office" | "contractor" | "customer";
 
 type JsonRpcRequest = {
   jsonrpc?: string;
@@ -110,15 +110,18 @@ async function authenticate(req: Request) {
   const { data, error } = await admin.auth.getUser(token);
   if (error || !data.user) return null;
 
-  const { data: roleRow, error: roleError } = await admin
+  const { data: roleRows, error: roleError } = await admin
     .from("user_roles")
     .select("role")
     .eq("user_id", data.user.id)
-    .eq("role", "admin")
-    .maybeSingle();
+    .in("role", ["admin", "technical_office"]);
 
-  if (roleError || !roleRow) return { user: data.user, isAdmin: false };
-  return { user: data.user, isAdmin: true };
+  if (roleError) return { user: data.user, isAdmin: false, isTechnicalOffice: false };
+  return {
+    user: data.user,
+    isAdmin: roleRows?.some((row) => row.role === "admin") ?? false,
+    isTechnicalOffice: roleRows?.some((row) => row.role === "technical_office") ?? false,
+  };
 }
 
 async function writeAudit(input: {
@@ -143,7 +146,10 @@ async function writeAudit(input: {
   });
 }
 
-async function createUser(actorUserId: string, rawArguments: unknown) {
+async function createUser(
+  actor: { user: { id: string }; isAdmin: boolean; isTechnicalOffice: boolean },
+  rawArguments: unknown,
+) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const email = normalizedEmail(args.email);
   const username = normalizedUsername(args.username);
@@ -163,8 +169,11 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
   if (fullName.length < 2 || fullName.length > 120) {
     throw new Error("Ad soyad 2 ile 120 karakter arasında olmalıdır.");
   }
-  if (!(["admin", "contractor", "customer"] as AppRole[]).includes(role)) {
-    throw new Error("Rol admin, contractor veya customer olmalıdır.");
+  if (!(["admin", "technical_office", "contractor", "customer"] as AppRole[]).includes(role)) {
+    throw new Error("Rol admin, technical_office, contractor veya customer olmalıdır.");
+  }
+  if (!actor.isAdmin && (!actor.isTechnicalOffice || role !== "contractor")) {
+    throw new Error("Teknik ofis yalnızca taşeron hesabı oluşturabilir.");
   }
   if (!validPassword(temporaryPassword)) {
     throw new Error(
@@ -192,7 +201,7 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
       const message = error?.message ?? "Kullanıcı oluşturulamadı.";
       await writeAudit({
         requestId,
-        actorUserId,
+        actorUserId: actor.user.id,
         email: authEmail,
         role,
         outcome: "failed",
@@ -241,7 +250,7 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
 
     await writeAudit({
       requestId,
-      actorUserId,
+      actorUserId: actor.user.id,
       targetUserId: createdUserId,
       email: authEmail,
       role,
@@ -270,7 +279,7 @@ async function createUser(actorUserId: string, rawArguments: unknown) {
     if (createdUserId) {
       await writeAudit({
         requestId,
-        actorUserId,
+        actorUserId: actor.user.id,
         targetUserId: createdUserId,
         email: authEmail,
         role,
@@ -324,7 +333,7 @@ const tools = [
     name: "create_nes_user",
     title: "NES kullanıcısı oluştur",
     description:
-      "NES Saha Operasyon sisteminde yeni bir hesap oluşturur ve admin, contractor veya customer rolünü atar. Kullanıcı adı zorunludur; e-posta isteğe bağlıdır. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
+      "NES Saha Operasyon sisteminde yeni bir hesap oluşturur. Yöneticiler admin, technical_office, contractor veya customer rolünü; teknik ofis ise yalnızca contractor rolünü atayabilir. Kullanıcı adı zorunludur; e-posta isteğe bağlıdır. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -349,7 +358,7 @@ const tools = [
         },
         role: {
           type: "string",
-          enum: ["admin", "contractor", "customer"],
+          enum: ["admin", "technical_office", "contractor", "customer"],
           description: "admin: yönetici, contractor: taşeron, customer: müşteri",
         },
         temporary_password: {
@@ -414,7 +423,9 @@ Deno.serve(async (req: Request) => {
 
   const auth = await authenticate(req);
   if (!auth) return unauthorized();
-  if (!auth.isAdmin) return json({ error: "Bu bağlantı yalnızca NES yöneticileri içindir." }, 403);
+  if (!auth.isAdmin && !auth.isTechnicalOffice) {
+    return json({ error: "Bu bağlantı yalnızca NES yöneticileri veya teknik ofis içindir." }, 403);
+  }
 
   let request: JsonRpcRequest;
   try {
@@ -445,11 +456,18 @@ Deno.serve(async (req: Request) => {
     if (params.name !== "create_nes_user" && params.name !== "reset_nes_user_password") {
       return rpcError(request.id, -32602, "Bilinmeyen araç");
     }
+    if (params.name === "reset_nes_user_password" && !auth.isAdmin) {
+      return rpcResult(request.id, {
+        content: [{ type: "text", text: "Şifre yenileme yalnızca yöneticiler içindir." }],
+        structuredContent: { success: false, error: "Şifre yenileme yalnızca yöneticiler içindir." },
+        isError: true,
+      });
+    }
 
     try {
       const result =
         params.name === "create_nes_user"
-          ? await createUser(auth.user.id, params.arguments)
+          ? await createUser(auth, params.arguments)
           : await resetUserPassword(auth.user.id, params.arguments);
       return rpcResult(request.id, {
         content: [{ type: "text", text: JSON.stringify(result) }],
