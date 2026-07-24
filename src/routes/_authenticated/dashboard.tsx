@@ -60,11 +60,18 @@ function DashboardPage() {
     queryKey: ["dashboard", role],
     enabled: Boolean(role),
     queryFn: async () => {
-      // Technical office must never receive work-order financial joins. Its
-      // dashboard is project/task based, so do not run this query at all.
+      // Technical office sees all assigned saha görevleri, but never receives
+      // financial joins or financial-table data.
       const orders =
         role === "technical_office"
-          ? []
+          ? await (async () => {
+              const { data, error } = await supabase
+                .from("work_orders")
+                .select("id, customer_id, title, description, location, scheduled_at, progress_pct, status, created_by, created_at, updated_at, work_order_no, location_url, completion_note, completion_submitted_at, completion_submitted_by, review_note, reviewed_at, reviewed_by, work_scope_type, default_material_source, project_id, show_to_customer")
+                .order("scheduled_at", { ascending: false });
+              if (error) throw error;
+              return (data ?? []) as unknown as Database["public"]["Tables"]["work_orders"]["Row"][];
+            })()
           : await (async () => {
               const { data, error } = await supabase
                 .from("work_orders")
@@ -91,17 +98,20 @@ function DashboardPage() {
         stock = data;
       }
       if (operationalManager) {
-        const [allProjectsResult, visibleTasksResult] = await Promise.all([
+        const [allProjectsResult, visibleTasksResult, assignmentsResult] = await Promise.all([
           supabase.from("projects").select("id, status"),
           supabase
             .from("project_tasks")
             .select("id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date")
             .order("planned_date", { ascending: true, nullsFirst: false }),
+          supabase.from("work_order_assignments").select("work_order_id"),
         ]);
         if (allProjectsResult.error) throw allProjectsResult.error;
         if (visibleTasksResult.error) throw visibleTasksResult.error;
+        if (assignmentsResult.error) throw assignmentsResult.error;
         allProjects = allProjectsResult.data ?? [];
         visibleProjectTasks = visibleTasksResult.data ?? [];
+        assignments = assignmentsResult.data ?? [];
       }
       if (role === "admin") {
         const [
@@ -109,7 +119,6 @@ function DashboardPage() {
           approvedResult,
           workPendingResult,
           workApprovedResult,
-          assignmentsResult,
         ] = await Promise.all([
           supabase
             .from("project_task_progress_submissions")
@@ -134,16 +143,13 @@ function DashboardPage() {
             .not("reviewed_at", "is", null)
             .order("reviewed_at", { ascending: false })
             .limit(8),
-          supabase.from("work_order_assignments").select("work_order_id"),
         ]);
         if (pendingResult.error) throw pendingResult.error;
         if (approvedResult.error) throw approvedResult.error;
         if (workPendingResult.error) throw workPendingResult.error;
         if (workApprovedResult.error) throw workApprovedResult.error;
-        if (assignmentsResult.error) throw assignmentsResult.error;
         projectSubmissions = [...pendingResult.data, ...approvedResult.data];
         workSubmissions = [...workPendingResult.data, ...workApprovedResult.data];
-        assignments = assignmentsResult.data ?? [];
 
         const taskIds = [...new Set(projectSubmissions.map((item) => item.project_task_id))];
         if (taskIds.length) {
@@ -300,17 +306,18 @@ function DashboardPage() {
               href: "/projects",
             },
             {
-              label: "Açık Proje Görevi",
-              value: technicalOpenTasks,
+              label: "Açık Görev",
+              value: technicalOpenTasks + active,
               icon: BriefcaseBusiness,
-              href: "/projects",
+              href: "/tasks",
             },
             {
               label: "Tamamlanan Görev",
-              value: technicalCompletedTasks,
+              value: technicalCompletedTasks + completed,
               icon: CheckCircle2,
-              href: "/projects",
+              href: "/tasks",
             },
+            { label: "Kritik Stok", value: lowStock, icon: Package, href: "/stock" },
           ]
         : [
           {
@@ -333,11 +340,12 @@ function DashboardPage() {
           },
         ];
 
+  const taskRoute = role === "admin" ? "/work-orders" : "/tasks";
   const taskMetrics = [
-    { label: "Toplam Görev", value: orders.length, icon: BriefcaseBusiness, href: "/work-orders" },
-    { label: "Devam Eden", value: active, icon: Clock3, href: "/work-orders" },
-    { label: "Atama Bekleyen", value: unassignedTasks, icon: UserCog, href: "/work-orders" },
-    { label: "Tamamlanan", value: completed, icon: CheckCircle2, href: "/work-orders" },
+    { label: "Toplam Görev", value: orders.length + visibleProjectTasks.length, icon: BriefcaseBusiness, href: taskRoute },
+    { label: "Devam Eden", value: active + technicalOpenTasks, icon: Clock3, href: taskRoute },
+    { label: "Atama Bekleyen", value: unassignedTasks, icon: UserCog, href: taskRoute },
+    { label: "Tamamlanan", value: completed + technicalCompletedTasks, icon: CheckCircle2, href: taskRoute },
   ];
 
   const quickActions = [
@@ -373,13 +381,13 @@ function DashboardPage() {
       <PageHeader
         title="Operasyon Paneli"
         description={
-          role === "admin"
+          operationalManager
             ? "Saha, taşeron, ilerleme ve stok durumunun güncel özeti."
             : "Size açık işlerin ve projelerin güncel özeti."
         }
       />
 
-      {role === "admin" ? (
+      {operationalManager ? (
         <section>
           <div className="mb-3">
             <h2 className="text-lg font-bold">Proje ve Şantiye Özeti</h2>
@@ -457,7 +465,7 @@ function DashboardPage() {
         </div>
       )}
 
-      {role === "admin" ? (
+      {operationalManager ? (
         <section className="mt-7">
           <div className="mb-3">
             <h2 className="text-lg font-bold">Görev Özeti</h2>

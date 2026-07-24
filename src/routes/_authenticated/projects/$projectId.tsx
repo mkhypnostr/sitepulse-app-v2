@@ -73,6 +73,7 @@ function ProjectDetailPage() {
   const { role } = useAuth();
   const { projectId } = Route.useParams();
   const canManageProjects = role === "admin" || role === "technical_office";
+  const canCreateOrAssignTasks = role === "admin";
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
 
   const projectQuery = useQuery({
@@ -163,7 +164,7 @@ function ProjectDetailPage() {
         description={`${project.project_no} · ${customer?.name || "Müşteri"}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            {canManageProjects && project.status !== "completed" && project.status !== "cancelled" ? (
+            {canCreateOrAssignTasks && project.status !== "completed" && project.status !== "cancelled" ? (
               <Button onClick={() => setCreateTaskOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" /> Yeni Proje Görevi
               </Button>
@@ -182,13 +183,15 @@ function ProjectDetailPage() {
         }
       />
 
-      <ProjectTaskCreateDialog
-        open={createTaskOpen}
-        onOpenChange={setCreateTaskOpen}
-        projectId={project.id}
-        processes={processes.map((process) => ({ id: process.id, label: projectTypeLabel[process.process_type] }))}
-        assignees={assignees}
-      />
+      {canCreateOrAssignTasks ? (
+        <ProjectTaskCreateDialog
+          open={createTaskOpen}
+          onOpenChange={setCreateTaskOpen}
+          projectId={project.id}
+          processes={processes.map((process) => ({ id: process.id, label: projectTypeLabel[process.process_type] }))}
+          assignees={assignees}
+        />
+      ) : null}
 
       <div className="mb-6">
         <ProjectLifecycleControls project={project} managers={managers} />
