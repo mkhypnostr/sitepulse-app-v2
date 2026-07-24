@@ -75,6 +75,8 @@ function usernameIsValid(value: string) {
 
 function TeamPage() {
   const { role } = useAuth();
+  const canManageContractors = role === "admin" || role === "technical_office";
+  const isAdmin = role === "admin";
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -85,20 +87,11 @@ function TeamPage() {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const teamQuery = useQuery({
     queryKey: ["team"],
-    enabled: role === "admin",
+    enabled: canManageContractors,
     queryFn: async () => {
-      const [{ data: profiles, error: profileError }, { data: roles, error: roleError }] =
-        await Promise.all([
-          supabase.from("profiles").select("*").order("full_name"),
-          supabase.from("user_roles").select("user_id, role"),
-        ]);
-      if (profileError) throw profileError;
-      if (roleError) throw roleError;
-      const roleByUser = new Map(roles.map((item) => [item.user_id, item.role]));
-      return profiles.map((profile) => ({
-        ...profile,
-        role: roleByUser.get(profile.id) ?? ("customer" as const),
-      }));
+      const { data, error } = await supabase.rpc("list_operational_team_members");
+      if (error) throw error;
+      return data;
     },
   });
 
@@ -208,7 +201,7 @@ function TeamPage() {
     }
   };
 
-  if (role !== "admin") return <AccessDenied />;
+  if (!canManageContractors) return <AccessDenied />;
   if (teamQuery.isLoading) return <LoadingState />;
 
   const members = teamQuery.data ?? [];
@@ -410,8 +403,10 @@ function TeamPage() {
   return (
     <>
       <PageHeader
-        title="Ekip ve Yetkiler"
-        description="Taşeron ve müşteri rollerini yönetin. Yönetici hesapları güvenlik nedeniyle bu ekranda kilitlidir."
+        title={isAdmin ? "Ekip ve Yetkiler" : "Taşeronlar"}
+        description={isAdmin
+          ? "Taşeron ve müşteri rollerini yönetin. Yönetici ve teknik ofis hesapları güvenlik nedeniyle bu ekranda kilitlidir."
+          : "Taşeron hesapları oluşturun ve iletişim bilgilerini görüntüleyin. Rol ve şifre işlemleri yöneticidedir."}
         actions={createButton}
       />
       {members.length === 0 ? (
@@ -429,7 +424,7 @@ function TeamPage() {
                 <TableHead>Firma</TableHead>
                 <TableHead>Telefon</TableHead>
                 <TableHead className="w-56">Rol</TableHead>
-                <TableHead className="w-40">Şifre</TableHead>
+                {isAdmin ? <TableHead className="w-40">Şifre</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -441,12 +436,12 @@ function TeamPage() {
                   <TableCell>{member.company_name || "—"}</TableCell>
                   <TableCell>{member.phone || "—"}</TableCell>
                   <TableCell>
-                    {member.role === "admin" ? (
+                    {member.role === "admin" || member.role === "technical_office" ? (
                       <div className="inline-flex h-11 min-w-48 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 font-bold text-primary">
                         <ShieldCheck className="h-4 w-4" />
-                        <span>Yönetici — Korumalı</span>
+                        <span>{member.role === "admin" ? "Yönetici" : "Teknik Ofis"} — Korumalı</span>
                       </div>
-                    ) : (
+                    ) : isAdmin ? (
                       <Select
                         value={member.role}
                         disabled={roleMutation.isPending}
@@ -465,22 +460,28 @@ function TeamPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {member.role === "admin" ? (
-                      <span className="text-xs text-muted-foreground">Korumalı</span>
                     ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setResetTarget({ id: member.id, name: member.full_name || "Bu kullanıcı" })}
-                      >
-                        <KeyRound className="mr-2 h-4 w-4" /> Şifre Yenile
-                      </Button>
+                      <span className="inline-flex h-11 items-center rounded-md border border-border bg-muted/30 px-3 text-sm font-bold">
+                        {roleLabels[member.role]}
+                      </span>
                     )}
                   </TableCell>
+                  {isAdmin ? (
+                    <TableCell>
+                      {member.role === "admin" || member.role === "technical_office" ? (
+                        <span className="text-xs text-muted-foreground">Korumalı</span>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setResetTarget({ id: member.id, name: member.full_name || "Bu kullanıcı" })}
+                        >
+                          <KeyRound className="mr-2 h-4 w-4" /> Şifre Yenile
+                        </Button>
+                      )}
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               ))}
             </TableBody>
@@ -488,8 +489,9 @@ function TeamPage() {
         </div>
       )}
       <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
-        <ShieldCheck className="h-4 w-4 text-primary" /> Yönetici rolleri korumalıdır. Bu ekrandan
-        yalnızca taşeron ve müşteri rolleri değiştirilebilir; geçici şifreler kaydedilmez.
+        <ShieldCheck className="h-4 w-4 text-primary" /> {isAdmin
+          ? "Yönetici ve teknik ofis rolleri korumalıdır. Bu ekrandan yalnızca taşeron ve müşteri rolleri değiştirilebilir; geçici şifreler kaydedilmez."
+          : "Bu ekran yalnızca taşeron oluşturma ve iletişim bilgisini görüntüleme içindir; rol ve şifre değiştirilemez."}
       </div>
       <Dialog
         open={Boolean(resetTarget)}
