@@ -15,6 +15,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth-context";
+import { isOperationalManager } from "@/lib/permissions";
 import { errorMessage, statusLabels } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
 import { PageHeader, LoadingState } from "@/components/page-states";
@@ -41,20 +42,39 @@ type ProjectDashboardSummary = Pick<
   Database["public"]["Tables"]["projects"]["Row"],
   "id" | "status"
 >;
+type VisibleProjectTask = Pick<
+  Database["public"]["Tables"]["project_tasks"]["Row"],
+  | "id"
+  | "project_id"
+  | "task_name"
+  | "phase_name"
+  | "status"
+  | "approved_progress_pct"
+  | "planned_date"
+>;
 
 function DashboardPage() {
   const { role } = useAuth();
+  const operationalManager = isOperationalManager(role);
   const query = useQuery({
     queryKey: ["dashboard", role],
     enabled: Boolean(role),
     queryFn: async () => {
-      const { data: orders, error: orderError } = await supabase
-        .from("work_orders")
-        .select(
-          "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
-        )
-        .order("scheduled_at", { ascending: false });
-      if (orderError) throw orderError;
+      // Technical office must never receive work-order financial joins. Its
+      // dashboard is project/task based, so do not run this query at all.
+      const orders =
+        role === "technical_office"
+          ? []
+          : await (async () => {
+              const { data, error } = await supabase
+                .from("work_orders")
+                .select(
+                  "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
+                )
+                .order("scheduled_at", { ascending: false });
+              if (error) throw error;
+              return data ?? [];
+            })();
 
       let stock: { quantity: number; min_quantity: number }[] = [];
       let projectSubmissions: ProjectSubmission[] = [];
@@ -64,10 +84,24 @@ function DashboardPage() {
       let allProjects: ProjectDashboardSummary[] = [];
       let assignments: Array<{ work_order_id: string }> = [];
       let profileNames: Array<{ id: string; full_name: string }> = [];
-      if (role === "admin" || role === "contractor") {
+      let visibleProjectTasks: VisibleProjectTask[] = [];
+      if (operationalManager || role === "contractor") {
         const { data, error } = await supabase.from("stock_items").select("quantity, min_quantity");
         if (error) throw error;
         stock = data;
+      }
+      if (operationalManager) {
+        const [allProjectsResult, visibleTasksResult] = await Promise.all([
+          supabase.from("projects").select("id, status"),
+          supabase
+            .from("project_tasks")
+            .select("id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date")
+            .order("planned_date", { ascending: true, nullsFirst: false }),
+        ]);
+        if (allProjectsResult.error) throw allProjectsResult.error;
+        if (visibleTasksResult.error) throw visibleTasksResult.error;
+        allProjects = allProjectsResult.data ?? [];
+        visibleProjectTasks = visibleTasksResult.data ?? [];
       }
       if (role === "admin") {
         const [
@@ -75,7 +109,6 @@ function DashboardPage() {
           approvedResult,
           workPendingResult,
           workApprovedResult,
-          allProjectsResult,
           assignmentsResult,
         ] = await Promise.all([
           supabase
@@ -101,18 +134,15 @@ function DashboardPage() {
             .not("reviewed_at", "is", null)
             .order("reviewed_at", { ascending: false })
             .limit(8),
-          supabase.from("projects").select("id, status"),
           supabase.from("work_order_assignments").select("work_order_id"),
         ]);
         if (pendingResult.error) throw pendingResult.error;
         if (approvedResult.error) throw approvedResult.error;
         if (workPendingResult.error) throw workPendingResult.error;
         if (workApprovedResult.error) throw workApprovedResult.error;
-        if (allProjectsResult.error) throw allProjectsResult.error;
         if (assignmentsResult.error) throw assignmentsResult.error;
         projectSubmissions = [...pendingResult.data, ...approvedResult.data];
         workSubmissions = [...workPendingResult.data, ...workApprovedResult.data];
-        allProjects = allProjectsResult.data ?? [];
         assignments = assignmentsResult.data ?? [];
 
         const taskIds = [...new Set(projectSubmissions.map((item) => item.project_task_id))];
@@ -160,6 +190,7 @@ function DashboardPage() {
         allProjects,
         assignments,
         profileNames,
+        visibleProjectTasks,
       };
     },
   });
@@ -173,7 +204,14 @@ function DashboardPage() {
   const active = orders.filter((order) => order.status === "in_progress").length;
   const completed = orders.filter((order) => order.status === "completed").length;
   const allProjects = query.data?.allProjects ?? [];
+  const visibleProjectTasks = query.data?.visibleProjectTasks ?? [];
   const activeProjects = allProjects.filter((project) => project.status === "active").length;
+  const technicalOpenTasks = visibleProjectTasks.filter(
+    (task) => !["completed", "not_applicable"].includes(task.status),
+  ).length;
+  const technicalCompletedTasks = visibleProjectTasks.filter(
+    (task) => task.status === "completed",
+  ).length;
   const assignedOrderIds = new Set(
     (query.data?.assignments ?? []).map((item) => item.work_order_id),
   );
@@ -247,7 +285,34 @@ function DashboardPage() {
           },
           { label: "Kritik Stok", value: lowStock, icon: Package, href: "/stock" },
         ]
-      : [
+      : role === "technical_office"
+        ? [
+            {
+              label: "Toplam Proje / Şantiye",
+              value: allProjects.length,
+              icon: FolderKanban,
+              href: "/projects",
+            },
+            {
+              label: "Aktif Proje / Şantiye",
+              value: activeProjects,
+              icon: Clock3,
+              href: "/projects",
+            },
+            {
+              label: "Açık Proje Görevi",
+              value: technicalOpenTasks,
+              icon: BriefcaseBusiness,
+              href: "/projects",
+            },
+            {
+              label: "Tamamlanan Görev",
+              value: technicalCompletedTasks,
+              icon: CheckCircle2,
+              href: "/projects",
+            },
+          ]
+        : [
           {
             label: "Aktif İş",
             value: active,
@@ -692,6 +757,50 @@ function DashboardPage() {
         </section>
       ) : null}
 
+      {role === "technical_office" ? (
+        <section className="mt-7">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold">Proje Görevleri</h2>
+              <p className="text-sm text-muted-foreground">
+                Sorumlu ataması, plan tarihi ve ilerleme için projeyi açın.
+              </p>
+            </div>
+            <Link to="/projects" className="text-sm font-semibold text-primary">
+              Tüm projeler
+            </Link>
+          </div>
+          <div className="grid gap-3">
+            {visibleProjectTasks.slice(0, 6).map((task) => (
+              <Link
+                key={task.id}
+                to="/projects/$projectId"
+                params={{ projectId: task.project_id }}
+                hash={`task-${task.id}`}
+                className="surface-panel block p-4 transition-colors hover:border-primary/60"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-bold">{task.task_name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{task.phase_name}</p>
+                  </div>
+                  <div className="text-left sm:text-right">
+                    <p className="text-sm font-black text-primary">%{task.approved_progress_pct}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {task.planned_date ? formatDate(task.planned_date) : "Plan tarihi girilmedi"}
+                    </p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+            {visibleProjectTasks.length === 0 ? (
+              <div className="surface-panel p-8 text-center text-sm text-muted-foreground">
+                Henüz görüntülenecek proje görevi yok.
+              </div>
+            ) : null}
+          </div>
+        </section>
+      ) : (
       <section className="mt-7">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-bold">Son Görevler</h2>
@@ -756,6 +865,7 @@ function DashboardPage() {
           ) : null}
         </div>
       </section>
+      )}
     </>
   );
 }
