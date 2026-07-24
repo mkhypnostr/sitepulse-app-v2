@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       ? [
           { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
           { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
-          { to: "/work-orders", label: "Görevler", icon: ClipboardList },
+          { to: "/tasks", label: "Görevler", icon: ClipboardList },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
           { to: "/stock", label: "Stok", icon: Boxes },
           { to: "/team", label: "Ekip ve Yetkiler", icon: UserCog },
@@ -65,6 +65,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
             { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
+            { to: "/tasks", label: "Görevler", icon: ClipboardList },
             { to: "/customers", label: "Müşteriler", icon: UsersRound },
             { to: "/stock", label: "Stok", icon: Boxes },
             { to: "/team", label: "Taşeronlar", icon: UserCog },

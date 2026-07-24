@@ -42,6 +42,14 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -59,12 +67,13 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 
 type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
 type Manager = Pick<Database["public"]["Tables"]["profiles"]["Row"], "id" | "full_name">;
-type TaskAssignee = Manager & { role: "admin" | "technical_office" | "contractor" };
+type TaskAssignee = Manager & { role: "admin" | "technical_office" | "contractor" | "customer" };
 
 function ProjectDetailPage() {
   const { role } = useAuth();
   const { projectId } = Route.useParams();
   const canManageProjects = role === "admin" || role === "technical_office";
+  const [createTaskOpen, setCreateTaskOpen] = useState(false);
 
   const projectQuery = useQuery({
     queryKey: ["project-detail", projectId],
@@ -79,7 +88,7 @@ function ProjectDetailPage() {
       if (!projectResult.data) throw new Error("Proje bulunamadı");
 
       const project = projectResult.data;
-      const [customersResult, processesResult, tasksResult, assigneesResult] = await Promise.all([
+      const [customersResult, processesResult, tasksResult, assigneesResult, taskAssigneesResult] = await Promise.all([
         supabase.rpc("list_project_customers"),
         supabase
           .from("project_processes")
@@ -93,11 +102,13 @@ function ProjectDetailPage() {
           .order("phase_order")
           .order("task_order"),
         supabase.rpc("list_project_assignees"),
+        supabase.rpc("list_task_assignees"),
       ]);
       if (customersResult.error) throw customersResult.error;
       if (processesResult.error) throw processesResult.error;
       if (tasksResult.error) throw tasksResult.error;
       if (assigneesResult.error) throw assigneesResult.error;
+      if (taskAssigneesResult.error) throw taskAssigneesResult.error;
 
       const assignees = assigneesResult.data ?? [];
 
@@ -108,6 +119,7 @@ function ProjectDetailPage() {
         tasks: tasksResult.data,
         managers: assignees.filter((item) => item.role === "admin" || item.role === "technical_office"),
         contractors: assignees.filter((item) => item.role === "contractor"),
+        taskAssignees: taskAssigneesResult.data ?? [],
       };
     },
   });
@@ -125,14 +137,8 @@ function ProjectDetailPage() {
     );
   }
 
-  const { project, customer, processes, tasks, managers, contractors } = projectQuery.data;
-  const assignees: TaskAssignee[] = [
-    ...managers.map((manager) => ({
-      ...manager,
-      role: manager.role as "admin" | "technical_office",
-    })),
-    ...contractors.map((contractor) => ({ ...contractor, role: "contractor" as const })),
-  ];
+  const { project, customer, processes, tasks, managers, taskAssignees } = projectQuery.data;
+  const assignees = taskAssignees as TaskAssignee[];
   const processProgresses = processes.map((process) => ({
     ...process,
     progress: projectApprovedProgress(tasks.filter((task) => task.process_id === process.id)),
@@ -158,10 +164,8 @@ function ProjectDetailPage() {
         actions={
           <div className="flex flex-wrap gap-2">
             {canManageProjects && project.status !== "completed" && project.status !== "cancelled" ? (
-              <Button asChild>
-                <Link to="/work-orders" search={{ create: true, projectId: project.id }}>
-                  <Plus className="mr-2 h-4 w-4" /> Yeni Görev Ata
-                </Link>
+              <Button onClick={() => setCreateTaskOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" /> Yeni Proje Görevi
               </Button>
             ) : null}
             <Badge variant="outline" className="px-3 py-1.5">
@@ -176,6 +180,14 @@ function ProjectDetailPage() {
             )}
           </div>
         }
+      />
+
+      <ProjectTaskCreateDialog
+        open={createTaskOpen}
+        onOpenChange={setCreateTaskOpen}
+        projectId={project.id}
+        processes={processes.map((process) => ({ id: process.id, label: projectTypeLabel[process.process_type] }))}
+        assignees={assignees}
       />
 
       <div className="mb-6">
@@ -409,6 +421,116 @@ function groupTasksByPhase(tasks: ProjectTask[]) {
       ...phase,
       tasks: phase.tasks.sort((a, b) => a.task_order - b.task_order),
     }));
+}
+
+function ProjectTaskCreateDialog({
+  open,
+  onOpenChange,
+  projectId,
+  processes,
+  assignees,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projectId: string;
+  processes: { id: string; label: string }[];
+  assignees: TaskAssignee[];
+}) {
+  const queryClient = useQueryClient();
+  const [taskName, setTaskName] = useState("");
+  const [processId, setProcessId] = useState("");
+  const [responsibleId, setResponsibleId] = useState("none");
+  const [plannedDate, setPlannedDate] = useState("");
+  const [note, setNote] = useState("");
+
+  const createTask = useMutation({
+    mutationFn: async () => {
+      if (taskName.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      if (!processId) throw new Error("Görevin bağlı olduğu proje sürecini seçin.");
+      const { error } = await supabase.rpc("create_project_task", {
+        target_project_id: projectId,
+        target_process_id: processId,
+        new_task_name: taskName.trim(),
+        assigned_user_id: responsibleId === "none" ? undefined : responsibleId,
+        planned_on: plannedDate || undefined,
+        task_note: note.trim() || undefined,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project-detail", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+      ]);
+      setTaskName("");
+      setProcessId("");
+      setResponsibleId("none");
+      setPlannedDate("");
+      setNote("");
+      onOpenChange(false);
+      toast.success("Proje görevi oluşturuldu");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Yeni proje görevi</DialogTitle>
+          <DialogDescription>
+            Görev bir proje sürecine bağlanır. Sorumlu kişi tüm kayıtlı kullanıcılar arasından seçilebilir.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <label className="grid gap-1.5 text-sm font-medium">
+            Görev adı
+            <Input value={taskName} onChange={(event) => setTaskName(event.target.value)} maxLength={180} />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-medium">
+              Proje süreci
+              <Select value={processId} onValueChange={setProcessId}>
+                <SelectTrigger><SelectValue placeholder="Süreç seçin" /></SelectTrigger>
+                <SelectContent>
+                  {processes.map((process) => <SelectItem key={process.id} value={process.id}>{process.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Sorumlu kişi
+              <Select value={responsibleId} onValueChange={setResponsibleId}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Henüz atama yok</SelectItem>
+                  {assignees.map((assignee) => (
+                    <SelectItem key={assignee.id} value={assignee.id}>
+                      {assignee.full_name || "İsimsiz kullanıcı"} · {assignee.role === "technical_office" ? "Teknik Ofis" : assignee.role === "contractor" ? "Taşeron" : assignee.role === "customer" ? "Müşteri" : "Yönetici"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          </div>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Planlanan tarih
+            <Input type="date" value={plannedDate} onChange={(event) => setPlannedDate(event.target.value)} />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Başlangıç notu
+            <Textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Görev kapsamı veya teslim beklentisi" />
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Vazgeç</Button>
+          <Button onClick={() => createTask.mutate()} disabled={createTask.isPending || taskName.trim().length < 3 || !processId}>
+            {createTask.isPending ? "Kaydediliyor..." : "Görevi Oluştur"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function TaskEditor({

@@ -20,6 +20,7 @@ import { Route as AuthenticatedMyProjectsRouteImport } from './routes/_authentic
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedStockRouteImport } from './routes/_authenticated/stock'
+import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/tasks'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedWorkOrdersRouteImport } from './routes/_authenticated/work-orders'
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
@@ -82,6 +83,11 @@ const AuthenticatedStockRoute = AuthenticatedStockRouteImport.update({
   path: '/stock',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTasksRoute = AuthenticatedTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
   '/stock': typeof AuthenticatedStockRoute
+  '/tasks': typeof AuthenticatedTasksRoute
   '/team': typeof AuthenticatedTeamRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
   '/oauth/consent': typeof OauthConsentRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
   '/stock': typeof AuthenticatedStockRoute
+  '/tasks': typeof AuthenticatedTasksRoute
   '/team': typeof AuthenticatedTeamRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
   '/oauth/consent': typeof OauthConsentRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/_authenticated/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/stock': typeof AuthenticatedStockRoute
+  '/_authenticated/tasks': typeof AuthenticatedTasksRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/work-orders': typeof AuthenticatedWorkOrdersRoute
   '/oauth/consent': typeof OauthConsentRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/reports'
     | '/stock'
+    | '/tasks'
     | '/team'
     | '/work-orders'
     | '/oauth/consent'
@@ -202,6 +212,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/reports'
     | '/stock'
+    | '/tasks'
     | '/team'
     | '/work-orders'
     | '/oauth/consent'
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/_authenticated/projects'
     | '/_authenticated/reports'
     | '/_authenticated/stock'
+    | '/_authenticated/tasks'
     | '/_authenticated/team'
     | '/_authenticated/work-orders'
     | '/oauth/consent'
@@ -315,6 +327,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStockRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/tasks': {
+      id: '/_authenticated/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof AuthenticatedTasksRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/team': {
       id: '/_authenticated/team'
       path: '/team'
@@ -382,6 +401,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRouteWithChildren
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedStockRoute: typeof AuthenticatedStockRoute
+  AuthenticatedTasksRoute: typeof AuthenticatedTasksRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedWorkOrdersRoute: typeof AuthenticatedWorkOrdersRoute
   AuthenticatedJobReportJobIdRoute: typeof AuthenticatedJobReportJobIdRoute
@@ -397,6 +417,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedProjectsRoute: AuthenticatedProjectsRouteWithChildren,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedStockRoute: AuthenticatedStockRoute,
+  AuthenticatedTasksRoute: AuthenticatedTasksRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedWorkOrdersRoute: AuthenticatedWorkOrdersRoute,
   AuthenticatedJobReportJobIdRoute: AuthenticatedJobReportJobIdRoute,
