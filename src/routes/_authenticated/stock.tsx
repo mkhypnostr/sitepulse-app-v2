@@ -43,6 +43,7 @@ type StockUnit = "adet" | "metre";
 
 function StockPage() {
   const { role } = useAuth();
+  const canManageStock = role === "admin" || role === "technical_office";
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -58,7 +59,7 @@ function StockPage() {
 
   const stockQuery = useQuery({
     queryKey: ["stock-items"],
-    enabled: role === "admin",
+    enabled: canManageStock,
     queryFn: async () => {
       const { data, error } = await supabase.from("stock_items").select("*").order("name");
       if (error) throw error;
@@ -154,7 +155,7 @@ function StockPage() {
     }
   }
 
-  if (role !== "admin") return <AccessDenied />;
+  if (!canManageStock) return <AccessDenied />;
   if (stockQuery.isLoading) return <LoadingState />;
 
   const items = stockQuery.data ?? [];
