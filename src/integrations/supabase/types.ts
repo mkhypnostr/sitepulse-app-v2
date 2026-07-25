@@ -1364,6 +1364,22 @@ export type Database = {
         Args: { target_project_id: string };
         Returns: undefined;
       };
+      delete_extra_project_task: {
+        Args: { target_task_id: string };
+        Returns: undefined;
+      };
+      delete_operational_task: {
+        Args: { target_task_id: string };
+        Returns: undefined;
+      };
+      delete_project_task_evidence: {
+        Args: { target_evidence_id: string };
+        Returns: string;
+      };
+      delete_work_photo: {
+        Args: { target_photo_id: string };
+        Returns: string;
+      };
       update_project_details: {
         Args: {
           project_admin_notes?: string;
@@ -1402,6 +1418,19 @@ export type Database = {
           target_task_id: string;
           task_note?: string;
           task_system?: string;
+        };
+        Returns: undefined;
+      };
+      update_operational_task: {
+        Args: {
+          assigned_user_id?: string;
+          new_status?: Database["public"]["Enums"]["project_task_status"];
+          planned_on?: string;
+          target_customer_id?: string;
+          target_project_id?: string;
+          target_task_id: string;
+          task_description?: string;
+          task_title: string;
         };
         Returns: undefined;
       };
