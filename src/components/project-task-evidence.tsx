@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, Download, FileText, Images, Loader2, Paperclip } from "lucide-react";
+import { Camera, Download, FileText, Images, Loader2, Paperclip, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -37,7 +37,7 @@ export function ProjectTaskEvidence({
   canUpload: boolean;
   compact?: boolean;
 }) {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const queryClient = useQueryClient();
   const photoCameraInput = useRef<HTMLInputElement>(null);
   const photoGalleryInput = useRef<HTMLInputElement>(null);
@@ -112,6 +112,27 @@ export function ProjectTaskEvidence({
       setOpeningId(null);
     }
   };
+
+  const deleteEvidence = useMutation({
+    mutationFn: async ({ id, storagePath }: { id: string; storagePath: string }) => {
+      const { error: deleteRecordError } = await supabase.rpc("delete_project_task_evidence", {
+        target_evidence_id: id,
+      });
+      if (deleteRecordError) throw deleteRecordError;
+      if (role === "admin") {
+        const { error: deleteFileError } = await supabase.storage
+          .from("project-evidence")
+          .remove([storagePath]);
+        if (deleteFileError) throw deleteFileError;
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["project-task-evidence", taskId] });
+      await queryClient.invalidateQueries({ queryKey: ["project-detail", projectId] });
+      toast.success("Kanıt dosyası silindi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
   const startUpload = (event: ChangeEvent<HTMLInputElement>, evidenceType: EvidenceType) => {
     const file = event.target.files?.[0];
@@ -208,29 +229,50 @@ export function ProjectTaskEvidence({
       </div>
       {evidence.length ? (
         <div className="mt-2 space-y-1.5">
-          {evidence.map((item) => (
-            <button
-              type="button"
-              key={item.id}
-              className="flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-left text-xs transition-colors hover:border-primary/50"
-              onClick={() => openEvidence(item.id, item.storage_path)}
-              disabled={openingId === item.id}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                {item.evidence_type === "photo" ? (
-                  <Images className="h-3.5 w-3.5 shrink-0 text-primary" />
-                ) : (
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
-                )}
-                <span className="truncate font-semibold">{item.file_name}</span>
-              </span>
-              {openingId === item.id ? (
-                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-              ) : (
-                <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              )}
-            </button>
-          ))}
+          {evidence.map((item) => {
+            const canDelete =
+              !item.submission_id && (role === "admin" || item.uploaded_by === user?.id);
+            return (
+              <div
+                key={item.id}
+                className="flex w-full items-center gap-2 rounded-lg border border-border bg-background/70 px-3 py-2 text-xs"
+              >
+                <button
+                  type="button"
+                  className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left transition-colors hover:text-primary"
+                  onClick={() => openEvidence(item.id, item.storage_path)}
+                  disabled={openingId === item.id}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    {item.evidence_type === "photo" ? (
+                      <Images className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    ) : (
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    )}
+                    <span className="truncate font-semibold">{item.file_name}</span>
+                  </span>
+                  {openingId === item.id ? (
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                </button>
+                {canDelete ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() => deleteEvidence.mutate({ id: item.id, storagePath: item.storage_path })}
+                    disabled={deleteEvidence.isPending}
+                    aria-label="Kanıtı sil"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className="mt-2 text-xs text-muted-foreground">
