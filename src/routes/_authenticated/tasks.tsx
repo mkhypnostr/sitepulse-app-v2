@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, FolderKanban, Plus, UserRound } from "lucide-react";
+import { CalendarDays, FolderKanban, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -69,6 +69,7 @@ function TasksPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", projectId: "none", customerId: "none", assigneeId: "none", plannedDate: "" });
+  const [editingTask, setEditingTask] = useState<IndependentTask | null>(null);
 
   const tasksQuery = useQuery({
     queryKey: ["unified-tasks"],
@@ -124,6 +125,42 @@ function TasksPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const updateTask = useMutation({
+    mutationFn: async () => {
+      if (!editingTask) throw new Error("Düzenlenecek görev bulunamadı.");
+      if (form.title.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      const { error } = await supabase.rpc("update_operational_task", {
+        target_task_id: editingTask.id,
+        task_title: form.title.trim(),
+        task_description: form.description.trim() || undefined,
+        target_project_id: form.projectId === "none" ? undefined : form.projectId,
+        target_customer_id: form.customerId === "none" ? undefined : form.customerId,
+        assigned_user_id: form.assigneeId === "none" ? undefined : form.assigneeId,
+        planned_on: form.plannedDate || undefined,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["unified-tasks"] });
+      setEditingTask(null);
+      setOpen(false);
+      toast.success("Görev güncellendi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const deleteTask = useMutation({
+    mutationFn: async (taskId: string) => {
+      const { error } = await supabase.rpc("delete_operational_task", { target_task_id: taskId });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["unified-tasks"] });
+      toast.success("Bağımsız görev silindi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   if (!canViewTasks) return <AccessDenied />;
   if (tasksQuery.isLoading) return <LoadingState label="Görevler yükleniyor..." />;
   if (tasksQuery.error) return <p className="surface-panel p-5 text-destructive">{errorMessage(tasksQuery.error)}</p>;
@@ -133,11 +170,11 @@ function TasksPage() {
   const customerById = new Map(data.customers.map((customer) => [customer.id, customer.name]));
   const assigneeById = new Map(data.assignees.map((assignee) => [assignee.id, assignee]));
   const createButton = canCreateTasks ? (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button className="h-12 font-bold"><Plus className="mr-2 h-4 w-4" /> Yeni Bağımsız Görev</Button></DialogTrigger>
+    <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setEditingTask(null); }}>
+      <DialogTrigger asChild><Button className="h-12 font-bold" onClick={() => setEditingTask(null)}><Plus className="mr-2 h-4 w-4" /> Yeni Bağımsız Görev</Button></DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Bağımsız görev oluştur</DialogTitle>
+          <DialogTitle>{editingTask ? "Bağımsız görevi düzenle" : "Bağımsız görev oluştur"}</DialogTitle>
           <DialogDescription>Müşteri ve proje isteğe bağlıdır. Finansal bilgi bu görev kaydında yer almaz.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
@@ -152,7 +189,7 @@ function TasksPage() {
             <label className="grid gap-1.5 text-sm font-medium">Planlanan Tarih<Input type="date" value={form.plannedDate} onChange={(event) => setForm({ ...form, plannedDate: event.target.value })} /></label>
           </div>
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Vazgeç</Button><Button onClick={() => createTask.mutate()} disabled={createTask.isPending || form.title.trim().length < 3}>{createTask.isPending ? "Kaydediliyor..." : "Görevi Oluştur"}</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Vazgeç</Button><Button onClick={() => editingTask ? updateTask.mutate() : createTask.mutate()} disabled={createTask.isPending || updateTask.isPending || form.title.trim().length < 3}>{createTask.isPending || updateTask.isPending ? "Kaydediliyor..." : editingTask ? "Değişiklikleri Kaydet" : "Görevi Oluştur"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   ) : null;
@@ -171,7 +208,7 @@ function TasksPage() {
     </section>
     <section className="mt-8">
       <div className="mb-3"><h2 className="text-lg font-black">Bağımsız Görevler</h2><p className="text-sm text-muted-foreground">Müşteri veya proje seçmeden açılabilen operasyon kayıtları.</p></div>
-      {data.independent.length === 0 ? <EmptyState title="Bağımsız görev yok" description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={createButton} /> : <div className="grid gap-3">{data.independent.map((task) => <TaskCard key={task.id} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} />)}</div>}
+      {data.independent.length === 0 ? <EmptyState title="Bağımsız görev yok" description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={createButton} /> : <div className="grid gap-3">{data.independent.map((task) => <TaskCard key={task.id} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} actions={role === "admin" ? <><Button type="button" size="sm" variant="outline" onClick={() => { setEditingTask(task); setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" }); setOpen(true); }}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button><Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => { if (window.confirm(`“${task.title}” görevi silinsin mi?`)) deleteTask.mutate(task.id); }} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button></> : null} />)}</div>}
     </section>
     <section className="mt-8">
       <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Proje Görevleri</h2><p className="text-sm text-muted-foreground">Projelerin süreçlerine bağlı kontrol ve saha görevleri.</p></div><Link to="/projects" className="text-sm font-bold text-primary">Projeleri aç</Link></div>
@@ -180,6 +217,6 @@ function TasksPage() {
   </>;
 }
 
-function TaskCard({ title, status, plannedDate, assignee, subtitle }: { title: string; status: string; plannedDate: string | null; assignee?: Assignee; subtitle: string }) {
-  return <div className="surface-panel p-4 transition-colors hover:border-primary/50"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-bold">{title}</p><p className="mt-1 text-sm text-muted-foreground">{subtitle}</p></div><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">{statusLabel[status] || status}</Badge>{assignee ? <Badge variant="secondary"><UserRound className="mr-1 h-3 w-3" />{assignee.full_name || "Kullanıcı"} · {roleLabels[assignee.role]}</Badge> : <Badge variant="secondary">Henüz atama yok</Badge>}{plannedDate ? <Badge variant="secondary"><CalendarDays className="mr-1 h-3 w-3" />{formatDate(plannedDate)}</Badge> : null}</div></div></div>;
+function TaskCard({ title, status, plannedDate, assignee, subtitle, actions }: { title: string; status: string; plannedDate: string | null; assignee?: Assignee; subtitle: string; actions?: ReactNode }) {
+  return <div className="surface-panel p-4 transition-colors hover:border-primary/50"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-bold">{title}</p><p className="mt-1 text-sm text-muted-foreground">{subtitle}</p></div><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">{statusLabel[status] || status}</Badge>{assignee ? <Badge variant="secondary"><UserRound className="mr-1 h-3 w-3" />{assignee.full_name || "Kullanıcı"} · {roleLabels[assignee.role]}</Badge> : <Badge variant="secondary">Henüz atama yok</Badge>}{plannedDate ? <Badge variant="secondary"><CalendarDays className="mr-1 h-3 w-3" />{formatDate(plannedDate)}</Badge> : null}{actions}</div></div></div>;
 }
