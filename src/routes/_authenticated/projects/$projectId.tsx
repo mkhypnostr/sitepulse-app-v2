@@ -11,6 +11,7 @@ import {
   MapPin,
   Plus,
   Save,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -370,7 +371,9 @@ function ProjectDetailPage() {
                             task={task}
                             assignees={assignees}
                             editable={
-                              project.status !== "completed" && project.status !== "cancelled"
+                              canCreateOrAssignTasks &&
+                              project.status !== "completed" &&
+                              project.status !== "cancelled"
                             }
                           />
                         ))}
@@ -596,6 +599,21 @@ function TaskEditor({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const deleteExtraTask = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("delete_extra_project_task", {
+        target_task_id: task.id,
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] });
+      await queryClient.invalidateQueries({ queryKey: ["projects-page"] });
+      toast.success("Ek proje görevi silindi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   return (
     <div
       id={`task-${task.id}`}
@@ -724,14 +742,32 @@ function TaskEditor({
             disabled={!editable}
           />
         </label>
-        <Button
-          onClick={() => updateTask.mutate()}
-          disabled={!editable || !changed || updateTask.isPending}
-          className="h-11 sm:min-w-32"
-        >
-          <Save className="mr-2 h-4 w-4" />
-          {updateTask.isPending ? "Kaydediliyor" : "Kaydet"}
-        </Button>
+        <div className="flex gap-2 sm:justify-end">
+          {editable && task.phase_order === 999 ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={deleteExtraTask.isPending}
+              onClick={() => {
+                if (window.confirm(`“${task.task_name}” ek görevini silmek istediğinizden emin misiniz?`)) {
+                  deleteExtraTask.mutate();
+                }
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Sil
+            </Button>
+          ) : null}
+          <Button
+            onClick={() => updateTask.mutate()}
+            disabled={!editable || !changed || updateTask.isPending}
+            className="h-11 sm:min-w-32"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {updateTask.isPending ? "Kaydediliyor" : "Kaydet"}
+          </Button>
+        </div>
       </div>
     </div>
   );
