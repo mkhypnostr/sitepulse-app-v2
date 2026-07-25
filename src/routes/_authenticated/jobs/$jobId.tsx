@@ -12,6 +12,7 @@ import {
   MapPin,
   PackageMinus,
   Plus,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -482,6 +483,24 @@ function JobDetailPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const deletePhotoMutation = useMutation({
+    mutationFn: async ({ photoId, storagePath }: { photoId: string; storagePath: string }) => {
+      const { error: recordError } = await supabase.rpc("delete_work_photo", {
+        target_photo_id: photoId,
+      });
+      if (recordError) throw recordError;
+      if (role === "admin") {
+        const { error: storageError } = await supabase.storage.from("work-photos").remove([storagePath]);
+        if (storageError) throw storageError;
+      }
+    },
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Fotoğraf silindi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   async function uploadPhotos(files: FileList | null) {
     if (!files?.length || !user) return;
     setUploading(true);
@@ -581,6 +600,15 @@ function JobDetailPage() {
     !pendingProgress &&
     !isReviewPending &&
     !isFinalized;
+  const proposedProgressValue = Number(progressPct);
+  const progressSubmissionValid =
+    role === "contractor" &&
+    Number.isInteger(proposedProgressValue) &&
+    proposedProgressValue > order.progress_pct &&
+    proposedProgressValue <= 100 &&
+    proposedProgressValue % 5 === 0 &&
+    progressNote.trim().length >= 10 &&
+    Boolean(progressEvidence);
   const financials = order.work_order_financials;
   const materialSourceLabels: Record<string, string> = {
     none: "Malzeme kullanılmıyor",
@@ -926,7 +954,8 @@ function JobDetailPage() {
                     progressMutation.isPending ||
                     Boolean(pendingProgress) ||
                     isReviewPending ||
-                    isFinalized
+                    isFinalized ||
+                    !progressSubmissionValid
                   }
                 >
                   {progressMutation.isPending ? "Gönderiliyor..." : "Yönetici Onayına Gönder"}
@@ -1411,6 +1440,22 @@ function JobDetailPage() {
                         }
                       />
                     </label>
+                  ) : null}
+                  {(role === "admin" || photo.uploaded_by === user?.id) ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="w-full border-destructive/40 text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (window.confirm("Bu fotoğraf silinsin mi? Onaya bağlı fotoğraflar silinemez.")) {
+                          deletePhotoMutation.mutate({ photoId: photo.id, storagePath: photo.storage_path });
+                        }
+                      }}
+                      disabled={deletePhotoMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-3.5 w-3.5" /> Fotoğrafı Sil
+                    </Button>
                   ) : null}
                 </CardContent>
               </Card>
