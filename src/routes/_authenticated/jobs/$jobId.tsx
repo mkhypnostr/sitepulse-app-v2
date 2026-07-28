@@ -260,6 +260,18 @@ function JobDetailPage() {
     setScheduleTime(`${hours}:${minutes}`);
   }, [detailQuery.data?.order.scheduled_at, role]);
 
+  // Paneldeki onay kartı, ilgili iş verisi geldikten sonra doğrudan
+  // ilerleme veya iş bitirme onay alanına ulaşmalıdır.
+  useEffect(() => {
+    if (!detailQuery.data || typeof window === "undefined") return;
+    const targetId = window.location.hash.replace("#", "");
+    if (!targetId) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [detailQuery.data]);
+
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["job-detail", jobId] });
     await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
