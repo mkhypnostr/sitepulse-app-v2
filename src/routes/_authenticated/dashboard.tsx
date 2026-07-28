@@ -445,7 +445,12 @@ function DashboardPage() {
                 </Card>
               );
               return metric.href ? (
-                <a key={metric.label} href={metric.href} className="block">
+                <a
+                  key={metric.label}
+                  href={metric.href}
+                  aria-label={`${metric.label}: ${metric.value}`}
+                  className="block cursor-pointer transition-transform hover:-translate-y-0.5"
+                >
                   {card}
                 </a>
               ) : metric.emptyMessage ? (
@@ -453,7 +458,7 @@ function DashboardPage() {
                   key={metric.label}
                   type="button"
                   onClick={() => toast.info(metric.emptyMessage)}
-                  className="block w-full text-left"
+                  className="block w-full cursor-pointer text-left transition-transform hover:-translate-y-0.5"
                 >
                   {card}
                 </button>
