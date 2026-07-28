@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Plus, Users } from "lucide-react";
+import { FileText, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -39,10 +39,20 @@ export const Route = createFileRoute("/_authenticated/customers")({
 });
 
 function CustomersPage() {
-  const { role, user } = useAuth();
+  const { role } = useAuth();
   const canManageCustomers = role === "admin" || role === "technical_office";
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<{
+    id: string;
+    name: string;
+    contact: string | null;
+    contact_user_id: string | null;
+    billing_title: string | null;
+    tax_office: string | null;
+    tax_no: string | null;
+    billing_address: string | null;
+  } | null>(null);
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
   const [contactUserId, setContactUserId] = useState<string>("none");
@@ -82,31 +92,65 @@ function CustomersPage() {
     },
   });
 
-  const createCustomer = useMutation({
+  const resetCustomerForm = () => {
+    setEditingCustomer(null);
+    setName("");
+    setContact("");
+    setContactUserId("none");
+    setBillingTitle("");
+    setTaxOffice("");
+    setTaxNo("");
+    setBillingAddress("");
+  };
+
+  const saveCustomer = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("customers").insert({
-        name: name.trim(),
-        contact: contact.trim() || null,
-        contact_user_id: role === "admin" && contactUserId !== "none" ? contactUserId : null,
-        billing_title: billingTitle.trim() || null,
-        tax_office: taxOffice.trim() || null,
-        tax_no: taxNo.trim() || null,
-        billing_address: billingAddress.trim() || null,
-        created_by: user?.id,
+      const { error } = await supabase.rpc("save_customer_details", {
+        customer_name: name.trim(),
+        customer_contact: contact.trim(),
+        customer_billing_title: billingTitle.trim(),
+        customer_tax_office: taxOffice.trim(),
+        customer_tax_no: taxNo.trim(),
+        customer_billing_address: billingAddress.trim(),
+        target_contact_user_id: role === "admin" && contactUserId !== "none" ? contactUserId : null,
+        target_customer_id: editingCustomer?.id ?? null,
       });
       if (error) throw error;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["customers"] });
-      setName("");
-      setContact("");
-      setContactUserId("none");
-      setBillingTitle("");
-      setTaxOffice("");
-      setTaxNo("");
-      setBillingAddress("");
+      const wasEditing = Boolean(editingCustomer);
+      resetCustomerForm();
       setOpen(false);
-      toast.success("Müşteri kaydedildi");
+      toast.success(wasEditing ? "Müşteri güncellendi" : "Müşteri kaydedildi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const deleteCustomer = useMutation({
+    mutationFn: async (customerId: string) => {
+      const [workOrdersResult, projectsResult] = await Promise.all([
+        supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("customer_id", customerId),
+        supabase.from("projects").select("id", { count: "exact", head: true }).eq("customer_id", customerId),
+      ]);
+
+      if (workOrdersResult.error) throw workOrdersResult.error;
+      if (projectsResult.error) throw projectsResult.error;
+
+      const relatedRecordCount = (workOrdersResult.count ?? 0) + (projectsResult.count ?? 0);
+      if (relatedRecordCount > 0) {
+        throw new Error("Bu müşteriye bağlı proje veya görev bulunduğu için silinemez. Önce bağlı kayıtları başka bir müşteriye taşıyın ya da kapatın.");
+      }
+
+      const { error } = await supabase.from("customers").delete().eq("id", customerId);
+      if (error?.code === "23503") {
+        throw new Error("Bu müşteri proje veya görevlerde kullanıldığı için silinemez.");
+      }
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["customers"] });
+      toast.success("Müşteri silindi");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -117,17 +161,34 @@ function CustomersPage() {
   const customers = customersQuery.data ?? [];
   const customerUsers = customerUsersQuery.data ?? [];
   const profileById = new Map(customerUsers.map((profile) => [profile.id, profile]));
+  const beginEdit = (customer: (typeof customers)[number]) => {
+    setEditingCustomer(customer);
+    setName(customer.name);
+    setContact(customer.contact ?? "");
+    setContactUserId(customer.contact_user_id ?? "none");
+    setBillingTitle(customer.billing_title ?? "");
+    setTaxOffice(customer.tax_office ?? "");
+    setTaxNo(customer.tax_no ?? "");
+    setBillingAddress(customer.billing_address ?? "");
+    setOpen(true);
+  };
 
   const createButton = (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) resetCustomerForm();
+      }}
+    >
       <DialogTrigger asChild>
-        <Button className="h-12 font-bold">
+        <Button className="h-12 font-bold" onClick={resetCustomerForm}>
           <Plus className="mr-2 h-4 w-4" /> Yeni Müşteri
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Yeni müşteri oluştur</DialogTitle>
+          <DialogTitle>{editingCustomer ? "Müşteriyi düzenle" : "Yeni müşteri oluştur"}</DialogTitle>
           <DialogDescription>
             Müşteri hesabı varsa eşleştirin; yoksa daha sonra Ekip ekranından bağlayabilirsiniz.
           </DialogDescription>
@@ -191,10 +252,10 @@ function CustomersPage() {
         </div>
         <DialogFooter>
           <Button
-            onClick={() => createCustomer.mutate()}
-            disabled={!name.trim() || createCustomer.isPending}
+            onClick={() => saveCustomer.mutate()}
+            disabled={!name.trim() || saveCustomer.isPending}
           >
-            {createCustomer.isPending ? "Kaydediliyor..." : "Kaydet"}
+            {saveCustomer.isPending ? "Kaydediliyor..." : editingCustomer ? "Değişiklikleri Kaydet" : "Kaydet"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -223,6 +284,7 @@ function CustomersPage() {
                 <TableHead>İletişim</TableHead>
                 <TableHead>Fatura Bilgisi</TableHead>
                 <TableHead>Portal Hesabı</TableHead>
+                <TableHead className="text-right">İşlemler</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -244,6 +306,28 @@ function CustomersPage() {
                     {customer.contact_user_id
                       ? profileById.get(customer.contact_user_id)?.full_name || "Bağlı kullanıcı"
                       : "Eşleştirilmedi"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => beginEdit(customer)}>
+                        <Pencil className="mr-1.5 h-3.5 w-3.5" /> Düzenle
+                      </Button>
+                      {role === "admin" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={deleteCustomer.isPending}
+                          onClick={() => {
+                            if (window.confirm(`${customer.name} müşterisini silmek istediğinize emin misiniz?`)) {
+                              deleteCustomer.mutate(customer.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Sil
+                        </Button>
+                      ) : null}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
