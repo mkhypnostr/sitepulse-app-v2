@@ -127,6 +127,18 @@ function ProjectDetailPage() {
     },
   });
 
+  // Dashboard bağlantısı veri yüklenmeden önce hash hedefini bulamazsa,
+  // ilgili görev kartı oluştuktan sonra onay alanına tekrar kaydır.
+  useEffect(() => {
+    if (!projectQuery.data || typeof window === "undefined") return;
+    const targetId = window.location.hash.replace("#", "");
+    if (!targetId) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [projectQuery.data]);
+
   if (!canManageProjects) return <AccessDenied />;
   if (projectQuery.isLoading) return <LoadingState label="Proje ayrıntıları yükleniyor..." />;
   if (projectQuery.error || !projectQuery.data) {
