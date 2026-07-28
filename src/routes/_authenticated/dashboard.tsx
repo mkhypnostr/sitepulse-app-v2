@@ -273,7 +273,7 @@ function DashboardPage() {
     (task) =>
       Boolean(task.planned_date) &&
       new Date(`${task.planned_date}T23:59:59`).getTime() < Date.now() &&
-      !["completed", "cancelled", "not_applicable"].includes(task.status),
+      !["completed", "not_applicable"].includes(task.status),
   );
   const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
   const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
@@ -283,22 +283,47 @@ function DashboardPage() {
   const lowStock = (query.data?.stock ?? []).filter(
     (item) => item.quantity <= item.min_quantity,
   ).length;
-  const firstPendingWork = pendingWorkSubmissions[0];
-  const firstPendingProject = pendingProjectSubmissions[0];
-  const firstPendingProjectTask = firstPendingProject
-    ? projectTaskById.get(firstPendingProject.project_task_id)
-    : undefined;
   const pendingApprovalCount =
     pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
-  const pendingTarget = pendingCompletionOrders[0]
-    ? `/jobs/${pendingCompletionOrders[0].id}#completion-approval`
-    : firstPendingWork
-      ? `/jobs/${firstPendingWork.work_order_id}#progress-approval`
-      : firstPendingProjectTask
-        ? `/projects/${firstPendingProjectTask.project_id}#task-${firstPendingProjectTask.id}`
-        : firstPendingProject
-          ? "#project-approvals"
-          : undefined;
+  const pendingTarget = pendingApprovalCount > 0 ? "#approval-center" : undefined;
+  const pendingApprovalItems = [
+    ...pendingCompletionOrders.map((order) => ({
+      id: `completion-${order.id}`,
+      href: `/jobs/${order.id}#completion-approval`,
+      category: "İş Bitirme Onayı",
+      title: `#${order.work_order_no} · ${order.title}`,
+      detail: order.completion_note || "İş bitirme açıklaması",
+      submittedBy: profileNameById.get(order.completion_submitted_by ?? "") || "Taşeron",
+      submittedAt: order.completion_submitted_at,
+    })),
+    ...pendingWorkSubmissions.flatMap((submission) => {
+      const order = orders.find((item) => item.id === submission.work_order_id);
+      if (!order) return [];
+      return [{
+        id: `progress-${submission.id}`,
+        href: `/jobs/${order.id}#progress-approval`,
+        category: `Görev İlerlemesi · %${submission.pct}`,
+        title: `#${order.work_order_no} · ${order.title}`,
+        detail: submission.note,
+        submittedBy: profileNameById.get(submission.contractor_id) || "Taşeron",
+        submittedAt: submission.created_at,
+      }];
+    }),
+    ...pendingProjectSubmissions.flatMap((submission) => {
+      const task = projectTaskById.get(submission.project_task_id);
+      const project = task ? projectById.get(task.project_id) : undefined;
+      if (!task || !project) return [];
+      return [{
+        id: `project-${submission.id}`,
+        href: `/projects/${project.id}#task-${task.id}`,
+        category: `Proje Görevi · %${submission.proposed_pct}`,
+        title: task.task_name,
+        detail: `${project.project_no} · ${project.name} · ${task.phase_name}`,
+        submittedBy: profileNameById.get(submission.submitted_by) || "Kullanıcı",
+        submittedAt: submission.submitted_at,
+      }];
+    }),
+  ];
   const overdueTaskCount = overdueOrders.length + overdueProjectTasks.length + overdueIndependentTasks.length;
 
   const projectMetrics =
@@ -550,6 +575,39 @@ function DashboardPage() {
         </section>
       ) : null}
 
+      {role === "admin" && pendingApprovalItems.length > 0 ? (
+        <section id="approval-center" className="mt-7 scroll-mt-6">
+          <div className="mb-3">
+            <h2 className="text-lg font-bold">Onay Bekleyen Kayıtlar</h2>
+            <p className="text-sm text-muted-foreground">
+              Yalnızca yönetici kararı bekleyen kayıtlar. Kaydı açtığınızda onay ve revizyon düğmeleri en üstte görünür.
+            </p>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {pendingApprovalItems.map((item) => (
+              <a
+                key={item.id}
+                href={item.href}
+                className="surface-panel block border-red-500/40 bg-red-500/5 p-4 transition-colors hover:bg-red-500/10"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="animate-pulse text-xs font-black text-red-300">{item.category.toUpperCase()} BEKLİYOR</p>
+                    <p className="mt-1 font-black">{item.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
+                  </div>
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-red-300" />
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {item.submittedBy}
+                  {item.submittedAt ? ` · ${formatProjectDateTime(item.submittedAt)}` : ""}
+                </p>
+              </a>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {role === "admin" && overdueTaskCount ? (
         <section id="overdue-tasks" className="mt-7 scroll-mt-6">
           <div className="mb-3">
@@ -572,7 +630,7 @@ function DashboardPage() {
               </a>
             ))}
             {overdueIndependentTasks.map((task) => (
-              <a key={task.id} href="/tasks" className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
+              <a key={task.id} href={`/tasks#task-${task.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
                 <p className="text-xs font-black text-amber-300">BAĞIMSIZ GÖREV GECİKTİ</p>
                 <p className="mt-1 font-black">{task.title}</p>
                 <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
@@ -583,88 +641,14 @@ function DashboardPage() {
       ) : null}
 
       {role === "admin" ? (
-        <section className="mt-7">
-          <div className="mb-3">
-            <h2 className="text-lg font-bold">İş Bitirme Onayları</h2>
-            <p className="text-sm text-muted-foreground">
-              Kayda dokunduğunuzda yeşil onay ve kırmızı revizyon düğmeleri ekranın başında açılır.
-            </p>
-          </div>
-          <div className="grid gap-3 xl:grid-cols-2">
-            {pendingCompletionOrders.map((order) => (
-              <a
-                key={order.id}
-                href={`/jobs/${order.id}#completion-approval`}
-                className="surface-panel block border-red-500/40 bg-red-500/5 p-4 transition-colors hover:bg-red-500/10"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="animate-pulse text-xs font-black text-red-300">
-                      İŞ BİTİRME ONAYI BEKLİYOR
-                    </p>
-                    <p className="mt-1 font-black">
-                      #{order.work_order_no} · {order.title}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {order.completion_note || "İş bitirme açıklaması"}
-                    </p>
-                  </div>
-                  <AlertTriangle className="h-5 w-5 shrink-0 text-red-300" />
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {profileNameById.get(order.completion_submitted_by ?? "") || "Taşeron"}
-                  {order.completion_submitted_at
-                    ? ` · ${formatProjectDateTime(order.completion_submitted_at)}`
-                    : ""}
-                </p>
-              </a>
-            ))}
-            {pendingCompletionOrders.length === 0 ? (
-              <div className="surface-panel p-5 text-sm text-muted-foreground xl:col-span-2">
-                İş bitirme onayı bekleyen kayıt yok.
-              </div>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      {role === "admin" ? (
         <section id="work-order-approvals" className="mt-7 scroll-mt-6">
           <div className="mb-3">
-            <h2 className="text-lg font-bold">Görev İlerleme Bildirimleri</h2>
+            <h2 className="text-lg font-bold">Son Onaylanan Görev İlerlemeleri</h2>
             <p className="text-sm text-muted-foreground">
-              Bekleyen ve son onaylanan ilerlemeler. Kayda dokunduğunuzda doğrudan onay alanı
-              açılır.
+              Bekleyen kayıtlar yukarıdaki Onay Bekleyen Kayıtlar alanında gösterilir.
             </p>
           </div>
           <div className="grid gap-3 xl:grid-cols-2">
-            {pendingWorkSubmissions.map((submission) => {
-              const order = orders.find((item) => item.id === submission.work_order_id);
-              if (!order) return null;
-              return (
-                <a
-                  key={submission.id}
-                  href={`/jobs/${order.id}#progress-approval`}
-                  className="surface-panel block border-red-500/40 bg-red-500/5 p-4 transition-colors hover:bg-red-500/10"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-black text-red-300 animate-pulse">ONAY BEKLİYOR</p>
-                      <p className="mt-1 font-black">
-                        %{submission.pct} · #{order.work_order_no} · {order.title}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">{submission.note}</p>
-                    </div>
-                    <AlertTriangle className="h-5 w-5 shrink-0 text-red-300" />
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {profileNameById.get(submission.contractor_id) || "Taşeron"} ·{" "}
-                    {formatProjectDateTime(submission.created_at)}
-                  </p>
-                </a>
-              );
-            })}
-
             {approvedWorkSubmissions.map((submission) => {
               const order = orders.find((item) => item.id === submission.work_order_id);
               if (!order) return null;
@@ -691,9 +675,9 @@ function DashboardPage() {
               );
             })}
 
-            {pendingWorkSubmissions.length === 0 && approvedWorkSubmissions.length === 0 ? (
+            {approvedWorkSubmissions.length === 0 ? (
               <div className="surface-panel p-5 text-sm text-muted-foreground xl:col-span-2">
-                Henüz görev ilerleme bildirimi yok.
+                Henüz onaylanmış görev ilerlemesi yok.
               </div>
             ) : null}
           </div>
@@ -703,42 +687,12 @@ function DashboardPage() {
       {role === "admin" ? (
         <section id="project-approvals" className="mt-7 scroll-mt-6">
           <div className="mb-3">
-            <h2 className="text-lg font-bold">Proje Görev Bildirimleri</h2>
+            <h2 className="text-lg font-bold">Son Onaylanan Proje Görevleri</h2>
             <p className="text-sm text-muted-foreground">
-              Bekleyen ve son onaylanan ilerlemeler. Bir kayda dokunduğunuzda ilgili görev açılır.
+              Bekleyen kayıtlar yukarıdaki Onay Bekleyen Kayıtlar alanında gösterilir.
             </p>
           </div>
           <div className="grid gap-3 xl:grid-cols-2">
-            {pendingProjectSubmissions.map((submission) => {
-              const task = projectTaskById.get(submission.project_task_id);
-              const project = task ? projectById.get(task.project_id) : undefined;
-              if (!task || !project) return null;
-              return (
-                <a
-                  key={submission.id}
-                  href={`/projects/${project.id}#task-${task.id}`}
-                  className="surface-panel block border-red-500/40 bg-red-500/5 p-4 transition-colors hover:bg-red-500/10"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-black text-red-300 animate-pulse">ONAY BEKLİYOR</p>
-                      <p className="mt-1 font-black">
-                        %{submission.proposed_pct} · {task.task_name}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {project.project_no} · {project.name} · {task.phase_name}
-                      </p>
-                    </div>
-                    <AlertTriangle className="h-5 w-5 shrink-0 text-red-300" />
-                  </div>
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {profileNameById.get(submission.submitted_by) || "Kullanıcı"} ·{" "}
-                    {formatProjectDateTime(submission.submitted_at)}
-                  </p>
-                </a>
-              );
-            })}
-
             {approvedProjectSubmissions.map((submission) => {
               const task = projectTaskById.get(submission.project_task_id);
               const project = task ? projectById.get(task.project_id) : undefined;
@@ -769,9 +723,9 @@ function DashboardPage() {
               );
             })}
 
-            {pendingProjectSubmissions.length === 0 && approvedProjectSubmissions.length === 0 ? (
+            {approvedProjectSubmissions.length === 0 ? (
               <div className="surface-panel p-5 text-sm text-muted-foreground xl:col-span-2">
-                Henüz proje görevi onay bildirimi yok.
+                Henüz onaylanmış proje görevi yok.
               </div>
             ) : null}
           </div>
