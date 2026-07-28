@@ -56,7 +56,8 @@ function WorkOrdersPage() {
     locationUrl: "",
     date: new Date().toISOString().slice(0, 10),
     time: "08:00",
-    customerAmount: "0",
+    customerLaborAmount: "0",
+    customerMaterialAmount: "0",
     contractorLaborAmount: "0",
     estimatedMaterialCost: "0",
     workScopeType: "labor_only",
@@ -74,7 +75,7 @@ function WorkOrdersPage() {
           supabase
             .from("work_orders")
             .select(
-              "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
+              "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, customer_labor_amount, customer_material_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
             )
             .order("created_at", { ascending: false }),
           supabase.from("customers").select("id, name").order("name"),
@@ -136,11 +137,12 @@ function WorkOrdersPage() {
 
   const createOrder = useMutation({
     mutationFn: async () => {
-      const customerAmount = Number(form.customerAmount.replace(",", "."));
+      const customerLaborAmount = Number(form.customerLaborAmount.replace(",", "."));
+      const customerMaterialAmount = Number(form.customerMaterialAmount.replace(",", "."));
       const contractorLaborAmount = Number(form.contractorLaborAmount.replace(",", "."));
       const estimatedMaterialCost = Number(form.estimatedMaterialCost.replace(",", "."));
       if (
-        ![customerAmount, contractorLaborAmount, estimatedMaterialCost].every(
+        ![customerLaborAmount, customerMaterialAmount, contractorLaborAmount, estimatedMaterialCost].every(
           (value) => Number.isFinite(value) && value >= 0,
         )
       ) {
@@ -156,7 +158,8 @@ function WorkOrdersPage() {
         order_location: "",
         order_location_url: locationUrl,
         order_scheduled_at: scheduledAt,
-        order_customer_amount: customerAmount,
+        order_customer_labor_amount: customerLaborAmount,
+        order_customer_material_amount: customerMaterialAmount,
         order_contractor_labor_amount: contractorLaborAmount,
         order_estimated_material_cost: estimatedMaterialCost,
         order_work_scope_type: form.workScopeType,
@@ -180,7 +183,8 @@ function WorkOrdersPage() {
         locationUrl: "",
         date: new Date().toISOString().slice(0, 10),
         time: "08:00",
-        customerAmount: "0",
+        customerLaborAmount: "0",
+        customerMaterialAmount: "0",
         contractorLaborAmount: "0",
         estimatedMaterialCost: "0",
         workScopeType: "labor_only",
@@ -440,11 +444,19 @@ function WorkOrdersPage() {
             </Select>
           </label>
           <label className="grid gap-1 text-sm">
-            Müşteriye Satış Bedeli (₺)
+            Müşteriye İşçilik Satış Bedeli (₺)
             <Input
               inputMode="decimal"
-              value={form.customerAmount}
-              onChange={(event) => setForm({ ...form, customerAmount: event.target.value })}
+              value={form.customerLaborAmount}
+              onChange={(event) => setForm({ ...form, customerLaborAmount: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            Müşteriye Malzeme Satış Bedeli (₺)
+            <Input
+              inputMode="decimal"
+              value={form.customerMaterialAmount}
+              onChange={(event) => setForm({ ...form, customerMaterialAmount: event.target.value })}
             />
           </label>
           <label className="grid gap-1 text-sm">
@@ -467,7 +479,8 @@ function WorkOrdersPage() {
             <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
             <p className="mt-1 text-lg font-black text-primary">
               {formatTRY(
-                (Number(form.customerAmount.replace(",", ".")) || 0) -
+                (Number(form.customerLaborAmount.replace(",", ".")) || 0) +
+                  (Number(form.customerMaterialAmount.replace(",", ".")) || 0) -
                   (Number(form.contractorLaborAmount.replace(",", ".")) || 0) -
                   (Number(form.estimatedMaterialCost.replace(",", ".")) || 0),
               )}

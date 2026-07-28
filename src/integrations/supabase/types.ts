@@ -955,6 +955,8 @@ export type Database = {
           approved_progress_pct: number;
           contractor_labor_amount: number;
           customer_amount: number;
+          customer_labor_amount: number;
+          customer_material_amount: number;
           estimated_material_cost: number;
           total_amount: number;
           updated_at: string;
@@ -964,6 +966,8 @@ export type Database = {
           approved_progress_pct?: number;
           contractor_labor_amount?: number;
           customer_amount?: number;
+          customer_labor_amount?: number;
+          customer_material_amount?: number;
           estimated_material_cost?: number;
           total_amount?: number;
           updated_at?: string;
@@ -973,6 +977,8 @@ export type Database = {
           approved_progress_pct?: number;
           contractor_labor_amount?: number;
           customer_amount?: number;
+          customer_labor_amount?: number;
+          customer_material_amount?: number;
           estimated_material_cost?: number;
           total_amount?: number;
           updated_at?: string;
@@ -1236,7 +1242,8 @@ export type Database = {
         Args: {
           assigned_contractor_id?: string | null;
           order_contractor_labor_amount: number;
-          order_customer_amount: number;
+          order_customer_labor_amount: number;
+          order_customer_material_amount: number;
           order_default_material_source?: string;
           order_description: string;
           order_estimated_material_cost: number;
@@ -1291,6 +1298,19 @@ export type Database = {
         };
         Returns: undefined;
       };
+      save_customer_details: {
+        Args: {
+          customer_billing_address: string;
+          customer_billing_title: string;
+          customer_contact: string;
+          customer_name: string;
+          customer_tax_no: string;
+          customer_tax_office: string;
+          target_contact_user_id?: string | null;
+          target_customer_id?: string | null;
+        };
+        Returns: string;
+      };
       submit_progress_update: {
         Args: {
           evidence_photo_type?: Database["public"]["Enums"]["photo_type"];
@@ -1312,7 +1332,8 @@ export type Database = {
       update_work_order_commercials: {
         Args: {
           new_contractor_labor_amount: number;
-          new_customer_amount: number;
+          new_customer_labor_amount: number;
+          new_customer_material_amount: number;
           new_default_material_source: string;
           new_estimated_material_cost: number;
           new_work_scope_type: string;

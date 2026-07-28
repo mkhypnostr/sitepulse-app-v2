@@ -76,7 +76,8 @@ function JobDetailPage() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("08:00");
   const [commercialForm, setCommercialForm] = useState({
-    customerAmount: "0",
+    customerLaborAmount: "0",
+    customerMaterialAmount: "0",
     contractorLaborAmount: "0",
     estimatedMaterialCost: "0",
     workScopeType: "labor_only",
@@ -91,7 +92,7 @@ function JobDetailPage() {
         supabase
           .from("work_orders")
           .select(
-            "*, customers(name, contact), work_order_financials(total_amount, customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
+            "*, customers(name, contact), work_order_financials(total_amount, customer_amount, customer_labor_amount, customer_material_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
           )
           .eq("id", jobId)
           .single(),
@@ -239,7 +240,8 @@ function JobDetailPage() {
     const financials = order?.work_order_financials;
     if (!order || !financials || role !== "admin") return;
     setCommercialForm({
-      customerAmount: String(financials.customer_amount ?? 0),
+      customerLaborAmount: String(financials.customer_labor_amount ?? 0),
+      customerMaterialAmount: String(financials.customer_material_amount ?? 0),
       contractorLaborAmount: String(financials.contractor_labor_amount ?? 0),
       estimatedMaterialCost: String(financials.estimated_material_cost ?? 0),
       workScopeType: order.work_scope_type,
@@ -414,11 +416,12 @@ function JobDetailPage() {
 
   const commercialMutation = useMutation({
     mutationFn: async () => {
-      const customerAmount = Number(commercialForm.customerAmount.replace(",", "."));
+      const customerLaborAmount = Number(commercialForm.customerLaborAmount.replace(",", "."));
+      const customerMaterialAmount = Number(commercialForm.customerMaterialAmount.replace(",", "."));
       const contractorLaborAmount = Number(commercialForm.contractorLaborAmount.replace(",", "."));
       const estimatedMaterialCost = Number(commercialForm.estimatedMaterialCost.replace(",", "."));
       if (
-        ![customerAmount, contractorLaborAmount, estimatedMaterialCost].every(
+        ![customerLaborAmount, customerMaterialAmount, contractorLaborAmount, estimatedMaterialCost].every(
           (value) => Number.isFinite(value) && value >= 0,
         )
       ) {
@@ -426,7 +429,8 @@ function JobDetailPage() {
       }
       const { error } = await supabase.rpc("update_work_order_commercials", {
         target_work_order_id: jobId,
-        new_customer_amount: customerAmount,
+        new_customer_labor_amount: customerLaborAmount,
+        new_customer_material_amount: customerMaterialAmount,
         new_contractor_labor_amount: contractorLaborAmount,
         new_estimated_material_cost: estimatedMaterialCost,
         new_work_scope_type: commercialForm.workScopeType,
@@ -742,6 +746,16 @@ function JobDetailPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <p className="text-xs text-muted-foreground">Satış İşçilik</p>
+                  <p className="font-black">{formatTRY(financials?.customer_labor_amount)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Satış Malzeme</p>
+                  <p className="font-black">{formatTRY(financials?.customer_material_amount)}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <p className="text-xs text-muted-foreground">Taşeron İşçilik</p>
                   <p className="font-black">{formatTRY(financials?.contractor_labor_amount)}</p>
                 </div>
@@ -783,12 +797,22 @@ function JobDetailPage() {
             </p>
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="grid gap-1 text-sm">
-                Müşteri Satış Bedeli (₺)
+                Müşteri İşçilik Satış Bedeli (₺)
                 <Input
                   inputMode="decimal"
-                  value={commercialForm.customerAmount}
+                  value={commercialForm.customerLaborAmount}
                   onChange={(event) =>
-                    setCommercialForm({ ...commercialForm, customerAmount: event.target.value })
+                    setCommercialForm({ ...commercialForm, customerLaborAmount: event.target.value })
+                  }
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Müşteri Malzeme Satış Bedeli (₺)
+                <Input
+                  inputMode="decimal"
+                  value={commercialForm.customerMaterialAmount}
+                  onChange={(event) =>
+                    setCommercialForm({ ...commercialForm, customerMaterialAmount: event.target.value })
                   }
                 />
               </label>
