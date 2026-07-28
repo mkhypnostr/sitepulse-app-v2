@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   Boxes,
@@ -51,6 +52,7 @@ type VisibleProjectTask = Pick<
   | "status"
   | "approved_progress_pct"
   | "planned_date"
+  | "responsible_id"
 >;
 
 function DashboardPage() {
@@ -102,7 +104,7 @@ function DashboardPage() {
           supabase.from("projects").select("id, status"),
           supabase
             .from("project_tasks")
-            .select("id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date")
+            .select("id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date, responsible_id")
             .order("planned_date", { ascending: true, nullsFirst: false }),
           supabase.from("work_order_assignments").select("work_order_id"),
         ]);
@@ -212,12 +214,19 @@ function DashboardPage() {
   const allProjects = query.data?.allProjects ?? [];
   const visibleProjectTasks = query.data?.visibleProjectTasks ?? [];
   const activeProjects = allProjects.filter((project) => project.status === "active").length;
-  const technicalOpenTasks = visibleProjectTasks.filter(
-    (task) => !["completed", "not_applicable"].includes(task.status),
+  const draftProjects = allProjects.filter((project) => project.status === "draft").length;
+  // Proje oluşturulurken gelen şablon satırları, bir sorumlusu veya gerçek bir
+  // saha hareketi yoksa operasyon görevi olarak sayılmaz.
+  const trackedProjectTasks = visibleProjectTasks.filter(
+    (task) =>
+      Boolean(task.responsible_id) ||
+      task.approved_progress_pct > 0 ||
+      ["in_progress", "external_approval", "blocked", "completed"].includes(task.status),
+  );
+  const technicalOpenTasks = trackedProjectTasks.filter((task) =>
+    ["in_progress", "external_approval", "blocked"].includes(task.status),
   ).length;
-  const technicalCompletedTasks = visibleProjectTasks.filter(
-    (task) => task.status === "completed",
-  ).length;
+  const technicalCompletedTasks = trackedProjectTasks.filter((task) => task.status === "completed").length;
   const assignedOrderIds = new Set(
     (query.data?.assignments ?? []).map((item) => item.work_order_id),
   );
@@ -235,6 +244,12 @@ function DashboardPage() {
     (order) =>
       new Date(order.scheduled_at).getTime() < Date.now() &&
       !["completed", "cancelled"].includes(order.status),
+  );
+  const overdueProjectTasks = trackedProjectTasks.filter(
+    (task) =>
+      Boolean(task.planned_date) &&
+      new Date(`${task.planned_date}T23:59:59`).getTime() < Date.now() &&
+      !["completed", "not_applicable"].includes(task.status),
   );
   const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
   const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
@@ -256,51 +271,43 @@ function DashboardPage() {
       : firstPendingProjectTask
         ? `/projects/${firstPendingProjectTask.project_id}#task-${firstPendingProjectTask.id}`
         : undefined;
+  const pendingApprovalCount =
+    pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
+  const overdueTaskCount = overdueOrders.length + overdueProjectTasks.length;
 
   const projectMetrics =
     role === "admin"
       ? [
           {
-            label: "Toplam Proje / Şantiye",
+            label: "Toplam Proje",
             value: allProjects.length,
             icon: FolderKanban,
             href: "/projects",
           },
           {
-            label: "Aktif Proje / Şantiye",
-            value: activeProjects,
+            label: "Taslak Proje",
+            value: draftProjects,
             icon: Clock3,
             href: "/projects",
           },
           {
-            label: "Onay Bekleyen",
-            value:
-              pendingCompletionOrders.length +
-              pendingWorkSubmissions.length +
-              pendingProjectSubmissions.length,
-            icon: AlertTriangle,
-            href: pendingTarget,
-            attention: "danger",
-          },
-          {
-            label: "Geciken Görevler",
-            value: overdueOrders.length,
-            icon: AlertTriangle,
-            href: "/work-orders",
-            attention: "warning",
+            label: "Aktif Proje",
+            value: activeProjects,
+            icon: CheckCircle2,
+            href: "/projects",
           },
           { label: "Kritik Stok", value: lowStock, icon: Package, href: "/stock" },
         ]
       : role === "technical_office"
         ? [
             {
-              label: "Toplam Proje / Şantiye",
+              label: "Toplam Proje",
               value: allProjects.length,
               icon: FolderKanban,
               href: "/projects",
             },
             {
-              label: "Aktif Proje / Şantiye",
+              label: "Aktif Proje",
               value: activeProjects,
               icon: Clock3,
               href: "/projects",
@@ -342,7 +349,7 @@ function DashboardPage() {
 
   const taskRoute = role === "admin" ? "/work-orders" : "/tasks";
   const taskMetrics = [
-    { label: "Toplam Görev", value: orders.length + visibleProjectTasks.length, icon: BriefcaseBusiness, href: taskRoute },
+    { label: "Takip Edilen Görev", value: orders.length + trackedProjectTasks.length, icon: BriefcaseBusiness, href: taskRoute },
     { label: "Devam Eden", value: active + technicalOpenTasks, icon: Clock3, href: taskRoute },
     { label: "Atama Bekleyen", value: unassignedTasks, icon: UserCog, href: taskRoute },
     { label: "Tamamlanan", value: completed + technicalCompletedTasks, icon: CheckCircle2, href: taskRoute },
@@ -395,7 +402,7 @@ function DashboardPage() {
               Portföy, onay, gecikme ve stok durumunu tek bakışta görün.
             </p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             {projectMetrics.map((metric) => {
               const card = (
                 <Card
@@ -407,7 +414,7 @@ function DashboardPage() {
                         : "border-border bg-card"
                   }
                 >
-                  <CardContent className="flex items-center gap-4 p-5">
+                  <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
                     <div
                       className={
                         metric.attention === "danger" && metric.value > 0
@@ -417,11 +424,11 @@ function DashboardPage() {
                             : "rounded-lg bg-primary/15 p-3 text-primary"
                       }
                     >
-                      <metric.icon className="h-6 w-6" />
+                      <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{metric.label}</p>
-                      <p className="text-3xl font-black">{metric.value}</p>
+                      <p className="text-xs text-muted-foreground sm:text-sm">{metric.label}</p>
+                      <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -439,17 +446,17 @@ function DashboardPage() {
           </div>
         </section>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {projectMetrics.map((metric) => {
             const card = (
               <Card className="border-border bg-card">
-                <CardContent className="flex items-center gap-4 p-5">
+                <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
                   <div className="rounded-lg bg-primary/15 p-3 text-primary">
-                    <metric.icon className="h-6 w-6" />
+                    <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">{metric.label}</p>
-                    <p className="text-3xl font-black">{metric.value}</p>
+                    <p className="text-xs text-muted-foreground sm:text-sm">{metric.label}</p>
+                    <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -473,17 +480,17 @@ function DashboardPage() {
               Projelere bağlı ve bağımsız operasyon görevlerinin durumu.
             </p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             {taskMetrics.map((metric) => (
               <a key={metric.label} href={metric.href} className="block">
                 <Card className="border-border bg-card">
-                  <CardContent className="flex items-center gap-4 p-5">
+                  <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
                     <div className="rounded-lg bg-primary/15 p-3 text-primary">
-                      <metric.icon className="h-6 w-6" />
+                      <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">{metric.label}</p>
-                      <p className="text-3xl font-black">{metric.value}</p>
+                      <p className="text-xs text-muted-foreground sm:text-sm">{metric.label}</p>
+                      <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -494,48 +501,89 @@ function DashboardPage() {
       ) : null}
 
       {role === "admin" ? (
-        <section className="mt-7">
+        <section id="approval-center" className="mt-7 scroll-mt-6">
           <div className="mb-3">
             <h2 className="text-lg font-bold">Onay ve Uyarı Merkezi</h2>
             <p className="text-sm text-muted-foreground">
-              Görev kayıtlarını ve proje süreçlerini ayrı başlıklarda takip edin.
+              Bekleyen onayları ve geciken görevleri tek alanda açın.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <a
-              href="#work-order-approvals"
-              className="surface-panel p-4 transition-colors hover:border-primary/60"
-            >
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Görev Onayları
-              </p>
-              <p className="mt-1 text-2xl font-black">
-                {pendingCompletionOrders.length + pendingWorkSubmissions.length}
-              </p>
-              <p className="text-xs text-muted-foreground">Bekleyen görev kaydı</p>
-            </a>
-            <a
-              href="#project-approvals"
-              className="surface-panel p-4 transition-colors hover:border-primary/60"
-            >
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Proje Süreç Onayları
-              </p>
-              <p className="mt-1 text-2xl font-black">{pendingProjectSubmissions.length}</p>
-              <p className="text-xs text-muted-foreground">Bekleyen proje süreci</p>
-            </a>
-            <Link
-              to="/work-orders"
-              className={`surface-panel p-4 transition-colors hover:border-primary/60 ${
-                overdueOrders.length ? "border-amber-500/40 bg-amber-500/5" : ""
-              }`}
-            >
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Geciken Görevler
-              </p>
-              <p className="mt-1 text-2xl font-black">{overdueOrders.length}</p>
-              <p className="text-xs text-muted-foreground">Planlanan tarihi geçen görev</p>
-            </Link>
+          <div className="grid grid-cols-2 gap-3">
+            {pendingTarget ? (
+              <a
+                href={pendingTarget}
+                className={`surface-panel block p-4 transition-colors hover:border-primary/60 ${
+                  pendingApprovalCount ? "border-red-500/40 bg-red-500/5" : ""
+                }`}
+              >
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Onay Bekleyen
+                </p>
+                <p className="mt-1 text-2xl font-black">{pendingApprovalCount}</p>
+                <p className="text-xs text-muted-foreground">İlgili kaydı aç</p>
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => toast.info("Bekleyen onay yok.")}
+                className="surface-panel p-4 text-left transition-colors hover:border-primary/60"
+              >
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Onay Bekleyen
+                </p>
+                <p className="mt-1 text-2xl font-black">0</p>
+                <p className="text-xs text-muted-foreground">Bekleyen onay yok</p>
+              </button>
+            )}
+            {overdueTaskCount ? (
+              <a
+                href="#overdue-tasks"
+                className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:border-primary/60"
+              >
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Geciken Görevler
+                </p>
+                <p className="mt-1 text-2xl font-black">{overdueTaskCount}</p>
+                <p className="text-xs text-muted-foreground">Yalnızca gecikenleri aç</p>
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => toast.info("Geciken görev yok.")}
+                className="surface-panel p-4 text-left transition-colors hover:border-primary/60"
+              >
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Geciken Görevler
+                </p>
+                <p className="mt-1 text-2xl font-black">0</p>
+                <p className="text-xs text-muted-foreground">Geciken görev yok</p>
+              </button>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {role === "admin" && overdueTaskCount ? (
+        <section id="overdue-tasks" className="mt-7 scroll-mt-6">
+          <div className="mb-3">
+            <h2 className="text-lg font-bold">Geciken Görevler</h2>
+            <p className="text-sm text-muted-foreground">Planlanan tarihi geçmiş, henüz kapanmamış kayıtlar.</p>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {overdueOrders.map((order) => (
+              <a key={order.id} href={`/jobs/${order.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
+                <p className="text-xs font-black text-amber-300">SAHA GÖREVİ GECİKTİ</p>
+                <p className="mt-1 font-black">#{order.work_order_no} · {order.title}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {formatDate(order.scheduled_at)}</p>
+              </a>
+            ))}
+            {overdueProjectTasks.map((task) => (
+              <a key={task.id} href={`/projects/${task.project_id}#task-${task.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
+                <p className="text-xs font-black text-amber-300">PROJE GÖREVİ GECİKTİ</p>
+                <p className="mt-1 font-black">{task.task_name}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{task.phase_name} · Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
+              </a>
+            ))}
           </div>
         </section>
       ) : null}
