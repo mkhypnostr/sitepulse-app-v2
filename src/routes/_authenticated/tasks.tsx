@@ -116,7 +116,10 @@ function TasksPage() {
       if (error) throw error;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["unified-tasks"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
       setForm({ title: "", description: "", projectId: "none", customerId: "none", assigneeId: "none", plannedDate: "" });
       setOpen(false);
       toast.success("Bağımsız görev oluşturuldu");
@@ -150,7 +153,10 @@ function TasksPage() {
       if (error) throw error;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["unified-tasks"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
       setEditingTask(null);
       setOpen(false);
       toast.success("Görev güncellendi");
@@ -164,7 +170,10 @@ function TasksPage() {
       if (error) throw error;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["unified-tasks"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
       toast.success("Bağımsız görev silindi");
     },
     onError: (error) => toast.error(errorMessage(error)),
