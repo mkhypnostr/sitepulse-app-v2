@@ -214,7 +214,6 @@ function DashboardPage() {
   const allProjects = query.data?.allProjects ?? [];
   const visibleProjectTasks = query.data?.visibleProjectTasks ?? [];
   const activeProjects = allProjects.filter((project) => project.status === "active").length;
-  const draftProjects = allProjects.filter((project) => project.status === "draft").length;
   // Proje oluşturulurken gelen şablon satırları, bir sorumlusu veya gerçek bir
   // saha hareketi yoksa operasyon görevi olarak sayılmaz.
   const trackedProjectTasks = visibleProjectTasks.filter(
@@ -264,37 +263,49 @@ function DashboardPage() {
   const firstPendingProjectTask = firstPendingProject
     ? projectTaskById.get(firstPendingProject.project_task_id)
     : undefined;
+  const pendingApprovalCount =
+    pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
   const pendingTarget = pendingCompletionOrders[0]
     ? `/jobs/${pendingCompletionOrders[0].id}#completion-approval`
     : firstPendingWork
       ? `/jobs/${firstPendingWork.work_order_id}#progress-approval`
       : firstPendingProjectTask
         ? `/projects/${firstPendingProjectTask.project_id}#task-${firstPendingProjectTask.id}`
-        : undefined;
-  const pendingApprovalCount =
-    pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
+        : firstPendingProject
+          ? "#project-approvals"
+          : undefined;
   const overdueTaskCount = overdueOrders.length + overdueProjectTasks.length;
 
   const projectMetrics =
     role === "admin"
       ? [
           {
-            label: "Toplam Proje",
+            label: "Toplam Proje / Şantiye",
             value: allProjects.length,
             icon: FolderKanban,
             href: "/projects",
           },
           {
-            label: "Taslak Proje",
-            value: draftProjects,
+            label: "Aktif Proje / Şantiye",
+            value: activeProjects,
             icon: Clock3,
             href: "/projects",
           },
           {
-            label: "Aktif Proje",
-            value: activeProjects,
-            icon: CheckCircle2,
-            href: "/projects",
+            label: "Onay Bekleyen",
+            value: pendingApprovalCount,
+            icon: AlertTriangle,
+            href: pendingTarget,
+            attention: "danger",
+            emptyMessage: "Onay bekleyen kayıt yok.",
+          },
+          {
+            label: "Geciken Görevler",
+            value: overdueTaskCount,
+            icon: AlertTriangle,
+            href: overdueTaskCount > 0 ? "#overdue-tasks" : undefined,
+            attention: "warning",
+            emptyMessage: "Geciken görev yok.",
           },
           { label: "Kritik Stok", value: lowStock, icon: Package, href: "/stock" },
         ]
@@ -437,8 +448,17 @@ function DashboardPage() {
                 <a key={metric.label} href={metric.href} className="block">
                   {card}
                 </a>
+              ) : metric.emptyMessage ? (
+                <button
+                  key={metric.label}
+                  type="button"
+                  onClick={() => toast.info(metric.emptyMessage)}
+                  className="block w-full text-left"
+                >
+                  {card}
+                </button>
               ) : (
-                <div key={metric.label} title="Onay bekleyen kayıt yok">
+                <div key={metric.label}>
                   {card}
                 </div>
               );
@@ -496,69 +516,6 @@ function DashboardPage() {
                 </Card>
               </a>
             ))}
-          </div>
-        </section>
-      ) : null}
-
-      {role === "admin" ? (
-        <section id="approval-center" className="mt-7 scroll-mt-6">
-          <div className="mb-3">
-            <h2 className="text-lg font-bold">Onay ve Uyarı Merkezi</h2>
-            <p className="text-sm text-muted-foreground">
-              Bekleyen onayları ve geciken görevleri tek alanda açın.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {pendingTarget ? (
-              <a
-                href={pendingTarget}
-                className={`surface-panel block p-4 transition-colors hover:border-primary/60 ${
-                  pendingApprovalCount ? "border-red-500/40 bg-red-500/5" : ""
-                }`}
-              >
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Onay Bekleyen
-                </p>
-                <p className="mt-1 text-2xl font-black">{pendingApprovalCount}</p>
-                <p className="text-xs text-muted-foreground">İlgili kaydı aç</p>
-              </a>
-            ) : (
-              <button
-                type="button"
-                onClick={() => toast.info("Bekleyen onay yok.")}
-                className="surface-panel p-4 text-left transition-colors hover:border-primary/60"
-              >
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Onay Bekleyen
-                </p>
-                <p className="mt-1 text-2xl font-black">0</p>
-                <p className="text-xs text-muted-foreground">Bekleyen onay yok</p>
-              </button>
-            )}
-            {overdueTaskCount ? (
-              <a
-                href="#overdue-tasks"
-                className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:border-primary/60"
-              >
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Geciken Görevler
-                </p>
-                <p className="mt-1 text-2xl font-black">{overdueTaskCount}</p>
-                <p className="text-xs text-muted-foreground">Yalnızca gecikenleri aç</p>
-              </a>
-            ) : (
-              <button
-                type="button"
-                onClick={() => toast.info("Geciken görev yok.")}
-                className="surface-panel p-4 text-left transition-colors hover:border-primary/60"
-              >
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Geciken Görevler
-                </p>
-                <p className="mt-1 text-2xl font-black">0</p>
-                <p className="text-xs text-muted-foreground">Geciken görev yok</p>
-              </button>
-            )}
           </div>
         </section>
       ) : null}
