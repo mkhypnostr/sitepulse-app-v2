@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { safeHttpsMapUrl } from "@/lib/map-location";
 import { projectStatusLabel, type ProjectStatus } from "@/lib/projects";
@@ -76,6 +77,8 @@ export function ProjectLifecycleControls({
   project: Project;
   managers: Manager[];
 }) {
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [transition, setTransition] = useState<Transition | null>(null);
@@ -262,7 +265,7 @@ export function ProjectLifecycleControls({
             {action.label}
           </Button>
         ))}
-        {project.status === "draft" ? (
+        {isAdmin && project.status === "draft" ? (
           <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
             <Trash2 className="mr-2 h-4 w-4" /> Taslağı Sil
           </Button>

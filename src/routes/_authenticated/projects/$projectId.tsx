@@ -74,7 +74,8 @@ function ProjectDetailPage() {
   const { role } = useAuth();
   const { projectId } = Route.useParams();
   const canManageProjects = role === "admin" || role === "technical_office";
-  const canCreateOrAssignTasks = role === "admin";
+  const canEditTasks = role === "admin" || role === "technical_office";
+  const canAssignTasks = role === "admin";
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
 
   const projectQuery = useQuery({
@@ -165,7 +166,7 @@ function ProjectDetailPage() {
         description={`${project.project_no} · ${customer?.name || "Müşteri"}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            {canCreateOrAssignTasks && project.status !== "completed" && project.status !== "cancelled" ? (
+            {canEditTasks && project.status !== "completed" && project.status !== "cancelled" ? (
               <Button onClick={() => setCreateTaskOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" /> Yeni Proje Görevi
               </Button>
@@ -184,13 +185,14 @@ function ProjectDetailPage() {
         }
       />
 
-      {canCreateOrAssignTasks ? (
+      {canEditTasks ? (
         <ProjectTaskCreateDialog
           open={createTaskOpen}
           onOpenChange={setCreateTaskOpen}
           projectId={project.id}
           processes={processes.map((process) => ({ id: process.id, label: projectTypeLabel[process.process_type] }))}
           assignees={assignees}
+          canAssign={canAssignTasks}
         />
       ) : null}
 
@@ -371,10 +373,11 @@ function ProjectDetailPage() {
                             task={task}
                             assignees={assignees}
                             editable={
-                              canCreateOrAssignTasks &&
+                              canEditTasks &&
                               project.status !== "completed" &&
                               project.status !== "cancelled"
                             }
+                            canAssign={canAssignTasks}
                           />
                         ))}
                       </div>
@@ -435,12 +438,14 @@ function ProjectTaskCreateDialog({
   projectId,
   processes,
   assignees,
+  canAssign,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
   processes: { id: string; label: string }[];
   assignees: TaskAssignee[];
+  canAssign: boolean;
 }) {
   const queryClient = useQueryClient();
   const [taskName, setTaskName] = useState("");
@@ -457,7 +462,7 @@ function ProjectTaskCreateDialog({
         target_project_id: projectId,
         target_process_id: processId,
         new_task_name: taskName.trim(),
-        assigned_user_id: responsibleId === "none" ? undefined : responsibleId,
+        assigned_user_id: canAssign && responsibleId !== "none" ? responsibleId : undefined,
         planned_on: plannedDate || undefined,
         task_note: note.trim() || undefined,
       });
@@ -486,7 +491,7 @@ function ProjectTaskCreateDialog({
         <DialogHeader>
           <DialogTitle>Yeni proje görevi</DialogTitle>
           <DialogDescription>
-            Görev bir proje sürecine bağlanır. Sorumlu kişi tüm kayıtlı kullanıcılar arasından seçilebilir.
+            Görev bir proje sürecine bağlanır. {canAssign ? "Sorumlu kişi tüm kayıtlı kullanıcılar arasından seçilebilir." : "Sorumlu ataması yönetici tarafından yapılır."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
@@ -494,7 +499,7 @@ function ProjectTaskCreateDialog({
             Görev adı
             <Input value={taskName} onChange={(event) => setTaskName(event.target.value)} maxLength={180} />
           </label>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={canAssign ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
             <label className="grid gap-1.5 text-sm font-medium">
               Proje süreci
               <Select value={processId} onValueChange={setProcessId}>
@@ -504,7 +509,7 @@ function ProjectTaskCreateDialog({
                 </SelectContent>
               </Select>
             </label>
-            <label className="grid gap-1.5 text-sm font-medium">
+            {canAssign ? <label className="grid gap-1.5 text-sm font-medium">
               Sorumlu kişi
               <Select value={responsibleId} onValueChange={setResponsibleId}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -517,7 +522,7 @@ function ProjectTaskCreateDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </label>
+            </label> : null}
           </div>
           <label className="grid gap-1.5 text-sm font-medium">
             Planlanan tarih
@@ -543,10 +548,12 @@ function TaskEditor({
   task,
   assignees,
   editable,
+  canAssign,
 }: {
   task: ProjectTask;
   assignees: TaskAssignee[];
   editable: boolean;
+  canAssign: boolean;
 }) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<ProjectTaskStatus>(task.status);
@@ -568,27 +575,34 @@ function TaskEditor({
   const changed = useMemo(
     () =>
       status !== task.status ||
-      responsibleId !== (task.responsible_id ?? "none") ||
+      (canAssign && responsibleId !== (task.responsible_id ?? "none")) ||
       plannedDate !== (task.planned_date ?? "") ||
       actualDate !== (task.actual_date ?? "") ||
       externalSystem !== (task.external_system ?? "") ||
       note !== (task.note ?? ""),
-    [status, responsibleId, plannedDate, actualDate, externalSystem, note, task],
+    [status, responsibleId, plannedDate, actualDate, externalSystem, note, task, canAssign],
   );
 
   const updateTask = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.rpc("update_project_task", {
-        target_task_id: task.id,
-        // İlerleme, dış onay ve tamamlanma durumları yalnızca kanıtlı onay
-        // akışı tarafından değişir. Bu ekran teknik ofisin planlama alanıdır.
-        new_status: status,
-        assigned_user_id: responsibleId === "none" ? undefined : responsibleId,
-        planned_on: plannedDate || undefined,
-        actual_on: actualDate || undefined,
-        task_system: externalSystem.trim() || undefined,
-        task_note: note.trim() || undefined,
-      });
+      const { error } = canAssign
+        ? await supabase.rpc("update_project_task", {
+            target_task_id: task.id,
+            new_status: status,
+            assigned_user_id: responsibleId === "none" ? undefined : responsibleId,
+            planned_on: plannedDate || undefined,
+            actual_on: actualDate || undefined,
+            task_system: externalSystem.trim() || undefined,
+            task_note: note.trim() || undefined,
+          })
+        : await supabase.rpc("update_project_task_technical" as never, {
+            target_task_id: task.id,
+            new_status: status,
+            planned_on: plannedDate || undefined,
+            actual_on: actualDate || undefined,
+            task_system: externalSystem.trim() || undefined,
+            task_note: note.trim() || undefined,
+          } as never);
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -648,7 +662,7 @@ function TaskEditor({
 
       <ProjectTaskProgress task={task} canSubmit={false} canReview={editable} />
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className={`mt-4 grid gap-3 md:grid-cols-2 ${canAssign ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
         <label className="grid gap-1 text-xs font-bold">
           Durum
           <Select
@@ -674,7 +688,7 @@ function TaskEditor({
             </SelectContent>
           </Select>
         </label>
-        <label className="grid gap-1 text-xs font-bold">
+        {canAssign ? <label className="grid gap-1 text-xs font-bold">
           Sorumlu
           <Select value={responsibleId} onValueChange={setResponsibleId} disabled={!editable}>
             <SelectTrigger className="h-10">
@@ -690,7 +704,7 @@ function TaskEditor({
               ))}
             </SelectContent>
           </Select>
-        </label>
+        </label> : null}
         <label className="grid gap-1 text-xs font-bold">
           Planlanan Tarih
           <Input
@@ -743,7 +757,7 @@ function TaskEditor({
           />
         </label>
         <div className="flex gap-2 sm:justify-end">
-          {editable && task.phase_order === 999 ? (
+          {editable && canAssign && task.phase_order === 999 ? (
             <Button
               type="button"
               variant="outline"
