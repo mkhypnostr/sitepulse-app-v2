@@ -485,6 +485,7 @@ function ProjectTaskCreateDialog({
         queryClient.invalidateQueries({ queryKey: ["project-detail", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
         queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
       setTaskName("");
       setProcessId("");
@@ -618,8 +619,12 @@ function TaskEditor({
       if (error) throw error;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] });
-      await queryClient.invalidateQueries({ queryKey: ["projects-page"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] }),
+        queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
       toast.success("Görev güncellendi");
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -633,8 +638,12 @@ function TaskEditor({
       if (error) throw error;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] });
-      await queryClient.invalidateQueries({ queryKey: ["projects-page"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] }),
+        queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
       toast.success("Ek proje görevi silindi");
     },
     onError: (error) => toast.error(errorMessage(error)),
