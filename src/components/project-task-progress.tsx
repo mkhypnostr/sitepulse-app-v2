@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clock3, History, RotateCcw, Send } from "lucide-react";
+import { CheckCircle2, Clock3, History, Paperclip, RotateCcw, Send } from "lucide-react";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { errorMessage } from "@/lib/domain";
+import { useAuth } from "@/lib/auth-context";
 import { formatProjectDateTime } from "@/lib/projects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export function ProjectTaskProgress({
   canSubmit: boolean;
   canReview: boolean;
 }) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [proposedPct, setProposedPct] = useState(
     String(Math.min(100, Math.max(task.approved_progress_pct + 5, 5))),
@@ -71,6 +73,20 @@ export function ProjectTaskProgress({
     },
   });
 
+  const evidenceQuery = useQuery({
+    queryKey: ["project-task-evidence", task.id],
+    enabled: Boolean(task.id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("project_task_evidence")
+        .select("*")
+        .eq("project_task_id", task.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const pendingSubmission = useMemo(
     () => submissionsQuery.data?.submissions.find((item) => item.status === "pending"),
     [submissionsQuery.data?.submissions],
@@ -79,6 +95,7 @@ export function ProjectTaskProgress({
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["project-task-progress-submissions", task.id] }),
+      queryClient.invalidateQueries({ queryKey: ["project-task-evidence", task.id] }),
       queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] }),
       queryClient.invalidateQueries({ queryKey: ["my-project-tasks"] }),
       queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
@@ -137,12 +154,32 @@ export function ProjectTaskProgress({
   });
 
   const submissions = submissionsQuery.data?.submissions ?? [];
+  const evidence = evidenceQuery.data ?? [];
+  const readyEvidence = evidence.filter(
+    (item) => item.submission_id === null && item.uploaded_by === user?.id,
+  );
+  const evidenceCountBySubmission = new Map<string, number>();
+  evidence.forEach((item) => {
+    if (!item.submission_id) return;
+    evidenceCountBySubmission.set(
+      item.submission_id,
+      (evidenceCountBySubmission.get(item.submission_id) ?? 0) + 1,
+    );
+  });
   const profileById = submissionsQuery.data?.profileById ?? new Map<string, string>();
   const submissionFormVisible =
     canSubmit &&
     !pendingSubmission &&
     task.approved_progress_pct < 100 &&
     task.status !== "not_applicable";
+  const proposedPctNumber = Number(proposedPct);
+  const submissionInputValid =
+    Number.isInteger(proposedPctNumber) &&
+    proposedPctNumber > task.approved_progress_pct &&
+    proposedPctNumber <= 100 &&
+    proposedPctNumber % 5 === 0 &&
+    note.trim().length >= 10 &&
+    readyEvidence.length > 0;
 
   return (
     <div className="mt-4 rounded-xl border border-border bg-muted/15 p-4">
@@ -224,8 +261,20 @@ export function ProjectTaskProgress({
         <div className="mt-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
           <p className="font-black">İlerlemeyi onaya gönder</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Önce yukarıdan yeni fotoğraf veya belge ekleyin. Onay verilene kadar proje yüzdesi
-            değişmez.
+            Onay verilene kadar proje yüzdesi değişmez. Fotoğraf veya belge ve en az 10
+            karakterlik açıklama zorunludur.
+          </p>
+          <p
+            className={
+              readyEvidence.length
+                ? "mt-2 flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-300"
+                : "mt-2 flex items-center gap-1.5 text-xs font-semibold text-destructive"
+            }
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+            {readyEvidence.length
+              ? `${readyEvidence.length} kanıt dosyası hazır; gönderimde bu kayda bağlanacak.`
+              : "Fotoğraf veya belge eklemeden ilerleme gönderilemez."}
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-xs font-bold">
@@ -262,7 +311,7 @@ export function ProjectTaskProgress({
             type="button"
             className="mt-3 w-full sm:w-auto"
             onClick={() => submitProgress.mutate()}
-            disabled={submitProgress.isPending}
+            disabled={submitProgress.isPending || evidenceQuery.isLoading || !submissionInputValid}
           >
             <Send className="mr-2 h-4 w-4" />
             {submitProgress.isPending ? "Gönderiliyor..." : "Yönetici Onayına Gönder"}
@@ -292,6 +341,11 @@ export function ProjectTaskProgress({
                 <p className="mt-1 text-muted-foreground">
                   Gönderen: {profileById.get(submission.submitted_by) || "Kullanıcı"}
                 </p>
+                {(evidenceCountBySubmission.get(submission.id) ?? 0) > 0 ? (
+                  <p className="mt-1 flex items-center gap-1 text-primary">
+                    <Paperclip className="h-3.5 w-3.5" /> Kanıt: {evidenceCountBySubmission.get(submission.id)} dosya
+                  </p>
+                ) : null}
                 {submission.reviewed_by ? (
                   <p
                     className={
