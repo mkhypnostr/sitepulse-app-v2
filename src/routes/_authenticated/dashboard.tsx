@@ -54,6 +54,10 @@ type VisibleProjectTask = Pick<
   | "planned_date"
   | "responsible_id"
 >;
+type OperationalTaskSummary = Pick<
+  Database["public"]["Tables"]["operational_tasks"]["Row"],
+  "id" | "title" | "project_id" | "planned_date" | "status" | "assigned_to"
+>;
 
 function DashboardPage() {
   const { role } = useAuth();
@@ -94,26 +98,33 @@ function DashboardPage() {
       let assignments: Array<{ work_order_id: string }> = [];
       let profileNames: Array<{ id: string; full_name: string }> = [];
       let visibleProjectTasks: VisibleProjectTask[] = [];
+      let independentTasks: OperationalTaskSummary[] = [];
       if (operationalManager || role === "contractor") {
         const { data, error } = await supabase.from("stock_items").select("quantity, min_quantity");
         if (error) throw error;
         stock = data;
       }
       if (operationalManager) {
-        const [allProjectsResult, visibleTasksResult, assignmentsResult] = await Promise.all([
+        const [allProjectsResult, visibleTasksResult, assignmentsResult, independentTasksResult] = await Promise.all([
           supabase.from("projects").select("id, status"),
           supabase
             .from("project_tasks")
             .select("id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date, responsible_id")
             .order("planned_date", { ascending: true, nullsFirst: false }),
           supabase.from("work_order_assignments").select("work_order_id"),
+          supabase
+            .from("operational_tasks")
+            .select("id, title, project_id, planned_date, status, assigned_to")
+            .order("planned_date", { ascending: true, nullsFirst: false }),
         ]);
         if (allProjectsResult.error) throw allProjectsResult.error;
         if (visibleTasksResult.error) throw visibleTasksResult.error;
         if (assignmentsResult.error) throw assignmentsResult.error;
+        if (independentTasksResult.error) throw independentTasksResult.error;
         allProjects = allProjectsResult.data ?? [];
         visibleProjectTasks = visibleTasksResult.data ?? [];
         assignments = assignmentsResult.data ?? [];
+        independentTasks = independentTasksResult.data ?? [];
       }
       if (role === "admin") {
         const [
@@ -199,6 +210,7 @@ function DashboardPage() {
         assignments,
         profileNames,
         visibleProjectTasks,
+        independentTasks,
       };
     },
   });
@@ -213,6 +225,7 @@ function DashboardPage() {
   const completed = orders.filter((order) => order.status === "completed").length;
   const allProjects = query.data?.allProjects ?? [];
   const visibleProjectTasks = query.data?.visibleProjectTasks ?? [];
+  const independentTasks = query.data?.independentTasks ?? [];
   const activeProjects = allProjects.filter((project) => project.status === "active").length;
   // Proje oluşturulurken gelen şablon satırları, bir sorumlusu veya gerçek bir
   // saha hareketi yoksa operasyon görevi olarak sayılmaz.
@@ -226,10 +239,16 @@ function DashboardPage() {
     ["in_progress", "external_approval", "blocked"].includes(task.status),
   ).length;
   const technicalCompletedTasks = trackedProjectTasks.filter((task) => task.status === "completed").length;
+  const independentOpenTasks = independentTasks.filter((task) =>
+    ["in_progress", "external_approval", "blocked"].includes(task.status),
+  ).length;
+  const independentCompletedTasks = independentTasks.filter((task) => task.status === "completed").length;
   const assignedOrderIds = new Set(
     (query.data?.assignments ?? []).map((item) => item.work_order_id),
   );
   const unassignedTasks = orders.filter((order) => !assignedOrderIds.has(order.id)).length;
+  const unassignedProjectTasks = trackedProjectTasks.filter((task) => !task.responsible_id).length;
+  const unassignedIndependentTasks = independentTasks.filter((task) => !task.assigned_to).length;
   const projectSubmissions = query.data?.projectSubmissions ?? [];
   const workSubmissions = query.data?.workSubmissions ?? [];
   const pendingWorkSubmissions = workSubmissions.filter((item) => item.status === "pending");
@@ -249,6 +268,12 @@ function DashboardPage() {
       Boolean(task.planned_date) &&
       new Date(`${task.planned_date}T23:59:59`).getTime() < Date.now() &&
       !["completed", "not_applicable"].includes(task.status),
+  );
+  const overdueIndependentTasks = independentTasks.filter(
+    (task) =>
+      Boolean(task.planned_date) &&
+      new Date(`${task.planned_date}T23:59:59`).getTime() < Date.now() &&
+      !["completed", "cancelled", "not_applicable"].includes(task.status),
   );
   const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
   const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
@@ -274,7 +299,7 @@ function DashboardPage() {
         : firstPendingProject
           ? "#project-approvals"
           : undefined;
-  const overdueTaskCount = overdueOrders.length + overdueProjectTasks.length;
+  const overdueTaskCount = overdueOrders.length + overdueProjectTasks.length + overdueIndependentTasks.length;
 
   const projectMetrics =
     role === "admin"
@@ -360,10 +385,10 @@ function DashboardPage() {
 
   const taskRoute = role === "admin" ? "/work-orders" : "/tasks";
   const taskMetrics = [
-    { label: "Takip Edilen Görev", value: orders.length + trackedProjectTasks.length, icon: BriefcaseBusiness, href: taskRoute },
-    { label: "Devam Eden", value: active + technicalOpenTasks, icon: Clock3, href: taskRoute },
-    { label: "Atama Bekleyen", value: unassignedTasks, icon: UserCog, href: taskRoute },
-    { label: "Tamamlanan", value: completed + technicalCompletedTasks, icon: CheckCircle2, href: taskRoute },
+    { label: "Takip Edilen Görev", value: orders.length + trackedProjectTasks.length + independentTasks.length, icon: BriefcaseBusiness, href: taskRoute },
+    { label: "Devam Eden", value: active + technicalOpenTasks + independentOpenTasks, icon: Clock3, href: taskRoute },
+    { label: "Atama Bekleyen", value: unassignedTasks + unassignedProjectTasks + unassignedIndependentTasks, icon: UserCog, href: taskRoute },
+    { label: "Tamamlanan", value: completed + technicalCompletedTasks + independentCompletedTasks, icon: CheckCircle2, href: taskRoute },
   ];
 
   const quickActions = [
@@ -544,6 +569,13 @@ function DashboardPage() {
                 <p className="text-xs font-black text-amber-300">PROJE GÖREVİ GECİKTİ</p>
                 <p className="mt-1 font-black">{task.task_name}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{task.phase_name} · Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
+              </a>
+            ))}
+            {overdueIndependentTasks.map((task) => (
+              <a key={task.id} href="/tasks" className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
+                <p className="text-xs font-black text-amber-300">BAĞIMSIZ GÖREV GECİKTİ</p>
+                <p className="mt-1 font-black">{task.title}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
               </a>
             ))}
           </div>
