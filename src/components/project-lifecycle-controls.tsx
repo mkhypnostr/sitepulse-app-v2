@@ -218,14 +218,14 @@ export function ProjectLifecycleControls({
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.rpc("delete_draft_project", {
+      const { error } = await supabase.rpc("delete_project_permanently" as never, {
         target_project_id: project.id,
-      });
+      } as never);
       if (error) throw error;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["projects-page"] });
-      toast.success("Taslak proje silindi");
+      toast.success("Proje ve bağlı görevler kalıcı olarak silindi");
       navigate({ to: "/projects" });
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -265,9 +265,9 @@ export function ProjectLifecycleControls({
             {action.label}
           </Button>
         ))}
-        {isAdmin && project.status === "draft" ? (
+        {isAdmin ? (
           <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
-            <Trash2 className="mr-2 h-4 w-4" /> Taslağı Sil
+            <Trash2 className="mr-2 h-4 w-4" /> Projeyi Sil
           </Button>
         ) : null}
       </div>
@@ -325,10 +325,10 @@ export function ProjectLifecycleControls({
             <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/15 text-destructive">
               <AlertTriangle className="h-6 w-6" />
             </div>
-            <DialogTitle>Taslak proje kalıcı olarak silinsin mi?</DialogTitle>
+            <DialogTitle>Proje kalıcı olarak silinsin mi?</DialogTitle>
             <DialogDescription>
-              {project.project_no} numaralı taslak ve otomatik görev listeleri silinir. Üzerinde
-              çalışma yapılmışsa sistem silmeye izin vermez.
+              {project.project_no} numaralı proje; süreçleri, proje görevleri, bağlı saha görevleri,
+              atamalar ve kayıtlı kanıtlarıyla birlikte silinir. Bu işlem geri alınamaz.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -344,7 +344,7 @@ export function ProjectLifecycleControls({
               onClick={() => deleteMutation.mutate()}
               disabled={deleteMutation.isPending}
             >
-              {deleteMutation.isPending ? "Siliniyor..." : "Taslağı Kalıcı Sil"}
+              {deleteMutation.isPending ? "Siliniyor..." : "Projeyi Kalıcı Sil"}
             </Button>
           </DialogFooter>
         </DialogContent>
