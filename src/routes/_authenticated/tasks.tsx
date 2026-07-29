@@ -18,6 +18,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 export const Route = createFileRoute("/_authenticated/tasks")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    filter: search.filter === "open" ? "open" : undefined,
+  }),
   component: TasksPage,
 });
 
@@ -63,6 +66,7 @@ const statusLabel: Record<string, string> = {
 
 function TasksPage() {
   const { role } = useAuth();
+  const { filter } = Route.useSearch();
   const canViewTasks = isOperationalManager(role);
   const canCreateTasks = isOperationalManager(role);
   const canAssignTasks = role === "admin";
@@ -229,8 +233,24 @@ function TasksPage() {
     if (contractor) contractorsByWorkOrder.set(assignment.work_order_id, contractor);
   }
 
+  // Ana paneldeki “Açık Görevler” sayısı ile bu ekranın filtrelenmiş listesi
+  // aynı kuralı kullanır. Böylece farklı ekranlarda farklı adet görünmez.
+  const openProjectStatuses = ["in_progress", "external_approval", "blocked"];
+  const showingOpenOnly = filter === "open";
+  const visibleWorkOrders = showingOpenOnly
+    ? data.workOrders.filter((task) => task.status === "in_progress")
+    : data.workOrders;
+  const visibleIndependentTasks = showingOpenOnly
+    ? data.independent.filter((task) => openProjectStatuses.includes(task.status))
+    : data.independent;
+  const visibleProjectTasks = showingOpenOnly
+    ? data.projectTasks.filter((task) => openProjectStatuses.includes(task.status))
+    : data.projectTasks;
+  const visibleTaskCount =
+    visibleWorkOrders.length + visibleIndependentTasks.length + visibleProjectTasks.length;
+
   const projectTaskGroups = Array.from(
-    data.projectTasks.reduce((groups, task) => {
+    visibleProjectTasks.reduce((groups, task) => {
       const tasks = groups.get(task.project_id) ?? [];
       tasks.push(task);
       groups.set(task.project_id, tasks);
@@ -239,14 +259,24 @@ function TasksPage() {
   );
 
   return <>
-    <PageHeader title="Görevler" description="Projeye bağlı ve bağımsız operasyon görevlerini tek ekranda yönetin." actions={createButton} />
+    <PageHeader title="Görevler" description={showingOpenOnly ? "Yalnızca devam eden, onayda veya engelli görevler." : "Projeye bağlı ve bağımsız operasyon görevlerini tek ekranda yönetin."} actions={createButton} />
+    <section className="surface-panel mt-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+      <div>
+        <h2 className="text-lg font-black">{showingOpenOnly ? "Açık Görevler" : "Görev Görünümü"}</h2>
+        <p className="text-sm text-muted-foreground">{visibleTaskCount} görev listeleniyor.</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <a href="/tasks?filter=open" className={showingOpenOnly ? "rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground" : "rounded-lg border border-border px-3 py-2 text-sm font-bold text-muted-foreground hover:border-primary/60"}>Açık</a>
+        <a href="/tasks" className={!showingOpenOnly ? "rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground" : "rounded-lg border border-border px-3 py-2 text-sm font-bold text-muted-foreground hover:border-primary/60"}>Tümü</a>
+      </div>
+    </section>
     <section className="surface-panel mt-6 p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Atanmış Saha Görevleri</h2><p className="text-sm text-muted-foreground">Taşeronlara atanmış görevleri finansal bilgi olmadan takip edin.</p></div>{role === "admin" ? <Link to="/work-orders" className="text-sm font-bold text-primary">Yönetim ekranını aç</Link> : null}</div>
-      {data.workOrders.length === 0 ? <div className="rounded-xl border border-border bg-muted/20 p-5 text-sm text-muted-foreground">Atanmış saha görevi yok.</div> : <div className="grid gap-3">{data.workOrders.map((task) => <TaskCard key={task.id} title={`#${task.work_order_no ?? "—"} · ${task.title}`} status={task.status} plannedDate={task.scheduled_at} assignee={contractorsByWorkOrder.get(task.id)} subtitle={`${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız saha görevi"} · İlerleme %${task.progress_pct}`} />)}</div>}
+      {visibleWorkOrders.length === 0 ? <div className="rounded-xl border border-border bg-muted/20 p-5 text-sm text-muted-foreground">{showingOpenOnly ? "Açık atanmış saha görevi yok." : "Atanmış saha görevi yok."}</div> : <div className="grid gap-3">{visibleWorkOrders.map((task) => <TaskCard key={task.id} title={`#${task.work_order_no ?? "—"} · ${task.title}`} status={task.status} plannedDate={task.scheduled_at} assignee={contractorsByWorkOrder.get(task.id)} subtitle={`${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız saha görevi"} · İlerleme %${task.progress_pct}`} />)}</div>}
     </section>
     <section className="surface-panel mt-7 p-4 sm:p-5">
       <div className="mb-3"><h2 className="text-lg font-black">Bağımsız Görevler</h2><p className="text-sm text-muted-foreground">Müşteri veya proje seçmeden açılabilen operasyon kayıtları.</p></div>
-      {data.independent.length === 0 ? <EmptyState title="Bağımsız görev yok" description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={createButton} /> : <div className="grid gap-3">{data.independent.map((task) => <TaskCard key={task.id} id={`task-${task.id}`} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} actions={isOperationalManager(role) ? <><Button type="button" size="sm" variant="outline" onClick={() => { setEditingTask(task); setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" }); setOpen(true); }}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button>{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => { if (window.confirm(`“${task.title}” görevi silinsin mi?`)) deleteTask.mutate(task.id); }} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</> : null} />)}</div>}
+      {visibleIndependentTasks.length === 0 ? <EmptyState title={showingOpenOnly ? "Açık bağımsız görev yok" : "Bağımsız görev yok"} description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={showingOpenOnly ? undefined : createButton} /> : <div className="grid gap-3">{visibleIndependentTasks.map((task) => <TaskCard key={task.id} id={`task-${task.id}`} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} actions={isOperationalManager(role) ? <><Button type="button" size="sm" variant="outline" onClick={() => { setEditingTask(task); setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" }); setOpen(true); }}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button>{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => { if (window.confirm(`“${task.title}” görevi silinsin mi?`)) deleteTask.mutate(task.id); }} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</> : null} />)}</div>}
     </section>
     <section className="surface-panel mt-7 p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Proje Görevleri</h2><p className="text-sm text-muted-foreground">Projelerin süreçlerine bağlı kontrol ve saha görevleri.</p></div><Link to="/projects" className="text-sm font-bold text-primary">Projeleri aç</Link></div>
