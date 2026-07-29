@@ -95,7 +95,6 @@ function DashboardPage() {
       let projectTasks: ProjectTaskSummary[] = [];
       let projects: ProjectSummary[] = [];
       let allProjects: ProjectDashboardSummary[] = [];
-      let assignments: Array<{ work_order_id: string }> = [];
       let profileNames: Array<{ id: string; full_name: string }> = [];
       let visibleProjectTasks: VisibleProjectTask[] = [];
       let independentTasks: OperationalTaskSummary[] = [];
@@ -105,13 +104,12 @@ function DashboardPage() {
         stock = data;
       }
       if (operationalManager) {
-        const [allProjectsResult, visibleTasksResult, assignmentsResult, independentTasksResult] = await Promise.all([
+        const [allProjectsResult, visibleTasksResult, independentTasksResult] = await Promise.all([
           supabase.from("projects").select("id, status"),
           supabase
             .from("project_tasks")
             .select("id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date, responsible_id")
             .order("planned_date", { ascending: true, nullsFirst: false }),
-          supabase.from("work_order_assignments").select("work_order_id"),
           supabase
             .from("operational_tasks")
             .select("id, title, project_id, planned_date, status, assigned_to")
@@ -119,11 +117,9 @@ function DashboardPage() {
         ]);
         if (allProjectsResult.error) throw allProjectsResult.error;
         if (visibleTasksResult.error) throw visibleTasksResult.error;
-        if (assignmentsResult.error) throw assignmentsResult.error;
         if (independentTasksResult.error) throw independentTasksResult.error;
         allProjects = allProjectsResult.data ?? [];
         visibleProjectTasks = visibleTasksResult.data ?? [];
-        assignments = assignmentsResult.data ?? [];
         independentTasks = independentTasksResult.data ?? [];
       }
       if (role === "admin") {
@@ -207,7 +203,6 @@ function DashboardPage() {
         projectTasks,
         projects,
         allProjects,
-        assignments,
         profileNames,
         visibleProjectTasks,
         independentTasks,
@@ -243,12 +238,6 @@ function DashboardPage() {
     ["in_progress", "external_approval", "blocked"].includes(task.status),
   ).length;
   const independentCompletedTasks = independentTasks.filter((task) => task.status === "completed").length;
-  const assignedOrderIds = new Set(
-    (query.data?.assignments ?? []).map((item) => item.work_order_id),
-  );
-  const unassignedTasks = orders.filter((order) => !assignedOrderIds.has(order.id)).length;
-  const unassignedProjectTasks = trackedProjectTasks.filter((task) => !task.responsible_id).length;
-  const unassignedIndependentTasks = independentTasks.filter((task) => !task.assigned_to).length;
   const projectSubmissions = query.data?.projectSubmissions ?? [];
   const workSubmissions = query.data?.workSubmissions ?? [];
   const pendingWorkSubmissions = workSubmissions.filter((item) => item.status === "pending");
@@ -330,95 +319,105 @@ function DashboardPage() {
   const pendingTarget =
     pendingApprovalItems.length === 1 ? pendingApprovalItems[0].href : pendingApprovalCount > 0 ? "#approval-center" : undefined;
 
-  const projectMetrics =
-    role === "admin"
+  const taskRoute = role === "admin" ? "/work-orders" : "/tasks";
+  const totalTasks = orders.length + trackedProjectTasks.length + independentTasks.length;
+  const openTasks = active + technicalOpenTasks + independentOpenTasks;
+  const operationalMetrics = [
+    {
+      label: "Projeler / Şantiyeler",
+      value: allProjects.length,
+      detail: `${activeProjects} aktif`,
+      icon: FolderKanban,
+      href: "/projects",
+    },
+    {
+      label: "Açık Görevler",
+      value: openTasks,
+      detail: `${totalTasks} takip edilen görev`,
+      icon: BriefcaseBusiness,
+      href: taskRoute,
+    },
+    ...(role === "admin"
       ? [
-          {
-            label: "Toplam Proje / Şantiye",
-            value: allProjects.length,
-            icon: FolderKanban,
-            href: "/projects",
-          },
-          {
-            label: "Aktif Proje / Şantiye",
-            value: activeProjects,
-            icon: Clock3,
-            href: "/projects",
-          },
           {
             label: "Onay Bekleyen",
             value: pendingApprovalCount,
+            detail: pendingApprovalCount ? "Yönetici kararı gerekiyor" : "Bekleyen kayıt yok",
             icon: AlertTriangle,
             href: pendingTarget,
-            attention: "danger",
+            attention: "danger" as const,
             emptyMessage: "Onay bekleyen kayıt yok.",
           },
           {
             label: "Geciken Görevler",
             value: overdueTaskCount,
+            detail: overdueTaskCount ? "Plan tarihi geçmiş görevler" : "Geciken görev yok",
             icon: AlertTriangle,
             href: overdueTaskCount > 0 ? "#overdue-tasks" : undefined,
-            attention: "warning",
+            attention: "warning" as const,
             emptyMessage: "Geciken görev yok.",
           },
-          { label: "Kritik Stok", value: lowStock, icon: Package, href: "/stock" },
         ]
-      : role === "technical_office"
-        ? [
-            {
-              label: "Toplam Proje",
-              value: allProjects.length,
-              icon: FolderKanban,
-              href: "/projects",
-            },
-            {
-              label: "Aktif Proje",
-              value: activeProjects,
-              icon: Clock3,
-              href: "/projects",
-            },
-            {
-              label: "Açık Görev",
-              value: technicalOpenTasks + active,
-              icon: BriefcaseBusiness,
-              href: "/tasks",
-            },
-            {
-              label: "Tamamlanan Görev",
-              value: technicalCompletedTasks + completed,
-              icon: CheckCircle2,
-              href: "/tasks",
-            },
-            { label: "Kritik Stok", value: lowStock, icon: Package, href: "/stock" },
-          ]
-        : [
-          {
-            label: "Aktif İş",
-            value: active,
-            icon: BriefcaseBusiness,
-            href: role === "customer" ? "/my-projects" : "/my-jobs",
-          },
-          {
-            label: "Tamamlanan",
-            value: completed,
-            icon: CheckCircle2,
-            href: role === "customer" ? "/my-projects" : "/my-jobs",
-          },
-          {
-            label: "Toplam İş",
-            value: orders.length,
-            icon: Clock3,
-            href: role === "customer" ? "/my-projects" : "/my-jobs",
-          },
-        ];
-
-  const taskRoute = role === "admin" ? "/work-orders" : "/tasks";
-  const taskMetrics = [
-    { label: "Takip Edilen Görev", value: orders.length + trackedProjectTasks.length + independentTasks.length, icon: BriefcaseBusiness, href: taskRoute },
-    { label: "Devam Eden", value: active + technicalOpenTasks + independentOpenTasks, icon: Clock3, href: taskRoute },
-    { label: "Atama Bekleyen", value: unassignedTasks + unassignedProjectTasks + unassignedIndependentTasks, icon: UserCog, href: taskRoute },
-    { label: "Tamamlanan", value: completed + technicalCompletedTasks + independentCompletedTasks, icon: CheckCircle2, href: taskRoute },
+      : []),
+    {
+      label: "Kritik Stok",
+      value: lowStock,
+      detail: lowStock ? "Minimum seviyenin altında" : "Kritik stok yok",
+      icon: Package,
+      href: "/stock",
+    },
   ];
+
+  const personalMetrics = [
+    {
+      label: "Aktif İş",
+      value: active,
+      icon: BriefcaseBusiness,
+      href: role === "customer" ? "/my-projects" : "/my-jobs",
+    },
+    {
+      label: "Tamamlanan",
+      value: completed,
+      icon: CheckCircle2,
+      href: role === "customer" ? "/my-projects" : "/my-jobs",
+    },
+    {
+      label: "Toplam İş",
+      value: orders.length,
+      icon: Clock3,
+      href: role === "customer" ? "/my-projects" : "/my-jobs",
+    },
+  ];
+
+  const recentApprovalItems = [
+    ...approvedWorkSubmissions.flatMap((submission) => {
+      const order = orders.find((item) => item.id === submission.work_order_id);
+      if (!order) return [];
+      return [{
+        id: `work-approved-${submission.id}`,
+        href: `/jobs/${order.id}`,
+        title: `%${submission.pct} · #${order.work_order_no} · ${order.title}`,
+        detail: "Saha görevi ilerlemesi",
+        reviewedBy: profileNameById.get(submission.reviewed_by ?? "") || "Yönetici",
+        reviewedAt: submission.reviewed_at,
+      }];
+    }),
+    ...approvedProjectSubmissions.flatMap((submission) => {
+      const task = projectTaskById.get(submission.project_task_id);
+      const project = task ? projectById.get(task.project_id) : undefined;
+      if (!task || !project) return [];
+      return [{
+        id: `project-approved-${submission.id}`,
+        href: `/projects/${project.id}#task-${task.id}`,
+        title: `%${submission.proposed_pct} · ${task.task_name}`,
+        detail: `${project.project_no} · ${project.name} · ${task.phase_name}`,
+        reviewedBy: profileNameById.get(submission.reviewed_by ?? "") || "Yönetici",
+        reviewedAt: submission.reviewed_at,
+      }];
+    }),
+  ]
+    .sort((left, right) => new Date(right.reviewedAt ?? 0).getTime() - new Date(left.reviewedAt ?? 0).getTime())
+    .slice(0, 6);
 
   const quickActions = [
     {
@@ -460,15 +459,15 @@ function DashboardPage() {
       />
 
       {operationalManager ? (
-        <section>
-          <div className="mb-3">
-            <h2 className="text-lg font-bold">Proje ve Şantiye Özeti</h2>
+        <section className="surface-panel p-4 sm:p-5">
+          <div className="mb-4">
+            <h2 className="text-lg font-black">Genel Durum</h2>
             <p className="text-sm text-muted-foreground">
-              Portföy, onay, gecikme ve stok durumunu tek bakışta görün.
+              Proje, görev, onay, gecikme ve stok bilgisini tek alanda takip edin.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            {projectMetrics.map((metric) => {
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {operationalMetrics.map((metric) => {
               const card = (
                 <Card
                   className={
@@ -494,6 +493,7 @@ function DashboardPage() {
                     <div>
                       <p className="text-xs text-muted-foreground sm:text-sm">{metric.label}</p>
                       <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{metric.detail}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -526,7 +526,7 @@ function DashboardPage() {
         </section>
       ) : (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {projectMetrics.map((metric) => {
+          {personalMetrics.map((metric) => {
             const card = (
               <Card className="border-border bg-card">
                 <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
@@ -551,36 +551,8 @@ function DashboardPage() {
         </div>
       )}
 
-      {operationalManager ? (
-        <section className="mt-7">
-          <div className="mb-3">
-            <h2 className="text-lg font-bold">Görev Özeti</h2>
-            <p className="text-sm text-muted-foreground">
-              Projelere bağlı ve bağımsız operasyon görevlerinin durumu.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            {taskMetrics.map((metric) => (
-              <a key={metric.label} href={metric.href} className="block">
-                <Card className="border-border bg-card">
-                  <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
-                    <div className="rounded-lg bg-primary/15 p-3 text-primary">
-                      <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground sm:text-sm">{metric.label}</p>
-                      <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </a>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       {role === "admin" && pendingApprovalItems.length > 0 ? (
-        <section id="approval-center" className="mt-7 scroll-mt-6">
+        <section id="approval-center" className="surface-panel mt-7 scroll-mt-6 p-4 sm:p-5">
           <div className="mb-3">
             <h2 className="text-lg font-bold">Onay Bekleyen Kayıtlar</h2>
             <p className="text-sm text-muted-foreground">
@@ -613,7 +585,7 @@ function DashboardPage() {
       ) : null}
 
       {role === "admin" && overdueTaskCount ? (
-        <section id="overdue-tasks" className="mt-7 scroll-mt-6">
+        <section id="overdue-tasks" className="surface-panel mt-7 scroll-mt-6 p-4 sm:p-5">
           <div className="mb-3">
             <h2 className="text-lg font-bold">Geciken Görevler</h2>
             <p className="text-sm text-muted-foreground">Planlanan tarihi geçmiş, henüz kapanmamış kayıtlar.</p>
@@ -645,91 +617,36 @@ function DashboardPage() {
       ) : null}
 
       {role === "admin" ? (
-        <section id="work-order-approvals" className="mt-7 scroll-mt-6">
+        <section id="recent-approvals" className="surface-panel mt-7 scroll-mt-6 p-4 sm:p-5">
           <div className="mb-3">
-            <h2 className="text-lg font-bold">Son Onaylanan Görev İlerlemeleri</h2>
+            <h2 className="text-lg font-black">Son Onaylar</h2>
             <p className="text-sm text-muted-foreground">
-              Bekleyen kayıtlar yukarıdaki Onay Bekleyen Kayıtlar alanında gösterilir.
+              Proje ve saha görevlerindeki son yönetici kararları.
             </p>
           </div>
           <div className="grid gap-3 xl:grid-cols-2">
-            {approvedWorkSubmissions.map((submission) => {
-              const order = orders.find((item) => item.id === submission.work_order_id);
-              if (!order) return null;
-              return (
-                <a
-                  key={submission.id}
-                  href={`/jobs/${order.id}`}
-                  className="surface-panel block border-emerald-500/30 bg-emerald-500/5 p-4 transition-colors hover:bg-emerald-500/10"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-black text-emerald-300">ONAYLANDI</p>
-                      <p className="mt-1 font-black">
-                        %{submission.pct} · #{order.work_order_no} · {order.title}
-                      </p>
-                    </div>
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
+            {recentApprovalItems.map((item) => (
+              <a
+                key={item.id}
+                href={item.href}
+                className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 transition-colors hover:bg-emerald-500/10"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black text-emerald-300">ONAYLANDI</p>
+                    <p className="mt-1 font-black">{item.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
                   </div>
-                  <p className="mt-3 text-xs text-emerald-200/80">
-                    {profileNameById.get(submission.reviewed_by ?? "") || "Yönetici"} tarafından{" "}
-                    {formatProjectDateTime(submission.reviewed_at)} tarihinde onaylandı
-                  </p>
-                </a>
-              );
-            })}
-
-            {approvedWorkSubmissions.length === 0 ? (
-              <div className="surface-panel p-5 text-sm text-muted-foreground xl:col-span-2">
-                Henüz onaylanmış görev ilerlemesi yok.
-              </div>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      {role === "admin" ? (
-        <section id="project-approvals" className="mt-7 scroll-mt-6">
-          <div className="mb-3">
-            <h2 className="text-lg font-bold">Son Onaylanan Proje Görevleri</h2>
-            <p className="text-sm text-muted-foreground">
-              Bekleyen kayıtlar yukarıdaki Onay Bekleyen Kayıtlar alanında gösterilir.
-            </p>
-          </div>
-          <div className="grid gap-3 xl:grid-cols-2">
-            {approvedProjectSubmissions.map((submission) => {
-              const task = projectTaskById.get(submission.project_task_id);
-              const project = task ? projectById.get(task.project_id) : undefined;
-              if (!task || !project) return null;
-              return (
-                <a
-                  key={submission.id}
-                  href={`/projects/${project.id}#task-${task.id}`}
-                  className="surface-panel block border-emerald-500/30 bg-emerald-500/5 p-4 transition-colors hover:bg-emerald-500/10"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-black text-emerald-300">ONAYLANDI</p>
-                      <p className="mt-1 font-black">
-                        %{submission.proposed_pct} · {task.task_name}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {project.project_no} · {project.name} · {task.phase_name}
-                      </p>
-                    </div>
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
-                  </div>
-                  <p className="mt-3 text-xs text-emerald-200/80">
-                    {profileNameById.get(submission.reviewed_by ?? "") || "Yönetici"} tarafından{" "}
-                    {formatProjectDateTime(submission.reviewed_at)} tarihinde onaylandı
-                  </p>
-                </a>
-              );
-            })}
-
-            {approvedProjectSubmissions.length === 0 ? (
-              <div className="surface-panel p-5 text-sm text-muted-foreground xl:col-span-2">
-                Henüz onaylanmış proje görevi yok.
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
+                </div>
+                <p className="mt-3 text-xs text-emerald-200/80">
+                  {item.reviewedBy} tarafından {formatProjectDateTime(item.reviewedAt)} tarihinde onaylandı
+                </p>
+              </a>
+            ))}
+            {recentApprovalItems.length === 0 ? (
+              <div className="rounded-xl border border-border bg-muted/20 p-5 text-sm text-muted-foreground xl:col-span-2">
+                Henüz onaylanmış kayıt yok.
               </div>
             ) : null}
           </div>
