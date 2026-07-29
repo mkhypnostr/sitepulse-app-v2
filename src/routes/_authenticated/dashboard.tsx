@@ -292,11 +292,11 @@ function DashboardPage() {
       ["in_progress", "external_approval", "revision_required", "blocked", "completed"].includes(task.status),
   );
   const technicalOpenTasks = trackedProjectTasks.filter(
-    (task) => !["completed", "cancelled", "not_applicable", "external_approval"].includes(task.status),
+    (task) => !["completed", "cancelled", "not_applicable", "external_approval", "review_pending"].includes(task.status),
   ).length;
   const technicalCompletedTasks = trackedProjectTasks.filter((task) => task.status === "completed").length;
   const independentOpenTasks = independentTasks.filter(
-    (task) => !["completed", "cancelled", "not_applicable", "external_approval"].includes(task.status),
+    (task) => !["completed", "cancelled", "not_applicable", "external_approval", "review_pending"].includes(task.status),
   ).length;
   const independentCompletedTasks = independentTasks.filter((task) => task.status === "completed").length;
   const projectSubmissions = query.data?.projectSubmissions ?? [];
