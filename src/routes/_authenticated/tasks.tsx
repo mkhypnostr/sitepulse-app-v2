@@ -101,6 +101,8 @@ function TasksPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", projectId: "none", customerId: "none", assigneeId: "none", plannedDate: "" });
   const [editingTask, setEditingTask] = useState<IndependentTask | null>(null);
+  const [selectedTask, setSelectedTask] = useState<IndependentTask | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<IndependentTask | null>(null);
 
   const tasksQuery = useQuery({
     queryKey: ["unified-tasks"],
@@ -216,6 +218,8 @@ function TasksPage() {
         queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
+      setDeleteTarget(null);
+      setSelectedTask(null);
       toast.success("Bağımsız görev silindi");
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -309,11 +313,11 @@ function TasksPage() {
     </section>
     <section className="surface-panel mt-6 p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Atanmış Saha Görevleri</h2><p className="text-sm text-muted-foreground">Taşeronlara atanmış görevleri finansal bilgi olmadan takip edin.</p></div>{role === "admin" ? <Link to="/work-orders" className="text-sm font-bold text-primary">Yönetim ekranını aç</Link> : null}</div>
-      {visibleWorkOrders.length === 0 ? <div className="rounded-xl border border-border bg-background/35 p-5 text-sm text-muted-foreground">Bu görünümde atanmış saha görevi yok.</div> : <div className="grid gap-3">{visibleWorkOrders.map((task) => <TaskCard key={task.id} title={`#${task.work_order_no ?? "—"} · ${task.title}`} status={task.status} plannedDate={task.scheduled_at} assignee={contractorsByWorkOrder.get(task.id)} subtitle={`${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız saha görevi"} · İlerleme %${task.progress_pct}`} />)}</div>}
+      {visibleWorkOrders.length === 0 ? <div className="rounded-xl border border-border bg-background/35 p-5 text-sm text-muted-foreground">Bu görünümde atanmış saha görevi yok.</div> : <div className="grid gap-3">{visibleWorkOrders.map((task) => <TaskCard key={task.id} title={`#${task.work_order_no ?? "—"} · ${task.title}`} status={task.status} plannedDate={task.scheduled_at} assignee={contractorsByWorkOrder.get(task.id)} subtitle={`${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız saha görevi"} · İlerleme %${task.progress_pct}`} actions={<Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>} />)}</div>}
     </section>
     <section className="surface-panel mt-7 p-4 sm:p-5">
       <div className="mb-3"><h2 className="text-lg font-black">Bağımsız Görevler</h2><p className="text-sm text-muted-foreground">Müşteri veya proje seçmeden açılabilen operasyon kayıtları.</p></div>
-      {visibleIndependentTasks.length === 0 ? <EmptyState title="Bu görünümde bağımsız görev yok" description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{visibleIndependentTasks.map((task) => <TaskCard key={task.id} id={`task-${task.id}`} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} actions={isOperationalManager(role) ? <><Button type="button" size="sm" variant="outline" onClick={() => { setEditingTask(task); setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" }); setOpen(true); }}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button>{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => { if (window.confirm(`“${task.title}” görevi kalıcı olarak silinsin mi?`)) deleteTask.mutate(task.id); }} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</> : null} />)}</div>}
+      {visibleIndependentTasks.length === 0 ? <EmptyState title="Bu görünümde bağımsız görev yok" description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{visibleIndependentTasks.map((task) => <TaskCard key={task.id} id={`task-${task.id}`} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} actions={<><Button type="button" size="sm" variant="outline" onClick={() => setSelectedTask(task)}>Görevi Aç</Button>{isOperationalManager(role) ? <Button type="button" size="sm" variant="outline" onClick={() => { setEditingTask(task); setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" }); setOpen(true); }}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(task)} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>} />)}</div>}
     </section>
     <section className="surface-panel mt-7 p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Proje Görevleri</h2><p className="text-sm text-muted-foreground">Projelerin süreçlerine bağlı kontrol ve saha görevleri.</p></div><Link to="/projects" className="text-sm font-bold text-primary">Projeleri aç</Link></div>
@@ -334,6 +338,36 @@ function TasksPage() {
         })}
       </Accordion>}
     </section>
+    <Dialog open={Boolean(selectedTask)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedTask(null); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{selectedTask?.title || "Görev Detayı"}</DialogTitle>
+          <DialogDescription>Bağımsız operasyon görevi bilgileri</DialogDescription>
+        </DialogHeader>
+        {selectedTask ? <div className="grid gap-3 text-sm">
+          <div className="rounded-xl border border-border bg-muted/20 p-3"><p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Açıklama</p><p className="mt-1 whitespace-pre-wrap">{selectedTask.description?.trim() || "Açıklama girilmemiş."}</p></div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-border p-3"><p className="text-xs font-bold text-muted-foreground">Sorumlu</p><p className="mt-1 font-bold">{selectedTask.assigned_to ? assigneeById.get(selectedTask.assigned_to)?.full_name || "Kullanıcı" : "Henüz atama yok"}</p></div>
+            <div className="rounded-xl border border-border p-3"><p className="text-xs font-bold text-muted-foreground">Planlanan Tarih</p><p className="mt-1 font-bold">{selectedTask.planned_date ? formatDate(selectedTask.planned_date) : "Tarih belirlenmedi"}</p></div>
+            <div className="rounded-xl border border-border p-3"><p className="text-xs font-bold text-muted-foreground">Bağlı Proje</p><p className="mt-1 font-bold">{selectedTask.project_id ? projectById.get(selectedTask.project_id)?.name || "Proje" : "Bağımsız"}</p></div>
+            <div className="rounded-xl border border-border p-3"><p className="text-xs font-bold text-muted-foreground">Müşteri</p><p className="mt-1 font-bold">{selectedTask.customer_id ? customerById.get(selectedTask.customer_id) || "Müşteri" : "Seçilmedi"}</p></div>
+          </div>
+        </div> : null}
+        <DialogFooter><Button variant="outline" onClick={() => setSelectedTask(null)}>Kapat</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={Boolean(deleteTarget)} onOpenChange={(nextOpen) => { if (!nextOpen && !deleteTask.isPending) setDeleteTarget(null); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Bağımsız görev kalıcı olarak silinsin mi?</DialogTitle>
+          <DialogDescription>“{deleteTarget?.title}” görevi geri alınamayacak şekilde silinir.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteTask.isPending}>Vazgeç</Button>
+          <Button variant="destructive" onClick={() => deleteTarget && deleteTask.mutate(deleteTarget.id)} disabled={deleteTask.isPending}>{deleteTask.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </>;
 }
 
