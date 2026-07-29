@@ -488,7 +488,11 @@ function ProjectsPage() {
       />
 
       {data.projects.length > 0 ? (
-        <div className="mb-5 space-y-3">
+        <section className="surface-panel mb-5 space-y-3 p-4 sm:p-5">
+          <div>
+            <h2 className="font-black">Proje Portföyü</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Taslak, aktif ve tamamlanan proje/şantiye kayıtlarını filtreleyin.</p>
+          </div>
           <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
             <Search className="h-5 w-5 text-muted-foreground" />
             <Input
@@ -524,7 +528,7 @@ function ProjectsPage() {
               );
             })}
           </div>
-        </div>
+        </section>
       ) : null}
 
       {data.projects.length === 0 ? (
@@ -536,6 +540,8 @@ function ProjectsPage() {
       ) : filteredProjects.length === 0 ? (
         <EmptyState title="Seçtiğiniz filtreyle eşleşen proje bulunamadı" />
       ) : (
+        <section className="surface-panel p-4 sm:p-5">
+          <div className="mb-4"><h2 className="font-black">Proje ve Şantiye Kayıtları</h2><p className="mt-1 text-sm text-muted-foreground">Bir projeyi açarak süreçlerini, görevlerini ve belgelerini yönetin.</p></div>
         <div className="grid gap-4 xl:grid-cols-2">
           {filteredProjects.map((project) => {
             const projectProcesses = processesByProject.get(project.id) ?? [];
@@ -630,6 +636,7 @@ function ProjectsPage() {
             );
           })}
         </div>
+        </section>
       )}
 
       {pageQuery.error ? (

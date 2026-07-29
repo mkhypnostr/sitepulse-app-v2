@@ -276,7 +276,11 @@ function CustomersPage() {
           action={createButton}
         />
       ) : (
-        <div className="surface-panel overflow-hidden">
+        <section className="surface-panel overflow-hidden">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="font-black">Müşteri Kayıtları</h2>
+            <p className="mt-1 text-sm text-muted-foreground">İletişim, portal ve fatura bilgilerini bu bölümden yönetin.</p>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -333,7 +337,7 @@ function CustomersPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </section>
       )}
       {customersQuery.error ? (
         <p className="mt-4 text-sm text-destructive">{errorMessage(customersQuery.error)}</p>

@@ -654,7 +654,7 @@ function DashboardPage() {
       ) : null}
 
       {role === "admin" ? (
-        <section className="mt-7">
+        <section className="surface-panel mt-7 p-4 sm:p-5">
           <div className="mb-3">
             <h2 className="text-lg font-bold">Hızlı İşlemler</h2>
             <p className="text-sm text-muted-foreground">
@@ -667,7 +667,7 @@ function DashboardPage() {
                 key={action.label}
                 to={action.to}
                 search={"search" in action ? action.search : undefined}
-                className="group surface-panel flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:bg-accent/40"
+                className="group rounded-xl border border-border bg-card/60 flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:bg-accent/40"
               >
                 <span className="rounded-xl bg-primary/15 p-3 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                   <action.icon className="h-6 w-6" />
@@ -683,7 +683,7 @@ function DashboardPage() {
       ) : null}
 
       {role === "technical_office" ? (
-        <section className="mt-7">
+        <section className="surface-panel mt-7 p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-bold">Proje Görevleri</h2>
@@ -702,7 +702,7 @@ function DashboardPage() {
                 to="/projects/$projectId"
                 params={{ projectId: task.project_id }}
                 hash={`task-${task.id}`}
-                className="surface-panel block p-4 transition-colors hover:border-primary/60"
+                className="block rounded-xl border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -719,14 +719,14 @@ function DashboardPage() {
               </Link>
             ))}
             {visibleProjectTasks.length === 0 ? (
-              <div className="surface-panel p-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-xl border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
                 Henüz görüntülenecek proje görevi yok.
               </div>
             ) : null}
           </div>
         </section>
       ) : (
-      <section className="mt-7">
+      <section className="surface-panel mt-7 p-4 sm:p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-bold">Son Görevler</h2>
           <Link
@@ -748,7 +748,7 @@ function DashboardPage() {
               key={order.id}
               to="/jobs/$jobId"
               params={{ jobId: order.id }}
-              className="surface-panel block p-4 transition-colors hover:border-primary/60"
+              className="block rounded-xl border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -784,7 +784,7 @@ function DashboardPage() {
             </Link>
           ))}
           {orders.length === 0 ? (
-            <div className="surface-panel p-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
               Henüz görüntülenecek görev yok.
             </div>
           ) : null}
