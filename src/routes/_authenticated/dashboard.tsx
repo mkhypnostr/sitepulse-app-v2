@@ -285,7 +285,6 @@ function DashboardPage() {
   ).length;
   const pendingApprovalCount =
     pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
-  const pendingTarget = pendingApprovalCount > 0 ? "#approval-center" : undefined;
   const pendingApprovalItems = [
     ...pendingCompletionOrders.map((order) => ({
       id: `completion-${order.id}`,
@@ -325,6 +324,11 @@ function DashboardPage() {
     }),
   ];
   const overdueTaskCount = overdueOrders.length + overdueProjectTasks.length + overdueIndependentTasks.length;
+  // Tek bir kayıt varsa karta dokununca doğrudan o kaydın onayına gider.
+  // Birden fazla kayıt varsa önce onay merkezi açılır; yöneticinin yanlış kayda
+  // karar vermesini önlemek için burada tahmin yapılmaz.
+  const pendingTarget =
+    pendingApprovalItems.length === 1 ? pendingApprovalItems[0].href : pendingApprovalCount > 0 ? "#approval-center" : undefined;
 
   const projectMetrics =
     role === "admin"
