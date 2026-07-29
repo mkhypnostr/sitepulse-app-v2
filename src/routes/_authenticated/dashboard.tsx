@@ -340,7 +340,7 @@ function DashboardPage() {
         ? "/dashboard#approval-center"
         : undefined;
 
-  const taskRoute = role === "admin" ? "/work-orders" : "/tasks";
+  const taskRoute = "/tasks?filter=open";
   const totalTasks = orders.length + trackedProjectTasks.length + independentTasks.length;
   const openTasks = active + technicalOpenTasks + independentOpenTasks;
   const operationalMetrics = [
@@ -491,15 +491,15 @@ function DashboardPage() {
             {operationalMetrics.map((metric) => {
               const card = (
                 <Card
-                  className={
+                  className={`h-full min-h-[190px] ${
                     metric.attention === "danger" && metric.value > 0
                       ? "border-red-500/40 bg-red-500/5"
                       : metric.attention === "warning" && metric.value > 0
                         ? "border-amber-500/40 bg-amber-500/5"
                         : "border-border bg-card"
-                  }
+                  }`}
                 >
-                  <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
+                  <CardContent className="flex h-full items-center gap-3 p-4 sm:gap-4 sm:p-5">
                     <div
                       className={
                         metric.attention === "danger" && metric.value > 0
@@ -511,10 +511,10 @@ function DashboardPage() {
                     >
                       <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground sm:text-sm">{metric.label}</p>
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-xs leading-snug text-muted-foreground sm:text-sm">{metric.label}</p>
                       <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{metric.detail}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">{metric.detail}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -524,7 +524,7 @@ function DashboardPage() {
                   key={metric.label}
                   href={metric.href}
                   aria-label={`${metric.label}: ${metric.value}`}
-                  className="block cursor-pointer transition-transform hover:-translate-y-0.5"
+                  className="block h-full cursor-pointer transition-transform hover:-translate-y-0.5"
                 >
                   {card}
                 </a>
@@ -533,7 +533,7 @@ function DashboardPage() {
                   key={metric.label}
                   type="button"
                   onClick={() => toast.info(metric.emptyMessage)}
-                  className="block w-full cursor-pointer text-left transition-transform hover:-translate-y-0.5"
+                  className="block h-full w-full cursor-pointer text-left transition-transform hover:-translate-y-0.5"
                 >
                   {card}
                 </button>
