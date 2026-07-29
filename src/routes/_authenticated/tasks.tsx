@@ -44,6 +44,7 @@ type ProjectTask = {
   responsible_id: string | null;
   status: string;
   planned_date: string | null;
+  note: string | null;
   approved_progress_pct: number;
 };
 type AssignedWorkOrder = {
@@ -103,9 +104,12 @@ function TasksPage() {
   const [editingTask, setEditingTask] = useState<IndependentTask | null>(null);
   const [editingWorkOrder, setEditingWorkOrder] = useState<AssignedWorkOrder | null>(null);
   const [workOrderForm, setWorkOrderForm] = useState({ title: "", description: "", assigneeId: "none", scheduledAt: "" });
+  const [editingProjectTask, setEditingProjectTask] = useState<ProjectTask | null>(null);
+  const [projectTaskForm, setProjectTaskForm] = useState({ title: "", note: "", assigneeId: "none", plannedDate: "" });
   const [selectedTask, setSelectedTask] = useState<IndependentTask | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IndependentTask | null>(null);
   const [deleteWorkOrderTarget, setDeleteWorkOrderTarget] = useState<AssignedWorkOrder | null>(null);
+  const [removeProjectTaskTarget, setRemoveProjectTaskTarget] = useState<ProjectTask | null>(null);
 
   const tasksQuery = useQuery({
     queryKey: ["unified-tasks"],
@@ -113,7 +117,7 @@ function TasksPage() {
     queryFn: async () => {
       const [independentResult, projectTasksResult, workOrdersResult, assignmentsResult, projectsResult, customersResult, assigneesResult] = await Promise.all([
         supabase.from("operational_tasks" as never).select("id, title, description, project_id, customer_id, assigned_to, status, planned_date").order("planned_date", { ascending: true, nullsFirst: false }),
-        supabase.from("project_tasks").select("id, project_id, task_name, phase_name, responsible_id, status, planned_date, approved_progress_pct").order("planned_date", { ascending: true, nullsFirst: false }),
+        supabase.from("project_tasks").select("id, project_id, task_name, phase_name, responsible_id, status, planned_date, note, approved_progress_pct").order("planned_date", { ascending: true, nullsFirst: false }),
         supabase.from("work_orders").select("id, work_order_no, title, description, project_id, customer_id, status, scheduled_at, progress_pct").order("scheduled_at", { ascending: true, nullsFirst: false }),
         supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
         supabase.from("projects").select("id, name, project_no").order("created_at", { ascending: false }),
@@ -274,6 +278,51 @@ function TasksPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const updateProjectTask = useMutation({
+    mutationFn: async () => {
+      if (!editingProjectTask) throw new Error("Düzenlenecek proje görevi bulunamadı.");
+      if (projectTaskForm.title.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      const { error } = await supabase.rpc("manage_project_task_from_task_center" as never, {
+        target_task_id: editingProjectTask.id,
+        task_title: projectTaskForm.title.trim(),
+        assigned_user_id: projectTaskForm.assigneeId === "none" ? null : projectTaskForm.assigneeId,
+        planned_on: projectTaskForm.plannedDate || null,
+        task_note: projectTaskForm.note.trim() || null,
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
+      ]);
+      setEditingProjectTask(null);
+      toast.success("Proje görevi güncellendi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const removeProjectTask = useMutation({
+    mutationFn: async () => {
+      if (!removeProjectTaskTarget) throw new Error("Kaldırılacak proje görevi bulunamadı.");
+      const { error } = await supabase.rpc("remove_project_task_from_task_center" as never, {
+        target_task_id: removeProjectTaskTarget.id,
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
+      ]);
+      setRemoveProjectTaskTarget(null);
+      toast.success("Proje görevi aktif listeden kaldırıldı");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   if (!canViewTasks) return <AccessDenied />;
   if (tasksQuery.isLoading) return <LoadingState label="Görevler yükleniyor..." />;
   if (tasksQuery.error) return <p className="surface-panel p-5 text-destructive">{errorMessage(tasksQuery.error)}</p>;
@@ -357,6 +406,16 @@ function TasksPage() {
     });
   };
 
+  const startEditingProjectTask = (task: ProjectTask) => {
+    setEditingProjectTask(task);
+    setProjectTaskForm({
+      title: task.task_name,
+      note: task.note ?? "",
+      assigneeId: task.responsible_id ?? "none",
+      plannedDate: task.planned_date ?? "",
+    });
+  };
+
   const unifiedTasks = [
     ...visibleWorkOrders.map((task) => ({
       id: `work-order-${task.id}`,
@@ -386,7 +445,7 @@ function TasksPage() {
       plannedDate: task.planned_date,
       assignee: task.responsible_id ? assigneeById.get(task.responsible_id) : undefined,
       subtitle: `${projectById.get(task.project_id)?.name || "Proje"} · ${task.phase_name} · Onaylı ilerleme %${task.approved_progress_pct}`,
-      actions: <Link to="/projects/$projectId" params={{ projectId: task.project_id }} hash={`task-${task.id}`}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>,
+      actions: <><Link to="/projects/$projectId" params={{ projectId: task.project_id }} hash={`task-${task.id}`}><Button type="button" size="sm" variant="outline">Kanıt / Detay</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveProjectTaskTarget(task)} disabled={removeProjectTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Kaldır</Button> : null}</>,
     })),
   ].sort((left, right) => (left.plannedDate || "9999-12-31").localeCompare(right.plannedDate || "9999-12-31"));
 
@@ -427,6 +486,23 @@ function TasksPage() {
         <DialogFooter><Button variant="outline" onClick={() => setSelectedTask(null)}>Kapat</Button></DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog open={Boolean(editingProjectTask)} onOpenChange={(nextOpen) => { if (!nextOpen && !updateProjectTask.isPending) setEditingProjectTask(null); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Proje görevini düzenle</DialogTitle>
+          <DialogDescription>Bu ekrandan görev tanımı, plan tarihi ve sorumlusu yönetilir. Kanıt, ilerleme ve onay akışı “Kanıt / Detay” ekranında korunur.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <label className="grid gap-1.5 text-sm font-medium">Görev Başlığı<Input value={projectTaskForm.title} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, title: event.target.value })} maxLength={180} /></label>
+          <label className="grid gap-1.5 text-sm font-medium">Planlama Notu<Textarea value={projectTaskForm.note} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, note: event.target.value })} maxLength={2000} /></label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-medium">Sorumlu<Select value={projectTaskForm.assigneeId} onValueChange={(assigneeId) => setProjectTaskForm({ ...projectTaskForm, assigneeId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Henüz atama yok</SelectItem>{data.assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}</SelectItem>)}</SelectContent></Select></label>
+            <label className="grid gap-1.5 text-sm font-medium">Planlanan Tarih<Input type="date" value={projectTaskForm.plannedDate} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, plannedDate: event.target.value })} /></label>
+          </div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={() => setEditingProjectTask(null)} disabled={updateProjectTask.isPending}>Vazgeç</Button><Button onClick={() => updateProjectTask.mutate()} disabled={updateProjectTask.isPending || projectTaskForm.title.trim().length < 3}>{updateProjectTask.isPending ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Dialog open={Boolean(editingWorkOrder)} onOpenChange={(nextOpen) => { if (!nextOpen && !updateWorkOrder.isPending) setEditingWorkOrder(null); }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
@@ -463,6 +539,15 @@ function TasksPage() {
           <DialogDescription>{deleteWorkOrderTarget ? `#${deleteWorkOrderTarget.work_order_no ?? "—"} · ${deleteWorkOrderTarget.title}` : "Bu saha görevi"} ve bağlı atama, ilerleme, kanıt ve finans kayıtları silinir. Bu işlem geri alınamaz.</DialogDescription>
         </DialogHeader>
         <DialogFooter><Button variant="outline" onClick={() => setDeleteWorkOrderTarget(null)} disabled={deleteWorkOrder.isPending}>Vazgeç</Button><Button variant="destructive" onClick={() => deleteWorkOrder.mutate()} disabled={deleteWorkOrder.isPending}>{deleteWorkOrder.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={Boolean(removeProjectTaskTarget)} onOpenChange={(nextOpen) => { if (!nextOpen && !removeProjectTask.isPending) setRemoveProjectTaskTarget(null); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Proje görevi aktif listeden kaldırılsın mı?</DialogTitle>
+          <DialogDescription>{removeProjectTaskTarget ? `“${removeProjectTaskTarget.task_name}” görevi` : "Bu görev"} uygulanmaz olarak işaretlenir. Proje, kanıt ve geçmiş kayıtları korunur; görev aktif listelerde görünmez.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter><Button variant="outline" onClick={() => setRemoveProjectTaskTarget(null)} disabled={removeProjectTask.isPending}>Vazgeç</Button><Button variant="destructive" onClick={() => removeProjectTask.mutate()} disabled={removeProjectTask.isPending}>{removeProjectTask.isPending ? "Kaldırılıyor..." : "Görevi Aktif Listeden Kaldır"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </>;
