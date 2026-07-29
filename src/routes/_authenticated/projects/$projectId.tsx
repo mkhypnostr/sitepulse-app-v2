@@ -568,6 +568,11 @@ function TaskEditor({
   editable: boolean;
   canAssign: boolean;
 }) {
+  const { role, user } = useAuth();
+  const canSubmitProgress =
+    Boolean(user?.id) &&
+    task.responsible_id === user?.id &&
+    (role === "contractor" || role === "technical_office");
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<ProjectTaskStatus>(task.status);
   const [responsibleId, setResponsibleId] = useState(task.responsible_id ?? "none");
@@ -681,7 +686,11 @@ function TaskEditor({
         </div>
       </div>
 
-      <ProjectTaskProgress task={task} canSubmit={false} canReview={editable} />
+      <ProjectTaskProgress
+        task={task}
+        canSubmit={canSubmitProgress}
+        canReview={role === "admin"}
+      />
 
       <div className={`mt-4 grid gap-3 md:grid-cols-2 ${canAssign ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
         <label className="grid gap-1 text-xs font-bold">
@@ -763,7 +772,7 @@ function TaskEditor({
         projectId={task.project_id}
         requiresPhoto={task.requires_photo}
         requiresDocument={task.requires_document}
-        canUpload={editable}
+        canUpload={canSubmitProgress}
       />
 
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
