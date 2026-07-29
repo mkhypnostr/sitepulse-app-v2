@@ -294,7 +294,11 @@ function StockPage() {
           action={addButton}
         />
       ) : (
-        <div className="surface-panel overflow-hidden">
+        <section className="surface-panel overflow-hidden">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="font-black">Stok Kataloğu</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Depodaki malzemeleri ve kritik stok durumlarını takip edin.</p>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -330,7 +334,7 @@ function StockPage() {
               })}
             </TableBody>
           </Table>
-        </div>
+        </section>
       )}
     </>
   );
