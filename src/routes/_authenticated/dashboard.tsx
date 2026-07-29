@@ -233,7 +233,9 @@ function DashboardPage() {
   }
 
   const orders = query.data?.orders ?? [];
-  const active = orders.filter((order) => order.status === "in_progress").length;
+  const active = orders.filter(
+    (order) => !["completed", "cancelled", "review_pending"].includes(order.status),
+  ).length;
   const completed = orders.filter((order) => order.status === "completed").length;
   const allProjects = query.data?.allProjects ?? [];
   const visibleProjectTasks = query.data?.visibleProjectTasks ?? [];
@@ -247,12 +249,12 @@ function DashboardPage() {
       task.approved_progress_pct > 0 ||
       ["in_progress", "external_approval", "blocked", "completed"].includes(task.status),
   );
-  const technicalOpenTasks = trackedProjectTasks.filter((task) =>
-    ["in_progress", "external_approval", "blocked"].includes(task.status),
+  const technicalOpenTasks = trackedProjectTasks.filter(
+    (task) => !["completed", "not_applicable", "external_approval"].includes(task.status),
   ).length;
   const technicalCompletedTasks = trackedProjectTasks.filter((task) => task.status === "completed").length;
-  const independentOpenTasks = independentTasks.filter((task) =>
-    ["in_progress", "external_approval", "blocked"].includes(task.status),
+  const independentOpenTasks = independentTasks.filter(
+    (task) => !["completed", "not_applicable", "external_approval"].includes(task.status),
   ).length;
   const independentCompletedTasks = independentTasks.filter((task) => task.status === "completed").length;
   const projectSubmissions = query.data?.projectSubmissions ?? [];
