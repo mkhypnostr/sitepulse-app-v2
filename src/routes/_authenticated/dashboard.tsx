@@ -234,7 +234,7 @@ function DashboardPage() {
 
   const orders = query.data?.orders ?? [];
   const active = orders.filter(
-    (order) => !["completed", "cancelled", "review_pending"].includes(order.status),
+    (order) => !["completed", "cancelled", "not_applicable", "external_approval", "review_pending"].includes(order.status),
   ).length;
   const completed = orders.filter((order) => order.status === "completed").length;
   const allProjects = query.data?.allProjects ?? [];
@@ -247,14 +247,14 @@ function DashboardPage() {
     (task) =>
       Boolean(task.responsible_id) ||
       task.approved_progress_pct > 0 ||
-      ["in_progress", "external_approval", "blocked", "completed"].includes(task.status),
+      ["in_progress", "external_approval", "revision_required", "blocked", "completed"].includes(task.status),
   );
   const technicalOpenTasks = trackedProjectTasks.filter(
-    (task) => !["completed", "not_applicable", "external_approval"].includes(task.status),
+    (task) => !["completed", "cancelled", "not_applicable", "external_approval"].includes(task.status),
   ).length;
   const technicalCompletedTasks = trackedProjectTasks.filter((task) => task.status === "completed").length;
   const independentOpenTasks = independentTasks.filter(
-    (task) => !["completed", "not_applicable", "external_approval"].includes(task.status),
+    (task) => !["completed", "cancelled", "not_applicable", "external_approval"].includes(task.status),
   ).length;
   const independentCompletedTasks = independentTasks.filter((task) => task.status === "completed").length;
   const projectSubmissions = query.data?.projectSubmissions ?? [];
@@ -269,19 +269,19 @@ function DashboardPage() {
   const overdueOrders = orders.filter(
     (order) =>
       new Date(order.scheduled_at).getTime() < Date.now() &&
-      !["completed", "cancelled"].includes(order.status),
+      !["completed", "cancelled", "not_applicable"].includes(order.status),
   );
   const overdueProjectTasks = trackedProjectTasks.filter(
     (task) =>
       Boolean(task.planned_date) &&
       new Date(`${task.planned_date}T23:59:59`).getTime() < Date.now() &&
-      !["completed", "not_applicable"].includes(task.status),
+      !["completed", "cancelled", "not_applicable"].includes(task.status),
   );
   const overdueIndependentTasks = independentTasks.filter(
     (task) =>
       Boolean(task.planned_date) &&
       new Date(`${task.planned_date}T23:59:59`).getTime() < Date.now() &&
-      !["completed", "not_applicable"].includes(task.status),
+      !["completed", "cancelled", "not_applicable"].includes(task.status),
   );
   const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
   const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
@@ -343,7 +343,6 @@ function DashboardPage() {
         : undefined;
 
   const taskRoute = "/tasks?filter=open";
-  const totalTasks = orders.length + trackedProjectTasks.length + independentTasks.length;
   const openTasks = active + technicalOpenTasks + independentOpenTasks;
   const operationalMetrics = [
     {
@@ -356,7 +355,7 @@ function DashboardPage() {
     {
       label: "Açık Görevler",
       value: openTasks,
-      detail: `${totalTasks} takip edilen görev`,
+      detail: openTasks ? "Açık görevleri görüntüle" : "Açık görev yok",
       icon: BriefcaseBusiness,
       href: taskRoute,
     },
