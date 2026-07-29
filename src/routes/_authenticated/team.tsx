@@ -416,7 +416,11 @@ function TeamPage() {
           action={createButton}
         />
       ) : (
-        <div className="surface-panel overflow-hidden">
+        <section className="surface-panel overflow-hidden">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="font-black">Ekip Kayıtları</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Kullanıcı, firma ve rol bilgilerini tek listede takip edin.</p>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -486,7 +490,7 @@ function TeamPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </section>
       )}
       <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
         <ShieldCheck className="h-4 w-4 text-primary" /> {isAdmin
