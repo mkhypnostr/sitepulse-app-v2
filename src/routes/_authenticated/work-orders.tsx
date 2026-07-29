@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Plus, Search, SlidersHorizontal } from "lucide-react";
+import { Eye, Plus, Search, SlidersHorizontal, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -46,6 +46,7 @@ function WorkOrdersPage() {
   const { create, projectId } = Route.useSearch();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string; no: number | null } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [form, setForm] = useState({
@@ -116,6 +117,27 @@ function WorkOrdersPage() {
         assignments: assignmentsResult.data,
       };
     },
+  });
+
+  const deleteOrder = useMutation({
+    mutationFn: async () => {
+      if (!deleteTarget) throw new Error("Silinecek görev bulunamadı.");
+      const { error } = await supabase.rpc("delete_work_order_permanently" as never, {
+        target_work_order_id: deleteTarget.id,
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
+      ]);
+      setDeleteTarget(null);
+      toast.success("Saha görevi kalıcı olarak silindi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   useEffect(() => {
@@ -644,6 +666,14 @@ function WorkOrdersPage() {
                       <Eye className="mr-2 h-4 w-4" /> Detay
                     </Link>
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12 border-destructive/50 text-destructive hover:text-destructive"
+                    onClick={() => setDeleteTarget({ id: order.id, title: order.title, no: order.work_order_no })}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" /> Sil
+                  </Button>
                 </div>
               </div>
             );
@@ -655,6 +685,21 @@ function WorkOrdersPage() {
           ) : null}
         </div>
       )}
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(nextOpen) => !nextOpen && !deleteOrder.isPending && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/15 text-destructive"><AlertTriangle className="h-6 w-6" /></div>
+            <DialogTitle>Saha görevi kalıcı olarak silinsin mi?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget ? `#${deleteTarget.no ?? "—"} · ${deleteTarget.title}` : "Bu görev"} ve bağlı atama, ilerleme, kanıt ve finans kayıtları silinir. Bu işlem geri alınamaz.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteOrder.isPending}>Vazgeç</Button>
+            <Button variant="destructive" onClick={() => deleteOrder.mutate()} disabled={deleteOrder.isPending}>{deleteOrder.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
