@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, FolderKanban, Pencil, Plus, Trash2, UserRound } from "lucide-react";
+import { CalendarDays, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -15,7 +15,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 export const Route = createFileRoute("/_authenticated/tasks")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -288,14 +287,44 @@ function TasksPage() {
   const visibleTaskCount =
     visibleWorkOrders.length + visibleIndependentTasks.length + visibleProjectTasks.length;
 
-  const projectTaskGroups = Array.from(
-    visibleProjectTasks.reduce((groups, task) => {
-      const tasks = groups.get(task.project_id) ?? [];
-      tasks.push(task);
-      groups.set(task.project_id, tasks);
-      return groups;
-    }, new Map<string, ProjectTask[]>()),
-  );
+  const startEditingTask = (task: IndependentTask) => {
+    setEditingTask(task);
+    setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" });
+    setOpen(true);
+  };
+
+  const unifiedTasks = [
+    ...visibleWorkOrders.map((task) => ({
+      id: `work-order-${task.id}`,
+      category: "Saha",
+      title: `#${task.work_order_no ?? "—"} · ${task.title}`,
+      status: task.status,
+      plannedDate: task.scheduled_at,
+      assignee: contractorsByWorkOrder.get(task.id),
+      subtitle: `${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız görev"} · İlerleme %${task.progress_pct}`,
+      actions: <Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>,
+    })),
+    ...visibleIndependentTasks.map((task) => ({
+      id: `operational-${task.id}`,
+      category: task.project_id ? "Proje" : "Genel",
+      title: task.title,
+      status: task.status,
+      plannedDate: task.planned_date,
+      assignee: task.assigned_to ? assigneeById.get(task.assigned_to) : undefined,
+      subtitle: [task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Genel operasyon görevi",
+      actions: <><Button type="button" size="sm" variant="outline" onClick={() => setSelectedTask(task)}>Görevi Aç</Button>{isOperationalManager(role) ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(task)} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
+    })),
+    ...visibleProjectTasks.map((task) => ({
+      id: `project-task-${task.id}`,
+      category: "Proje",
+      title: task.task_name,
+      status: task.status,
+      plannedDate: task.planned_date,
+      assignee: task.responsible_id ? assigneeById.get(task.responsible_id) : undefined,
+      subtitle: `${projectById.get(task.project_id)?.name || "Proje"} · ${task.phase_name} · Onaylı ilerleme %${task.approved_progress_pct}`,
+      actions: <Link to="/projects/$projectId" params={{ projectId: task.project_id }} hash={`task-${task.id}`}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>,
+    })),
+  ].sort((left, right) => (left.plannedDate || "9999-12-31").localeCompare(right.plannedDate || "9999-12-31"));
 
   return <>
     <PageHeader title="Görevler" description="Saha, bağımsız ve proje görevlerini aynı dilde; durumlarına göre filtreleyin." actions={createButton} />
@@ -312,31 +341,9 @@ function TasksPage() {
       </div>
     </section>
     <section className="surface-panel mt-6 p-4 sm:p-5">
-      <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Atanmış Saha Görevleri</h2><p className="text-sm text-muted-foreground">Taşeronlara atanmış görevleri finansal bilgi olmadan takip edin.</p></div>{role === "admin" ? <Link to="/work-orders" className="text-sm font-bold text-primary">Yönetim ekranını aç</Link> : null}</div>
-      {visibleWorkOrders.length === 0 ? <div className="rounded-xl border border-border bg-background/35 p-5 text-sm text-muted-foreground">Bu görünümde atanmış saha görevi yok.</div> : <div className="grid gap-3">{visibleWorkOrders.map((task) => <TaskCard key={task.id} title={`#${task.work_order_no ?? "—"} · ${task.title}`} status={task.status} plannedDate={task.scheduled_at} assignee={contractorsByWorkOrder.get(task.id)} subtitle={`${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız saha görevi"} · İlerleme %${task.progress_pct}`} actions={<Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>} />)}</div>}
-    </section>
-    <section className="surface-panel mt-7 p-4 sm:p-5">
-      <div className="mb-3"><h2 className="text-lg font-black">Bağımsız Görevler</h2><p className="text-sm text-muted-foreground">Müşteri veya proje seçmeden açılabilen operasyon kayıtları.</p></div>
-      {visibleIndependentTasks.length === 0 ? <EmptyState title="Bu görünümde bağımsız görev yok" description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{visibleIndependentTasks.map((task) => <TaskCard key={task.id} id={`task-${task.id}`} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} actions={<><Button type="button" size="sm" variant="outline" onClick={() => setSelectedTask(task)}>Görevi Aç</Button>{isOperationalManager(role) ? <Button type="button" size="sm" variant="outline" onClick={() => { setEditingTask(task); setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" }); setOpen(true); }}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(task)} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>} />)}</div>}
-    </section>
-    <section className="surface-panel mt-7 p-4 sm:p-5">
-      <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Proje Görevleri</h2><p className="text-sm text-muted-foreground">Projelerin süreçlerine bağlı kontrol ve saha görevleri.</p></div><Link to="/projects" className="text-sm font-bold text-primary">Projeleri aç</Link></div>
-      {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Burada proje süreçlerinin başlangıç görevleri de görünür. Ana paneldeki <strong className="text-foreground">Açık Görevler</strong> sayısı ise yalnızca atanan veya üzerinde işlem bulunan proje görevlerini kapsar.</p> : null}
-      {projectTaskGroups.length === 0 ? <div className="rounded-xl border border-border bg-muted/20 p-7 text-center text-sm text-muted-foreground">Henüz proje görevi yok.</div> : <Accordion type="multiple" className="rounded-xl border border-border bg-muted/10 px-4">
-        {projectTaskGroups.map(([projectId, tasks]) => {
-          const tasksByPhase = tasks.reduce((groups, task) => {
-            const phaseTasks = groups.get(task.phase_name) ?? [];
-            phaseTasks.push(task);
-            groups.set(task.phase_name, phaseTasks);
-            return groups;
-          }, new Map<string, ProjectTask[]>());
-          const project = projectById.get(projectId);
-          return <AccordionItem key={projectId} value={projectId} className="border-border">
-            <AccordionTrigger className="py-4 hover:no-underline"><span className="flex min-w-0 items-center gap-3"><FolderKanban className="h-5 w-5 shrink-0 text-primary" /><span className="min-w-0 text-left"><span className="block truncate font-black">{project?.name || "Proje"}</span><span className="block text-xs font-normal text-muted-foreground">{tasks.length} proje görevi · {tasksByPhase.size} süreç</span></span></span></AccordionTrigger>
-            <AccordionContent className="pb-5"><div className="grid gap-4">{Array.from(tasksByPhase).map(([phaseName, phaseTasks]) => <div key={phaseName} className="rounded-xl border border-border bg-card/60 p-3"><div className="mb-3 flex items-center justify-between gap-3"><p className="font-bold">{phaseName}</p><Badge variant="secondary">{phaseTasks.length} görev</Badge></div><div className="grid gap-2">{phaseTasks.map((task) => <Link key={task.id} to="/projects/$projectId" params={{ projectId: task.project_id }} hash={`task-${task.id}`}><TaskCard title={task.task_name} status={task.status} plannedDate={task.planned_date} assignee={task.responsible_id ? assigneeById.get(task.responsible_id) : undefined} subtitle={`Onaylı ilerleme %${task.approved_progress_pct}`} /></Link>)}</div></div>)}</div></AccordionContent>
-          </AccordionItem>;
-        })}
-      </Accordion>}
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-black">Görev Listesi</h2><p className="text-sm text-muted-foreground">Saha, proje ve genel operasyon görevleri tek listede. Etiket, görevin kaynağını gösterir.</p></div>{role === "admin" ? <Link to="/work-orders" className="text-sm font-bold text-primary">Saha görev yönetimini aç</Link> : null}</div>
+      {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Proje görevlerinin başlangıç şablonları da bu listede görünür. Ana paneldeki <strong className="text-foreground">Açık Görevler</strong> sayısı ise yalnızca atanan veya üzerinde işlem bulunan görevleri kapsar.</p> : null}
+      {unifiedTasks.length === 0 ? <EmptyState title="Bu görünümde görev yok" description="Filtreyi değiştirin veya yeni görev oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{unifiedTasks.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} subtitle={task.subtitle} actions={task.actions} />)}</div>}
     </section>
     <Dialog open={Boolean(selectedTask)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedTask(null); }}>
       <DialogContent className="sm:max-w-lg">
@@ -371,6 +378,6 @@ function TasksPage() {
   </>;
 }
 
-function TaskCard({ id, title, status, plannedDate, assignee, subtitle, actions }: { id?: string; title: string; status: string; plannedDate: string | null; assignee?: Assignee; subtitle: string; actions?: ReactNode }) {
-  return <div id={id} className="scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-bold">{title}</p><p className="mt-1 text-sm text-muted-foreground">{subtitle}</p></div><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">{statusLabel[status] || status}</Badge>{assignee ? <Badge variant="secondary"><UserRound className="mr-1 h-3 w-3" />{assignee.full_name || "Kullanıcı"} · {roleLabels[assignee.role]}</Badge> : <Badge variant="secondary">Henüz atama yok</Badge>}{plannedDate ? <Badge variant="secondary"><CalendarDays className="mr-1 h-3 w-3" />{formatDate(plannedDate)}</Badge> : null}{actions}</div></div></div>;
+function TaskCard({ id, category, title, status, plannedDate, assignee, subtitle, actions }: { id?: string; category?: string; title: string; status: string; plannedDate: string | null; assignee?: Assignee; subtitle: string; actions?: ReactNode }) {
+  return <div id={id} className="scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{title}</p>{category ? <Badge variant="secondary">{category}</Badge> : null}</div><p className="mt-1 text-sm text-muted-foreground">{subtitle}</p></div><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">{statusLabel[status] || status}</Badge>{assignee ? <Badge variant="secondary"><UserRound className="mr-1 h-3 w-3" />{assignee.full_name || "Kullanıcı"} · {roleLabels[assignee.role]}</Badge> : <Badge variant="secondary">Henüz atama yok</Badge>}{plannedDate ? <Badge variant="secondary"><CalendarDays className="mr-1 h-3 w-3" />{formatDate(plannedDate)}</Badge> : null}{actions}</div></div></div>;
 }
