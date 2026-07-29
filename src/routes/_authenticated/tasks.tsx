@@ -424,7 +424,8 @@ function TasksPage() {
       status: task.status,
       plannedDate: task.scheduled_at,
       assignee: contractorsByWorkOrder.get(task.id),
-      subtitle: `${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız görev"} · İlerleme %${task.progress_pct}`,
+      relation: task.project_id ? `Proje: ${projectById.get(task.project_id)?.name || "Proje"}` : "Bağımsız saha görevi",
+      subtitle: `İlerleme %${task.progress_pct}`,
       onOpen: () => { window.location.href = `/jobs/${task.id}`; },
       actions: <><Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingWorkOrder(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteWorkOrderTarget(task)} disabled={deleteWorkOrder.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
     })),
@@ -435,7 +436,8 @@ function TasksPage() {
       status: task.status,
       plannedDate: task.planned_date,
       assignee: task.assigned_to ? assigneeById.get(task.assigned_to) : undefined,
-      subtitle: [task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Genel operasyon görevi",
+      relation: task.project_id ? `Proje: ${projectById.get(task.project_id)?.name || "Proje"}` : "Bağımsız görev",
+      subtitle: task.customer_id ? `Müşteri: ${customerById.get(task.customer_id) || "Müşteri"}` : "Genel operasyon görevi",
       onOpen: () => setSelectedTask(task),
       actions: <><Button type="button" size="sm" variant="outline" onClick={() => setSelectedTask(task)}>Görevi Aç</Button>{isOperationalManager(role) ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(task)} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
     })),
@@ -446,7 +448,8 @@ function TasksPage() {
       status: task.status,
       plannedDate: task.planned_date,
       assignee: task.responsible_id ? assigneeById.get(task.responsible_id) : undefined,
-      subtitle: `${projectById.get(task.project_id)?.name || "Proje"} · ${task.phase_name} · Onaylı ilerleme %${task.approved_progress_pct}`,
+      relation: `Proje: ${projectById.get(task.project_id)?.name || "Proje"}`,
+      subtitle: `${task.phase_name} · Onaylı ilerleme %${task.approved_progress_pct}`,
       onOpen: () => { window.location.href = `/projects/${task.project_id}#task-${task.id}`; },
       actions: <><Link to="/projects/$projectId" params={{ projectId: task.project_id }} hash={`task-${task.id}`}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveProjectTaskTarget(task)} disabled={removeProjectTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Kaldır</Button> : null}</>,
     })),
@@ -469,7 +472,7 @@ function TasksPage() {
     <section className="surface-panel mt-6 p-4 sm:p-5">
       <div className="mb-4"><h2 className="text-lg font-black">Görev Listesi</h2><p className="text-sm text-muted-foreground">Saha, proje ve bağımsız görevler burada tek listede yönetilir. Etiket yalnızca görevin nereden geldiğini gösterir.</p></div>
       {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Henüz atanmamış proje kontrol listesi kalemleri burada görev sayılmaz; yalnızca proje detayında görünür. Bu liste, Paneldeki görev sayılarıyla aynı kayıtları gösterir.</p> : null}
-      {unifiedTasks.length === 0 ? <EmptyState title="Bu görünümde görev yok" description="Filtreyi değiştirin veya yeni görev oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{unifiedTasks.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} subtitle={task.subtitle} onOpen={task.onOpen} actions={task.actions} />)}</div>}
+      {unifiedTasks.length === 0 ? <EmptyState title="Bu görünümde görev yok" description="Filtreyi değiştirin veya yeni görev oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{unifiedTasks.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} relation={task.relation} subtitle={task.subtitle} onOpen={task.onOpen} actions={task.actions} />)}</div>}
     </section>
     <Dialog open={Boolean(selectedTask)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedTask(null); }}>
       <DialogContent className="sm:max-w-lg">
@@ -556,6 +559,7 @@ function TasksPage() {
   </>;
 }
 
-function TaskCard({ id, category, title, status, plannedDate, assignee, subtitle, onOpen, actions }: { id?: string; category?: string; title: string; status: string; plannedDate: string | null; assignee?: Assignee; subtitle: string; onOpen?: () => void; actions?: ReactNode }) {
-  return <div id={id} className="scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" className="min-w-0 text-left" onClick={onOpen}><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{title}</p>{category ? <Badge variant="secondary">{category}</Badge> : null}</div><p className="mt-1 text-sm text-muted-foreground">{subtitle}</p></button><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">{statusLabel[status] || status}</Badge>{assignee ? <Badge variant="secondary"><UserRound className="mr-1 h-3 w-3" />{assignee.full_name || "Kullanıcı"} · {roleLabels[assignee.role]}</Badge> : <Badge variant="secondary">Henüz atama yok</Badge>}{plannedDate ? <Badge variant="secondary"><CalendarDays className="mr-1 h-3 w-3" />{formatDate(plannedDate)}</Badge> : null}{actions}</div></div></div>;
+function TaskCard({ id, category, title, status, plannedDate, assignee, relation, subtitle, onOpen, actions }: { id?: string; category?: string; title: string; status: string; plannedDate: string | null; assignee?: Assignee; relation: string; subtitle: string; onOpen?: () => void; actions?: ReactNode }) {
+  const overdue = !isTerminal(status) && isOverdue(plannedDate);
+  return <div id={id} className={`scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50 ${overdue ? "border-amber-500/50 bg-amber-500/[0.035]" : ""}`}><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" className="min-w-0 text-left transition-colors hover:text-primary" onClick={onOpen}><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{title}</p>{category ? <Badge variant="secondary">{category}</Badge> : null}{overdue ? <Badge className="border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-300">Gecikti</Badge> : null}</div><div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm"><span className="font-semibold text-foreground/90">{relation}</span><span className="text-muted-foreground">• {subtitle}</span></div></button><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">{statusLabel[status] || status}</Badge>{assignee ? <Badge variant="secondary"><UserRound className="mr-1 h-3 w-3" />{assignee.full_name || "Kullanıcı"} · {roleLabels[assignee.role]}</Badge> : <Badge variant="secondary">Henüz atama yok</Badge>}{plannedDate ? <Badge className={overdue ? "border-amber-500/50 bg-amber-500/15 text-amber-600 dark:text-amber-300" : ""} variant="secondary"><CalendarDays className="mr-1 h-3 w-3" />{formatDate(plannedDate)}</Badge> : null}{actions}</div></div></div>;
 }
