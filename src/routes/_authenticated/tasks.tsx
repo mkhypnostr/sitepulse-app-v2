@@ -50,6 +50,7 @@ type AssignedWorkOrder = {
   id: string;
   work_order_no: number | null;
   title: string;
+  description: string | null;
   project_id: string | null;
   customer_id: string | null;
   status: string;
@@ -100,8 +101,11 @@ function TasksPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", projectId: "none", customerId: "none", assigneeId: "none", plannedDate: "" });
   const [editingTask, setEditingTask] = useState<IndependentTask | null>(null);
+  const [editingWorkOrder, setEditingWorkOrder] = useState<AssignedWorkOrder | null>(null);
+  const [workOrderForm, setWorkOrderForm] = useState({ title: "", description: "", assigneeId: "none", scheduledAt: "" });
   const [selectedTask, setSelectedTask] = useState<IndependentTask | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IndependentTask | null>(null);
+  const [deleteWorkOrderTarget, setDeleteWorkOrderTarget] = useState<AssignedWorkOrder | null>(null);
 
   const tasksQuery = useQuery({
     queryKey: ["unified-tasks"],
@@ -110,7 +114,7 @@ function TasksPage() {
       const [independentResult, projectTasksResult, workOrdersResult, assignmentsResult, projectsResult, customersResult, assigneesResult] = await Promise.all([
         supabase.from("operational_tasks" as never).select("id, title, description, project_id, customer_id, assigned_to, status, planned_date").order("planned_date", { ascending: true, nullsFirst: false }),
         supabase.from("project_tasks").select("id, project_id, task_name, phase_name, responsible_id, status, planned_date, approved_progress_pct").order("planned_date", { ascending: true, nullsFirst: false }),
-        supabase.from("work_orders").select("id, work_order_no, title, project_id, customer_id, status, scheduled_at, progress_pct").order("scheduled_at", { ascending: true, nullsFirst: false }),
+        supabase.from("work_orders").select("id, work_order_no, title, description, project_id, customer_id, status, scheduled_at, progress_pct").order("scheduled_at", { ascending: true, nullsFirst: false }),
         supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
         supabase.from("projects").select("id, name, project_no").order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name").order("name"),
@@ -224,6 +228,52 @@ function TasksPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const updateWorkOrder = useMutation({
+    mutationFn: async () => {
+      if (!editingWorkOrder) throw new Error("Düzenlenecek saha görevi bulunamadı.");
+      if (workOrderForm.title.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      if (!workOrderForm.scheduledAt) throw new Error("Planlanan tarih zorunludur.");
+      const { error } = await supabase.rpc("update_work_order_task" as never, {
+        target_work_order_id: editingWorkOrder.id,
+        task_title: workOrderForm.title.trim(),
+        task_description: workOrderForm.description.trim(),
+        planned_at: new Date(workOrderForm.scheduledAt).toISOString(),
+        assigned_user_id: workOrderForm.assigneeId === "none" ? null : workOrderForm.assigneeId,
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] }),
+      ]);
+      setEditingWorkOrder(null);
+      toast.success("Saha görevi güncellendi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const deleteWorkOrder = useMutation({
+    mutationFn: async () => {
+      if (!deleteWorkOrderTarget) throw new Error("Silinecek saha görevi bulunamadı.");
+      const { error } = await supabase.rpc("delete_work_order_permanently" as never, {
+        target_work_order_id: deleteWorkOrderTarget.id,
+      } as never);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] }),
+      ]);
+      setDeleteWorkOrderTarget(null);
+      toast.success("Saha görevi kalıcı olarak silindi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   if (!canViewTasks) return <AccessDenied />;
   if (tasksQuery.isLoading) return <LoadingState label="Görevler yükleniyor..." />;
   if (tasksQuery.error) return <p className="surface-panel p-5 text-destructive">{errorMessage(tasksQuery.error)}</p>;
@@ -293,6 +343,20 @@ function TasksPage() {
     setOpen(true);
   };
 
+  const startEditingWorkOrder = (task: AssignedWorkOrder) => {
+    const scheduledAt = task.scheduled_at ? new Date(task.scheduled_at) : null;
+    const localDateTime = scheduledAt && !Number.isNaN(scheduledAt.getTime())
+      ? new Date(scheduledAt.getTime() - scheduledAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+      : "";
+    setEditingWorkOrder(task);
+    setWorkOrderForm({
+      title: task.title,
+      description: task.description ?? "",
+      assigneeId: contractorsByWorkOrder.get(task.id)?.id ?? "none",
+      scheduledAt: localDateTime,
+    });
+  };
+
   const unifiedTasks = [
     ...visibleWorkOrders.map((task) => ({
       id: `work-order-${task.id}`,
@@ -302,7 +366,7 @@ function TasksPage() {
       plannedDate: task.scheduled_at,
       assignee: contractorsByWorkOrder.get(task.id),
       subtitle: `${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız görev"} · İlerleme %${task.progress_pct}`,
-      actions: <Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>,
+      actions: <><Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Kanıt / Detay</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingWorkOrder(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteWorkOrderTarget(task)} disabled={deleteWorkOrder.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
     })),
     ...visibleIndependentTasks.map((task) => ({
       id: `operational-${task.id}`,
@@ -363,6 +427,23 @@ function TasksPage() {
         <DialogFooter><Button variant="outline" onClick={() => setSelectedTask(null)}>Kapat</Button></DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog open={Boolean(editingWorkOrder)} onOpenChange={(nextOpen) => { if (!nextOpen && !updateWorkOrder.isPending) setEditingWorkOrder(null); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Saha görevini düzenle</DialogTitle>
+          <DialogDescription>Ticari bilgiler burada görünmez veya değiştirilemez. Kanıt ve ilerleme ayrıntıları “Kanıt / Detay” ekranındadır.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <label className="grid gap-1.5 text-sm font-medium">Görev Başlığı<Input value={workOrderForm.title} onChange={(event) => setWorkOrderForm({ ...workOrderForm, title: event.target.value })} maxLength={180} /></label>
+          <label className="grid gap-1.5 text-sm font-medium">Açıklama<Textarea value={workOrderForm.description} onChange={(event) => setWorkOrderForm({ ...workOrderForm, description: event.target.value })} maxLength={2000} /></label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-medium">Sorumlu<Select value={workOrderForm.assigneeId} onValueChange={(assigneeId) => setWorkOrderForm({ ...workOrderForm, assigneeId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Henüz atama yok</SelectItem>{data.assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}</SelectItem>)}</SelectContent></Select></label>
+            <label className="grid gap-1.5 text-sm font-medium">Planlanan Tarih ve Saat<Input type="datetime-local" value={workOrderForm.scheduledAt} onChange={(event) => setWorkOrderForm({ ...workOrderForm, scheduledAt: event.target.value })} /></label>
+          </div>
+        </div>
+        <DialogFooter><Button variant="outline" onClick={() => setEditingWorkOrder(null)} disabled={updateWorkOrder.isPending}>Vazgeç</Button><Button onClick={() => updateWorkOrder.mutate()} disabled={updateWorkOrder.isPending || workOrderForm.title.trim().length < 3 || !workOrderForm.scheduledAt}>{updateWorkOrder.isPending ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Dialog open={Boolean(deleteTarget)} onOpenChange={(nextOpen) => { if (!nextOpen && !deleteTask.isPending) setDeleteTarget(null); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
@@ -373,6 +454,15 @@ function TasksPage() {
           <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteTask.isPending}>Vazgeç</Button>
           <Button variant="destructive" onClick={() => deleteTarget && deleteTask.mutate(deleteTarget.id)} disabled={deleteTask.isPending}>{deleteTask.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={Boolean(deleteWorkOrderTarget)} onOpenChange={(nextOpen) => { if (!nextOpen && !deleteWorkOrder.isPending) setDeleteWorkOrderTarget(null); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Saha görevi kalıcı olarak silinsin mi?</DialogTitle>
+          <DialogDescription>{deleteWorkOrderTarget ? `#${deleteWorkOrderTarget.work_order_no ?? "—"} · ${deleteWorkOrderTarget.title}` : "Bu saha görevi"} ve bağlı atama, ilerleme, kanıt ve finans kayıtları silinir. Bu işlem geri alınamaz.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter><Button variant="outline" onClick={() => setDeleteWorkOrderTarget(null)} disabled={deleteWorkOrder.isPending}>Vazgeç</Button><Button variant="destructive" onClick={() => deleteWorkOrder.mutate()} disabled={deleteWorkOrder.isPending}>{deleteWorkOrder.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </>;
