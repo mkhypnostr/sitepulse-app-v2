@@ -425,11 +425,11 @@ function TasksPage() {
       plannedDate: task.scheduled_at,
       assignee: contractorsByWorkOrder.get(task.id),
       subtitle: `${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız görev"} · İlerleme %${task.progress_pct}`,
-      actions: <><Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Kanıt / Detay</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingWorkOrder(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteWorkOrderTarget(task)} disabled={deleteWorkOrder.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
+      actions: <><Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingWorkOrder(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteWorkOrderTarget(task)} disabled={deleteWorkOrder.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
     })),
     ...visibleIndependentTasks.map((task) => ({
       id: `operational-${task.id}`,
-      category: task.project_id ? "Proje" : "Genel",
+      category: task.project_id ? "Proje bağlantılı" : "Bağımsız",
       title: task.title,
       status: task.status,
       plannedDate: task.planned_date,
@@ -439,18 +439,18 @@ function TasksPage() {
     })),
     ...visibleProjectTasks.map((task) => ({
       id: `project-task-${task.id}`,
-      category: "Proje",
+      category: "Proje süreci",
       title: task.task_name,
       status: task.status,
       plannedDate: task.planned_date,
       assignee: task.responsible_id ? assigneeById.get(task.responsible_id) : undefined,
       subtitle: `${projectById.get(task.project_id)?.name || "Proje"} · ${task.phase_name} · Onaylı ilerleme %${task.approved_progress_pct}`,
-      actions: <><Link to="/projects/$projectId" params={{ projectId: task.project_id }} hash={`task-${task.id}`}><Button type="button" size="sm" variant="outline">Kanıt / Detay</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveProjectTaskTarget(task)} disabled={removeProjectTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Kaldır</Button> : null}</>,
+      actions: <><Link to="/projects/$projectId" params={{ projectId: task.project_id }} hash={`task-${task.id}`}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveProjectTaskTarget(task)} disabled={removeProjectTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Kaldır</Button> : null}</>,
     })),
   ].sort((left, right) => (left.plannedDate || "9999-12-31").localeCompare(right.plannedDate || "9999-12-31"));
 
   return <>
-    <PageHeader title="Görevler" description="Saha, bağımsız ve proje görevlerini aynı dilde; durumlarına göre filtreleyin." actions={createButton} />
+    <PageHeader title="Görevler" description="Bütün operasyon görevlerini tek merkezden açın, atayın, takip edin ve yönetin." actions={createButton} />
     <section className="surface-panel mt-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
       <div>
         <h2 className="text-lg font-black">{taskViews.find((view) => view.value === activeFilter)?.label} Görevler</h2>
@@ -464,7 +464,7 @@ function TasksPage() {
       </div>
     </section>
     <section className="surface-panel mt-6 p-4 sm:p-5">
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-black">Görev Listesi</h2><p className="text-sm text-muted-foreground">Saha, proje ve genel operasyon görevleri tek listede. Etiket, görevin kaynağını gösterir.</p></div>{role === "admin" ? <Link to="/work-orders" className="text-sm font-bold text-primary">Saha görev yönetimini aç</Link> : null}</div>
+      <div className="mb-4"><h2 className="text-lg font-black">Görev Listesi</h2><p className="text-sm text-muted-foreground">Saha, proje ve bağımsız görevler burada tek listede yönetilir. Etiket yalnızca görevin nereden geldiğini gösterir.</p></div>
       {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Henüz atanmamış proje kontrol listesi kalemleri burada görev sayılmaz; yalnızca proje detayında görünür. Bu liste, Paneldeki görev sayılarıyla aynı kayıtları gösterir.</p> : null}
       {unifiedTasks.length === 0 ? <EmptyState title="Bu görünümde görev yok" description="Filtreyi değiştirin veya yeni görev oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{unifiedTasks.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} subtitle={task.subtitle} actions={task.actions} />)}</div>}
     </section>

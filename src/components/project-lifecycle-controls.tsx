@@ -244,7 +244,12 @@ export function ProjectLifecycleControls({
       if (error) throw error;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["projects-page"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
+        queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] }),
+      ]);
       toast.success("Proje ve bağlı görevler kalıcı olarak silindi");
       navigate({ to: "/projects" });
     },
