@@ -10,6 +10,7 @@ import {
   Clock3,
   FolderKanban,
   Package,
+  Paperclip,
   PlusCircle,
   UserCog,
   UsersRound,
@@ -32,6 +33,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 type ProjectSubmission = Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
 type WorkSubmission = Database["public"]["Tables"]["progress_updates"]["Row"];
+type CompletionSubmission = Database["public"]["Tables"]["work_completion_submissions"]["Row"];
 type ProjectTaskSummary = Pick<
   Database["public"]["Tables"]["project_tasks"]["Row"],
   "id" | "project_id" | "task_name" | "phase_name"
@@ -93,6 +95,9 @@ function DashboardPage() {
       let stock: { quantity: number; min_quantity: number }[] = [];
       let projectSubmissions: ProjectSubmission[] = [];
       let workSubmissions: WorkSubmission[] = [];
+      let pendingCompletionSubmissions: CompletionSubmission[] = [];
+      let projectEvidenceSubmissionIds: string[] = [];
+      let completionEvidenceSubmissionIds: string[] = [];
       let projectTasks: ProjectTaskSummary[] = [];
       let projects: ProjectSummary[] = [];
       let allProjects: ProjectDashboardSummary[] = [];
@@ -161,6 +166,39 @@ function DashboardPage() {
         projectSubmissions = [...pendingResult.data, ...approvedResult.data];
         workSubmissions = [...workPendingResult.data, ...workApprovedResult.data];
 
+        const completionResult = await supabase
+          .from("work_completion_submissions")
+          .select("*")
+          .eq("status", "pending")
+          .order("submitted_at", { ascending: false });
+        if (completionResult.error) throw completionResult.error;
+        pendingCompletionSubmissions = completionResult.data ?? [];
+
+        const pendingProjectSubmissionIds = projectSubmissions
+          .filter((item) => item.status === "pending")
+          .map((item) => item.id);
+        const pendingCompletionSubmissionIds = pendingCompletionSubmissions.map((item) => item.id);
+        const [projectEvidenceResult, completionEvidenceResult] = await Promise.all([
+          pendingProjectSubmissionIds.length
+            ? supabase
+                .from("project_task_evidence")
+                .select("submission_id")
+                .in("submission_id", pendingProjectSubmissionIds)
+            : Promise.resolve({ data: [], error: null }),
+          pendingCompletionSubmissionIds.length
+            ? supabase
+                .from("work_completion_evidence")
+                .select("submission_id")
+                .in("submission_id", pendingCompletionSubmissionIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+        if (projectEvidenceResult.error) throw projectEvidenceResult.error;
+        if (completionEvidenceResult.error) throw completionEvidenceResult.error;
+        projectEvidenceSubmissionIds = (projectEvidenceResult.data ?? [])
+          .flatMap((item) => (item.submission_id ? [item.submission_id] : []));
+        completionEvidenceSubmissionIds = (completionEvidenceResult.data ?? [])
+          .flatMap((item) => (item.submission_id ? [item.submission_id] : []));
+
         const taskIds = [...new Set(projectSubmissions.map((item) => item.project_task_id))];
         if (taskIds.length) {
           const taskResult = await supabase
@@ -183,6 +221,7 @@ function DashboardPage() {
             [
               ...projectSubmissions.flatMap((item) => [item.submitted_by, item.reviewed_by]),
               ...workSubmissions.flatMap((item) => [item.contractor_id, item.reviewed_by]),
+              ...pendingCompletionSubmissions.flatMap((item) => [item.submitted_by, item.reviewed_by]),
               ...orders.flatMap((item) => [item.completion_submitted_by, item.reviewed_by]),
             ].filter(Boolean) as string[],
           ),
@@ -201,6 +240,9 @@ function DashboardPage() {
         stock,
         projectSubmissions,
         workSubmissions,
+        pendingCompletionSubmissions,
+        projectEvidenceSubmissionIds,
+        completionEvidenceSubmissionIds,
         projectTasks,
         projects,
         allProjects,
@@ -259,13 +301,27 @@ function DashboardPage() {
   const independentCompletedTasks = independentTasks.filter((task) => task.status === "completed").length;
   const projectSubmissions = query.data?.projectSubmissions ?? [];
   const workSubmissions = query.data?.workSubmissions ?? [];
+  const pendingCompletionSubmissions = query.data?.pendingCompletionSubmissions ?? [];
+  const projectEvidenceCountBySubmission = new Map<string, number>();
+  for (const submissionId of query.data?.projectEvidenceSubmissionIds ?? []) {
+    projectEvidenceCountBySubmission.set(submissionId, (projectEvidenceCountBySubmission.get(submissionId) ?? 0) + 1);
+  }
+  const completionEvidenceCountBySubmission = new Map<string, number>();
+  for (const submissionId of query.data?.completionEvidenceSubmissionIds ?? []) {
+    completionEvidenceCountBySubmission.set(submissionId, (completionEvidenceCountBySubmission.get(submissionId) ?? 0) + 1);
+  }
+  const pendingCompletionByWorkOrder = new Map(
+    pendingCompletionSubmissions.map((item) => [item.work_order_id, item]),
+  );
   const pendingWorkSubmissions = workSubmissions.filter((item) => item.status === "pending");
   const approvedWorkSubmissions = workSubmissions.filter((item) => item.status === "approved");
   const pendingProjectSubmissions = projectSubmissions.filter((item) => item.status === "pending");
   const approvedProjectSubmissions = projectSubmissions.filter(
     (item) => item.status === "approved",
   );
-  const pendingCompletionOrders = orders.filter((order) => order.status === "review_pending");
+  const pendingCompletionOrders = orders.filter(
+    (order) => order.status === "review_pending" || pendingCompletionByWorkOrder.has(order.id),
+  );
   const overdueOrders = orders.filter(
     (order) =>
       new Date(order.scheduled_at).getTime() < Date.now() &&
@@ -294,15 +350,19 @@ function DashboardPage() {
   const pendingApprovalCount =
     pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
   const pendingApprovalItems = [
-    ...pendingCompletionOrders.map((order) => ({
-      id: `completion-${order.id}`,
+    ...pendingCompletionOrders.map((order) => {
+      const submission = pendingCompletionByWorkOrder.get(order.id);
+      return {
+      id: `completion-${submission?.id ?? order.id}`,
       href: `/jobs/${order.id}#completion-approval`,
       category: "İş Bitirme Onayı",
       title: `#${order.work_order_no} · ${order.title}`,
-      detail: order.completion_note || "İş bitirme açıklaması",
-      submittedBy: profileNameById.get(order.completion_submitted_by ?? "") || "Taşeron",
-      submittedAt: order.completion_submitted_at,
-    })),
+      detail: submission?.note || order.completion_note || "İş bitirme açıklaması",
+      submittedBy: profileNameById.get(submission?.submitted_by ?? order.completion_submitted_by ?? "") || "Taşeron",
+      submittedAt: submission?.submitted_at ?? order.completion_submitted_at,
+      evidenceCount: submission ? (completionEvidenceCountBySubmission.get(submission.id) ?? 0) : 0,
+    };
+    }),
     ...pendingWorkSubmissions.flatMap((submission) => {
       const order = orders.find((item) => item.id === submission.work_order_id);
       if (!order) return [];
@@ -314,6 +374,7 @@ function DashboardPage() {
         detail: submission.note,
         submittedBy: profileNameById.get(submission.contractor_id) || "Taşeron",
         submittedAt: submission.created_at,
+        evidenceCount: submission.evidence_photo_id ? 1 : 0,
       }];
     }),
     ...pendingProjectSubmissions.flatMap((submission) => {
@@ -328,6 +389,7 @@ function DashboardPage() {
         detail: `${project.project_no} · ${project.name} · ${task.phase_name}`,
         submittedBy: profileNameById.get(submission.submitted_by) || "Kullanıcı",
         submittedAt: submission.submitted_at,
+        evidenceCount: projectEvidenceCountBySubmission.get(submission.id) ?? 0,
       }];
     }),
   ];
@@ -375,7 +437,7 @@ function DashboardPage() {
             value: overdueTaskCount,
             detail: overdueTaskCount ? "Plan tarihi geçmiş görevler" : "Geciken görev yok",
             icon: AlertTriangle,
-            href: overdueTaskCount > 0 ? "/dashboard#overdue-tasks" : undefined,
+            href: overdueTaskCount > 0 ? "/tasks?filter=overdue" : undefined,
             attention: "warning" as const,
             emptyMessage: "Geciken görev yok.",
           },
@@ -576,7 +638,7 @@ function DashboardPage() {
       {role === "admin" && pendingApprovalItems.length > 0 ? (
         <section id="approval-center" className="surface-panel mt-7 scroll-mt-6 p-4 sm:p-5">
           <div className="mb-3">
-            <h2 className="text-lg font-bold">Onay Bekleyen Kayıtlar</h2>
+            <h2 className="text-lg font-bold">Onay Merkezi</h2>
             <p className="text-sm text-muted-foreground">
               Yalnızca yönetici kararı bekleyen kayıtlar. Kaydı açtığınızda onay ve revizyon düğmeleri en üstte görünür.
             </p>
@@ -596,10 +658,11 @@ function DashboardPage() {
                   </div>
                   <AlertTriangle className="h-5 w-5 shrink-0 text-red-300" />
                 </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  {item.submittedBy}
-                  {item.submittedAt ? ` · ${formatProjectDateTime(item.submittedAt)}` : ""}
-                </p>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{item.submittedBy}{item.submittedAt ? ` · ${formatProjectDateTime(item.submittedAt)}` : ""}</span>
+                  <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/40 px-2 py-1 font-bold text-foreground"><Paperclip className="h-3.5 w-3.5 text-primary" /> {item.evidenceCount} kanıt</span>
+                </div>
+                <p className="mt-2 text-xs font-bold text-primary">Kaydı aç ve karar ver →</p>
               </a>
             ))}
           </div>
@@ -614,21 +677,21 @@ function DashboardPage() {
           </div>
           <div className="grid gap-3 xl:grid-cols-2">
             {overdueOrders.map((order) => (
-              <a key={order.id} href={`/jobs/${order.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
+              <a key={order.id} href={`/tasks?filter=overdue#work-order-${order.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
                 <p className="text-xs font-black text-amber-300">SAHA GÖREVİ GECİKTİ</p>
                 <p className="mt-1 font-black">#{order.work_order_no} · {order.title}</p>
                 <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {formatDate(order.scheduled_at)}</p>
               </a>
             ))}
             {overdueProjectTasks.map((task) => (
-              <a key={task.id} href={`/projects/${task.project_id}#task-${task.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
+              <a key={task.id} href={`/tasks?filter=overdue#project-task-${task.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
                 <p className="text-xs font-black text-amber-300">PROJE GÖREVİ GECİKTİ</p>
                 <p className="mt-1 font-black">{task.task_name}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{task.phase_name} · Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
               </a>
             ))}
             {overdueIndependentTasks.map((task) => (
-              <a key={task.id} href={`/tasks#task-${task.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
+              <a key={task.id} href={`/tasks?filter=overdue#operational-${task.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
                 <p className="text-xs font-black text-amber-300">BAĞIMSIZ GÖREV GECİKTİ</p>
                 <p className="mt-1 font-black">{task.title}</p>
                 <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
