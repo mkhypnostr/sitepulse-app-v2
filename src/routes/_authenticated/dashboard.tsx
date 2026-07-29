@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -210,6 +211,22 @@ function DashboardPage() {
     },
   });
 
+  // Dashboard verisi asenkron yüklendiği için tarayıcının ilk hash kaydırması
+  // bazen hedef bölüm ekrana gelmeden çalışıyordu. Veri geldikten sonra hedefe
+  // tekrar kaydırarak kartların her cihazda aynı davranmasını sağlıyoruz.
+  useEffect(() => {
+    if (!query.data || typeof window === "undefined") return;
+
+    const targetId = window.location.hash.replace("#", "");
+    if (!["approval-center", "overdue-tasks"].includes(targetId)) return;
+
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [query.data]);
+
   if (query.isLoading) return <LoadingState />;
   if (query.error) {
     return <p className="surface-panel p-5 text-destructive">{errorMessage(query.error)}</p>;
@@ -317,7 +334,11 @@ function DashboardPage() {
   // Birden fazla kayıt varsa önce onay merkezi açılır; yöneticinin yanlış kayda
   // karar vermesini önlemek için burada tahmin yapılmaz.
   const pendingTarget =
-    pendingApprovalItems.length === 1 ? pendingApprovalItems[0].href : pendingApprovalCount > 0 ? "#approval-center" : undefined;
+    pendingApprovalItems.length === 1
+      ? pendingApprovalItems[0].href
+      : pendingApprovalCount > 0
+        ? "/dashboard#approval-center"
+        : undefined;
 
   const taskRoute = role === "admin" ? "/work-orders" : "/tasks";
   const totalTasks = orders.length + trackedProjectTasks.length + independentTasks.length;
@@ -353,7 +374,7 @@ function DashboardPage() {
             value: overdueTaskCount,
             detail: overdueTaskCount ? "Plan tarihi geçmiş görevler" : "Geciken görev yok",
             icon: AlertTriangle,
-            href: overdueTaskCount > 0 ? "#overdue-tasks" : undefined,
+            href: overdueTaskCount > 0 ? "/dashboard#overdue-tasks" : undefined,
             attention: "warning" as const,
             emptyMessage: "Geciken görev yok.",
           },
