@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -88,6 +88,26 @@ export function ProjectLifecycleControls({
   const [form, setForm] = useState(() => editForm(project));
 
   useEffect(() => setForm(editForm(project)), [project]);
+
+  const deletionImpactQuery = useQuery({
+    queryKey: ["project-deletion-impact", project.id],
+    enabled: deleteOpen && isAdmin,
+    queryFn: async () => {
+      const [projectTasks, fieldTasks, linkedOperationalTasks] = await Promise.all([
+        supabase.from("project_tasks").select("id", { count: "exact", head: true }).eq("project_id", project.id),
+        supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("project_id", project.id),
+        supabase.from("operational_tasks" as never).select("id", { count: "exact", head: true }).eq("project_id", project.id),
+      ]);
+      if (projectTasks.error) throw projectTasks.error;
+      if (fieldTasks.error) throw fieldTasks.error;
+      if (linkedOperationalTasks.error) throw linkedOperationalTasks.error;
+      return {
+        projectTasks: projectTasks.count ?? 0,
+        fieldTasks: fieldTasks.count ?? 0,
+        linkedOperationalTasks: linkedOperationalTasks.count ?? 0,
+      };
+    },
+  });
 
   const actions = useMemo<Transition[]>(() => {
     if (project.status === "draft") {
@@ -327,10 +347,18 @@ export function ProjectLifecycleControls({
             </div>
             <DialogTitle>Proje kalıcı olarak silinsin mi?</DialogTitle>
             <DialogDescription>
-              {project.project_no} numaralı proje; süreçleri, proje görevleri, bağlı saha görevleri,
-              atamalar ve kayıtlı kanıtlarıyla birlikte silinir. Bu işlem geri alınamaz.
+              {project.project_no} numaralı proje ve yalnızca bu projeye bağlı kayıtlar silinir. Bu işlem geri alınamaz.
             </DialogDescription>
           </DialogHeader>
+          <div className="grid gap-2 rounded-xl border border-destructive/35 bg-destructive/5 p-4 text-sm">
+            <p className="font-bold">Silinecek bağlı kayıtlar</p>
+            {deletionImpactQuery.isLoading ? <p className="text-muted-foreground">Kayıtlar hesaplanıyor...</p> : <>
+              <p>• {deletionImpactQuery.data?.projectTasks ?? 0} proje görevi ve süreç kaydı</p>
+              <p>• {deletionImpactQuery.data?.fieldTasks ?? 0} bağlı saha görevi</p>
+              <p>• {deletionImpactQuery.data?.linkedOperationalTasks ?? 0} projeye bağlı operasyon görevi</p>
+              <p className="pt-1 text-xs text-muted-foreground">Proje seçilmeden açılmış bağımsız görevler silinmez; Görevler ekranından ayrı silinir.</p>
+            </>}
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
