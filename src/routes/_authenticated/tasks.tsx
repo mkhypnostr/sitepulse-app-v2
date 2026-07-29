@@ -380,7 +380,7 @@ function TasksPage() {
     matchesFilter({ status: task.status, plannedDate: task.planned_date }, activeFilter),
   );
   const visibleProjectTasks = data.projectTasks.filter((task) =>
-    (activeFilter === "all" || trackedProjectTask(task)) &&
+    trackedProjectTask(task) &&
     matchesFilter({ status: task.status, plannedDate: task.planned_date }, activeFilter),
   );
   const visibleTaskCount =
@@ -465,7 +465,7 @@ function TasksPage() {
     </section>
     <section className="surface-panel mt-6 p-4 sm:p-5">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-black">Görev Listesi</h2><p className="text-sm text-muted-foreground">Saha, proje ve genel operasyon görevleri tek listede. Etiket, görevin kaynağını gösterir.</p></div>{role === "admin" ? <Link to="/work-orders" className="text-sm font-bold text-primary">Saha görev yönetimini aç</Link> : null}</div>
-      {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Proje görevlerinin başlangıç şablonları da bu listede görünür. Ana paneldeki <strong className="text-foreground">Açık Görevler</strong> sayısı ise yalnızca atanan veya üzerinde işlem bulunan görevleri kapsar.</p> : null}
+      {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Henüz atanmamış proje kontrol listesi kalemleri burada görev sayılmaz; yalnızca proje detayında görünür. Bu liste, Paneldeki görev sayılarıyla aynı kayıtları gösterir.</p> : null}
       {unifiedTasks.length === 0 ? <EmptyState title="Bu görünümde görev yok" description="Filtreyi değiştirin veya yeni görev oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{unifiedTasks.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} subtitle={task.subtitle} actions={task.actions} />)}</div>}
     </section>
     <Dialog open={Boolean(selectedTask)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedTask(null); }}>
