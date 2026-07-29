@@ -19,7 +19,9 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 export const Route = createFileRoute("/_authenticated/tasks")({
   validateSearch: (search: Record<string, unknown>) => ({
-    filter: search.filter === "open" ? "open" : undefined,
+    filter: ["open", "overdue", "approval", "completed"].includes(String(search.filter))
+      ? (search.filter as "open" | "overdue" | "approval" | "completed")
+      : undefined,
   }),
   component: TasksPage,
 });
@@ -58,11 +60,36 @@ type AssignedWorkOrder = {
 type WorkOrderAssignment = { work_order_id: string; contractor_id: string };
 
 const statusLabel: Record<string, string> = {
+  planned: "Planlandı",
   not_started: "Planlandı",
   in_progress: "Devam ediyor",
+  review_pending: "İş bitirme onayı bekliyor",
+  external_approval: "Onay bekliyor",
+  revision_required: "Revizyon gerekli",
+  blocked: "Engellendi",
   completed: "Tamamlandı",
+  cancelled: "İptal edildi",
   not_applicable: "Uygulanmaz",
 };
+
+type TaskFilter = "all" | "open" | "overdue" | "approval" | "completed";
+
+const taskViews: Array<{ value: TaskFilter; label: string; description: string }> = [
+  { value: "all", label: "Tümü", description: "Bütün görev kayıtları" },
+  { value: "open", label: "Açık", description: "Planlanan, devam eden, engelli ve revizyondaki görevler" },
+  { value: "approval", label: "Onay Bekleyen", description: "Yönetici incelemesi bekleyen görevler" },
+  { value: "overdue", label: "Süresi Dolan", description: "Planlanan tarihi geçen açık görevler" },
+  { value: "completed", label: "Tamamlanan", description: "Tamamlanmış veya uygulanmayacak görevler" },
+];
+
+function isTerminal(status: string) {
+  return ["completed", "cancelled", "not_applicable"].includes(status);
+}
+
+function isOverdue(plannedDate: string | null) {
+  if (!plannedDate) return false;
+  return new Date(`${plannedDate.slice(0, 10)}T23:59:59`).getTime() < Date.now();
+}
 
 function TasksPage() {
   const { role } = useAuth();
@@ -233,19 +260,27 @@ function TasksPage() {
     if (contractor) contractorsByWorkOrder.set(assignment.work_order_id, contractor);
   }
 
-  // Ana paneldeki “Açık Görevler” sayısı ile bu ekranın filtrelenmiş listesi
-  // aynı kuralı kullanır. Böylece farklı ekranlarda farklı adet görünmez.
-  const openProjectStatuses = ["in_progress", "external_approval", "blocked"];
-  const showingOpenOnly = filter === "open";
-  const visibleWorkOrders = showingOpenOnly
-    ? data.workOrders.filter((task) => task.status === "in_progress")
-    : data.workOrders;
-  const visibleIndependentTasks = showingOpenOnly
-    ? data.independent.filter((task) => openProjectStatuses.includes(task.status))
-    : data.independent;
-  const visibleProjectTasks = showingOpenOnly
-    ? data.projectTasks.filter((task) => openProjectStatuses.includes(task.status))
-    : data.projectTasks;
+  const activeFilter: TaskFilter = filter ?? "all";
+  const trackedProjectTask = (task: ProjectTask) =>
+    Boolean(task.responsible_id) || task.approved_progress_pct > 0 ||
+    ["in_progress", "external_approval", "revision_required", "blocked", "completed"].includes(task.status);
+  const matchesFilter = (task: { status: string; plannedDate: string | null }, filterValue: TaskFilter) => {
+    if (filterValue === "all") return true;
+    if (filterValue === "open") return !isTerminal(task.status) && task.status !== "external_approval" && task.status !== "review_pending";
+    if (filterValue === "approval") return ["external_approval", "review_pending"].includes(task.status);
+    if (filterValue === "overdue") return !isTerminal(task.status) && isOverdue(task.plannedDate);
+    return isTerminal(task.status);
+  };
+  const visibleWorkOrders = data.workOrders.filter((task) =>
+    matchesFilter({ status: task.status, plannedDate: task.scheduled_at }, activeFilter),
+  );
+  const visibleIndependentTasks = data.independent.filter((task) =>
+    matchesFilter({ status: task.status, plannedDate: task.planned_date }, activeFilter),
+  );
+  const visibleProjectTasks = data.projectTasks.filter((task) =>
+    (activeFilter === "all" || trackedProjectTask(task)) &&
+    matchesFilter({ status: task.status, plannedDate: task.planned_date }, activeFilter),
+  );
   const visibleTaskCount =
     visibleWorkOrders.length + visibleIndependentTasks.length + visibleProjectTasks.length;
 
@@ -259,27 +294,30 @@ function TasksPage() {
   );
 
   return <>
-    <PageHeader title="Görevler" description={showingOpenOnly ? "Yalnızca devam eden, onayda veya engelli görevler." : "Projeye bağlı ve bağımsız operasyon görevlerini tek ekranda yönetin."} actions={createButton} />
+    <PageHeader title="Görevler" description="Saha, bağımsız ve proje görevlerini aynı dilde; durumlarına göre filtreleyin." actions={createButton} />
     <section className="surface-panel mt-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
       <div>
-        <h2 className="text-lg font-black">{showingOpenOnly ? "Açık Görevler" : "Görev Görünümü"}</h2>
-        <p className="text-sm text-muted-foreground">{visibleTaskCount} görev listeleniyor.</p>
+        <h2 className="text-lg font-black">{taskViews.find((view) => view.value === activeFilter)?.label} Görevler</h2>
+        <p className="text-sm text-muted-foreground">{taskViews.find((view) => view.value === activeFilter)?.description} · {visibleTaskCount} kayıt listeleniyor.</p>
       </div>
-      <div className="flex items-center gap-2">
-        <a href="/tasks?filter=open" className={showingOpenOnly ? "rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground" : "rounded-lg border border-border px-3 py-2 text-sm font-bold text-muted-foreground hover:border-primary/60"}>Açık</a>
-        <a href="/tasks" className={!showingOpenOnly ? "rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground" : "rounded-lg border border-border px-3 py-2 text-sm font-bold text-muted-foreground hover:border-primary/60"}>Tümü</a>
+      <div className="flex flex-wrap items-center gap-2">
+        {taskViews.map((view) => {
+          const href = view.value === "all" ? "/tasks" : `/tasks?filter=${view.value}`;
+          return <a key={view.value} href={href} className={activeFilter === view.value ? "rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground" : "rounded-lg border border-border bg-background/30 px-3 py-2 text-sm font-bold text-muted-foreground hover:border-primary/60 hover:text-foreground"}>{view.label}</a>;
+        })}
       </div>
     </section>
     <section className="surface-panel mt-6 p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Atanmış Saha Görevleri</h2><p className="text-sm text-muted-foreground">Taşeronlara atanmış görevleri finansal bilgi olmadan takip edin.</p></div>{role === "admin" ? <Link to="/work-orders" className="text-sm font-bold text-primary">Yönetim ekranını aç</Link> : null}</div>
-      {visibleWorkOrders.length === 0 ? <div className="rounded-xl border border-border bg-muted/20 p-5 text-sm text-muted-foreground">{showingOpenOnly ? "Açık atanmış saha görevi yok." : "Atanmış saha görevi yok."}</div> : <div className="grid gap-3">{visibleWorkOrders.map((task) => <TaskCard key={task.id} title={`#${task.work_order_no ?? "—"} · ${task.title}`} status={task.status} plannedDate={task.scheduled_at} assignee={contractorsByWorkOrder.get(task.id)} subtitle={`${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız saha görevi"} · İlerleme %${task.progress_pct}`} />)}</div>}
+      {visibleWorkOrders.length === 0 ? <div className="rounded-xl border border-border bg-background/35 p-5 text-sm text-muted-foreground">Bu görünümde atanmış saha görevi yok.</div> : <div className="grid gap-3">{visibleWorkOrders.map((task) => <TaskCard key={task.id} title={`#${task.work_order_no ?? "—"} · ${task.title}`} status={task.status} plannedDate={task.scheduled_at} assignee={contractorsByWorkOrder.get(task.id)} subtitle={`${task.project_id ? projectById.get(task.project_id)?.name || "Proje" : "Bağımsız saha görevi"} · İlerleme %${task.progress_pct}`} />)}</div>}
     </section>
     <section className="surface-panel mt-7 p-4 sm:p-5">
       <div className="mb-3"><h2 className="text-lg font-black">Bağımsız Görevler</h2><p className="text-sm text-muted-foreground">Müşteri veya proje seçmeden açılabilen operasyon kayıtları.</p></div>
-      {visibleIndependentTasks.length === 0 ? <EmptyState title={showingOpenOnly ? "Açık bağımsız görev yok" : "Bağımsız görev yok"} description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={showingOpenOnly ? undefined : createButton} /> : <div className="grid gap-3">{visibleIndependentTasks.map((task) => <TaskCard key={task.id} id={`task-${task.id}`} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} actions={isOperationalManager(role) ? <><Button type="button" size="sm" variant="outline" onClick={() => { setEditingTask(task); setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" }); setOpen(true); }}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button>{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => { if (window.confirm(`“${task.title}” görevi silinsin mi?`)) deleteTask.mutate(task.id); }} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</> : null} />)}</div>}
+      {visibleIndependentTasks.length === 0 ? <EmptyState title="Bu görünümde bağımsız görev yok" description="Saha, teknik ofis veya takip için ilk bağımsız görevi oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{visibleIndependentTasks.map((task) => <TaskCard key={task.id} id={`task-${task.id}`} title={task.title} status={task.status} plannedDate={task.planned_date} assignee={task.assigned_to ? assigneeById.get(task.assigned_to) : undefined} subtitle={[task.project_id ? projectById.get(task.project_id)?.name : null, task.customer_id ? customerById.get(task.customer_id) : null].filter(Boolean).join(" · ") || "Bağımsız görev"} actions={isOperationalManager(role) ? <><Button type="button" size="sm" variant="outline" onClick={() => { setEditingTask(task); setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" }); setOpen(true); }}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button>{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => { if (window.confirm(`“${task.title}” görevi kalıcı olarak silinsin mi?`)) deleteTask.mutate(task.id); }} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</> : null} />)}</div>}
     </section>
     <section className="surface-panel mt-7 p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between"><div><h2 className="text-lg font-black">Proje Görevleri</h2><p className="text-sm text-muted-foreground">Projelerin süreçlerine bağlı kontrol ve saha görevleri.</p></div><Link to="/projects" className="text-sm font-bold text-primary">Projeleri aç</Link></div>
+      {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Burada proje süreçlerinin başlangıç görevleri de görünür. Ana paneldeki <strong className="text-foreground">Açık Görevler</strong> sayısı ise yalnızca atanan veya üzerinde işlem bulunan proje görevlerini kapsar.</p> : null}
       {projectTaskGroups.length === 0 ? <div className="rounded-xl border border-border bg-muted/20 p-7 text-center text-sm text-muted-foreground">Henüz proje görevi yok.</div> : <Accordion type="multiple" className="rounded-xl border border-border bg-muted/10 px-4">
         {projectTaskGroups.map(([projectId, tasks]) => {
           const tasksByPhase = tasks.reduce((groups, task) => {
