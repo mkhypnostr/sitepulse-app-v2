@@ -116,6 +116,7 @@ export type Database = {
           caption: string | null;
           created_at: string;
           id: string;
+          is_document: boolean;
           photo_type: Database["public"]["Enums"]["photo_type"];
           show_to_customer: boolean;
           storage_path: string;
@@ -126,6 +127,7 @@ export type Database = {
           caption?: string | null;
           created_at?: string;
           id?: string;
+          is_document?: boolean;
           photo_type?: Database["public"]["Enums"]["photo_type"];
           show_to_customer?: boolean;
           storage_path: string;
@@ -136,6 +138,7 @@ export type Database = {
           caption?: string | null;
           created_at?: string;
           id?: string;
+          is_document?: boolean;
           photo_type?: Database["public"]["Enums"]["photo_type"];
           show_to_customer?: boolean;
           storage_path?: string;
