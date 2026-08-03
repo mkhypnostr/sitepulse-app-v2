@@ -6,6 +6,7 @@ import {
   CalendarClock,
   Camera,
   CheckCircle2,
+  FileText,
   FileDown,
   History,
   Images,
@@ -52,6 +53,8 @@ function JobDetailPage() {
   const galleryInput = useRef<HTMLInputElement>(null);
   const progressCameraInput = useRef<HTMLInputElement>(null);
   const progressGalleryInput = useRef<HTMLInputElement>(null);
+  const progressDocumentInput = useRef<HTMLInputElement>(null);
+  const documentInput = useRef<HTMLInputElement>(null);
   const [progressPct, setProgressPct] = useState("0");
   const [progressNote, setProgressNote] = useState("");
   const [progressEvidence, setProgressEvidence] = useState<File | null>(null);
@@ -287,8 +290,8 @@ function JobDetailPage() {
       const pct = Number(progressPct);
       const approvedPct = detailQuery.data?.order.progress_pct ?? 0;
       const normalizedNote = progressNote.trim();
-      if (role !== "contractor") {
-        throw new Error("İlerleme bildirimini yalnızca atanmış taşeron gönderebilir");
+      if (role !== "contractor" && role !== "technical_office") {
+        throw new Error("İlerleme bildirimini yalnızca atanmış taşeron veya teknik ofis gönderebilir");
       }
       if (!Number.isInteger(pct) || pct <= approvedPct || pct > 100 || pct % 5 !== 0) {
         throw new Error(
@@ -298,14 +301,24 @@ function JobDetailPage() {
       if (normalizedNote.length < 10) {
         throw new Error("Yapılan iş açıklaması en az 10 karakter olmalıdır");
       }
-      if (!progressEvidence) throw new Error("Yeni bir kanıt fotoğrafı ekleyin");
+      if (!progressEvidence) throw new Error("Yeni bir fotoğraf veya PDF belge ekleyin");
       if (!user) throw new Error("Oturum bulunamadı");
 
-      const compressed = await compressImage(progressEvidence);
-      const storagePath = `${user.id}/${jobId}/${crypto.randomUUID()}.jpg`;
+      const isPdf = progressEvidence.type === "application/pdf";
+      if (!isPdf && !progressEvidence.type.startsWith("image/")) {
+        throw new Error("Kanıt olarak yalnızca fotoğraf veya PDF belge ekleyin");
+      }
+      if (progressEvidence.size > 20 * 1024 * 1024) {
+        throw new Error("Kanıt dosyası en fazla 20 MB olabilir");
+      }
+      const uploadFile = isPdf ? progressEvidence : await compressImage(progressEvidence);
+      const storagePath = `${user.id}/${jobId}/${crypto.randomUUID()}.${isPdf ? "pdf" : "jpg"}`;
       const { error: uploadError } = await supabase.storage
         .from("work-photos")
-        .upload(storagePath, compressed, { contentType: "image/jpeg", upsert: false });
+        .upload(storagePath, uploadFile, {
+          contentType: isPdf ? "application/pdf" : "image/jpeg",
+          upsert: false,
+        });
       if (uploadError) throw uploadError;
 
       const { error } = await supabase.rpc("submit_progress_update", {
@@ -326,6 +339,7 @@ function JobDetailPage() {
       setProgressEvidence(null);
       if (progressCameraInput.current) progressCameraInput.current.value = "";
       if (progressGalleryInput.current) progressGalleryInput.current.value = "";
+      if (progressDocumentInput.current) progressDocumentInput.current.value = "";
       toast.success(
         `%${progressPct} ilerleme talebiniz yönetici onayına gönderildi. Onaylandıktan sonra iş ilerlemesine eklenecektir.`,
       );
@@ -537,6 +551,7 @@ function JobDetailPage() {
           caption: photoCaption.trim() || null,
           photo_type: photoType,
           show_to_customer: false,
+          is_document: false,
         });
         if (recordError) {
           await supabase.storage.from("work-photos").remove([storagePath]);
@@ -553,6 +568,50 @@ function JobDetailPage() {
       setUploading(false);
       if (cameraInput.current) cameraInput.current.value = "";
       if (galleryInput.current) galleryInput.current.value = "";
+    }
+  }
+
+  async function uploadDocuments(files: FileList | null) {
+    if (!files?.length || !user) return;
+    setUploading(true);
+    let uploaded = 0;
+    try {
+      for (const file of Array.from(files)) {
+        if (file.type !== "application/pdf") {
+          throw new Error("Yalnızca PDF belge ekleyin");
+        }
+        if (file.size > 20 * 1024 * 1024) {
+          throw new Error("Belge en fazla 20 MB olabilir");
+        }
+        const storagePath = `${user.id}/${jobId}/${crypto.randomUUID()}.pdf`;
+        const { error: uploadError } = await supabase.storage
+          .from("work-photos")
+          .upload(storagePath, file, { contentType: "application/pdf", upsert: false });
+        if (uploadError) throw uploadError;
+
+        const { error: recordError } = await supabase.from("photos").insert({
+          work_order_id: jobId,
+          uploaded_by: user.id,
+          storage_path: storagePath,
+          caption: photoCaption.trim() || `Belge: ${file.name}`,
+          photo_type: "diger",
+          show_to_customer: false,
+          is_document: true,
+        });
+        if (recordError) {
+          await supabase.storage.from("work-photos").remove([storagePath]);
+          throw recordError;
+        }
+        uploaded += 1;
+      }
+      await refresh();
+      setPhotoCaption("");
+      toast.success(`${uploaded} belge yüklendi`);
+    } catch (error) {
+      toast.error(`${uploaded} belge yüklendi; işlem durdu: ${errorMessage(error)}`);
+    } finally {
+      setUploading(false);
+      if (documentInput.current) documentInput.current.value = "";
     }
   }
 
@@ -584,7 +643,7 @@ function JobDetailPage() {
     activityLogs,
     activityProfiles,
   } = detailQuery.data;
-  const canOperate = role === "admin" || role === "contractor";
+  const canOperate = role === "admin" || role === "contractor" || role === "technical_office";
   const isReviewPending = order.status === "review_pending";
   const isFinalized = order.status === "completed" || order.status === "cancelled";
   const pendingProgress = progress.find((item) => item.status === "pending");
@@ -611,14 +670,14 @@ function JobDetailPage() {
     (photo) => photo.uploaded_by === user?.id && Boolean(photo.signedUrl),
   );
   const canSubmitForReview =
-    role === "contractor" &&
+    (role === "contractor" || role === "technical_office") &&
     order.progress_pct === 100 &&
     !pendingProgress &&
     !isReviewPending &&
     !isFinalized;
   const proposedProgressValue = Number(progressPct);
   const progressSubmissionValid =
-    role === "contractor" &&
+    (role === "contractor" || role === "technical_office") &&
     Number.isInteger(proposedProgressValue) &&
     proposedProgressValue > order.progress_pct &&
     proposedProgressValue <= 100 &&
@@ -908,7 +967,7 @@ function JobDetailPage() {
 
       {canOperate ? (
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          {role === "contractor" ? (
+          {role === "contractor" || role === "technical_office" ? (
             <Card>
               <CardHeader>
                 <CardTitle>İlerleme Bildir</CardTitle>
@@ -960,7 +1019,14 @@ function JobDetailPage() {
                   className="hidden"
                   onChange={(event) => setProgressEvidence(event.target.files?.[0] ?? null)}
                 />
-                <div className="grid gap-2 sm:grid-cols-2">
+                <input
+                  ref={progressDocumentInput}
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={(event) => setProgressEvidence(event.target.files?.[0] ?? null)}
+                />
+                <div className="grid gap-2 sm:grid-cols-3">
                   <Button
                     type="button"
                     variant="outline"
@@ -975,12 +1041,19 @@ function JobDetailPage() {
                   >
                     <Images className="mr-2 h-4 w-4" /> Galeriden Kanıt Seç
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => progressDocumentInput.current?.click()}
+                  >
+                    <FileText className="mr-2 h-4 w-4" /> PDF Belge Seç
+                  </Button>
                 </div>
                 {progressEvidence ? (
                   <p className="text-xs font-semibold text-primary">{progressEvidence.name}</p>
                 ) : null}
                 <p className="text-xs text-muted-foreground">
-                  İlerleme talebi için yeni fotoğraf ve en az 10 karakter açıklama zorunludur.
+                  İlerleme talebi için yeni fotoğraf veya PDF belge ve en az 10 karakter açıklama zorunludur.
                   Yönetici onaylamadan yüzde değişmez.
                 </p>
                 <Button
@@ -1002,7 +1075,7 @@ function JobDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Fotoğraf Ekle</CardTitle>
+              <CardTitle>Fotoğraf veya Belge Ekle</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -1049,7 +1122,15 @@ function JobDetailPage() {
                 className="hidden"
                 onChange={(event) => uploadPhotos(event.target.files)}
               />
-              <div className="grid gap-2 sm:grid-cols-2">
+              <input
+                ref={documentInput}
+                type="file"
+                accept="application/pdf"
+                multiple
+                className="hidden"
+                onChange={(event) => uploadDocuments(event.target.files)}
+              />
+              <div className="grid gap-2 sm:grid-cols-3">
                 <Button
                   variant="outline"
                   className="h-14"
@@ -1066,10 +1147,18 @@ function JobDetailPage() {
                 >
                   <Images className="mr-2 h-5 w-5" /> Galeriden Seç
                 </Button>
+                <Button
+                  variant="outline"
+                  className="h-14"
+                  onClick={() => documentInput.current?.click()}
+                  disabled={uploading}
+                >
+                  <FileText className="mr-2 h-5 w-5" /> PDF Belge Ekle
+                </Button>
               </div>
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
                 <UploadCloud className="h-4 w-4" /> Fotoğraflar yüklemeden önce yaklaşık 300 KB
-                altına sıkıştırılır.
+                altına sıkıştırılır; PDF belgeler en fazla 20 MB olabilir.
               </p>
             </CardContent>
           </Card>
@@ -1085,7 +1174,17 @@ function JobDetailPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-[minmax(0,320px)_1fr]">
-              {pendingEvidence?.signedUrl ? (
+              {pendingEvidence?.signedUrl && pendingEvidence.is_document ? (
+                <a
+                  href={pendingEvidence.signedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex aspect-video flex-col items-center justify-center rounded-lg border bg-muted/30 text-primary"
+                >
+                  <FileText className="h-10 w-10" />
+                  <span className="mt-2 text-sm font-semibold">Kanıt belgesini aç</span>
+                </a>
+              ) : pendingEvidence?.signedUrl ? (
                 <button
                   type="button"
                   onClick={() =>
@@ -1104,7 +1203,7 @@ function JobDetailPage() {
                 </button>
               ) : (
                 <div className="flex aspect-video items-center justify-center rounded-lg border bg-muted text-sm text-muted-foreground">
-                  Kanıt fotoğrafı açılamadı
+                  Kanıt dosyası açılamadı
                 </div>
               )}
               <div>
@@ -1150,8 +1249,8 @@ function JobDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Göndermek için onaylı ilerleme %100 olmalı; aşağıdan kategori verilmiş en az 1, en
-              fazla 5 fotoğraf seçilmeli ve en az 10 karakter açıklama yazılmalıdır.
+              Göndermek için onaylı ilerleme %100 olmalı; aşağıdan en az 1, en fazla 5 fotoğraf
+              veya belge seçilmeli ve en az 10 karakter açıklama yazılmalıdır.
             </p>
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {completionCandidatePhotos.map((photo) => {
@@ -1173,14 +1272,20 @@ function JobDetailPage() {
                       selected ? "border-primary ring-2 ring-primary/30" : "border-border"
                     }`}
                   >
-                    <img
-                      src={photo.signedUrl ?? ""}
-                      alt={photo.caption || photoTypeLabels[photo.photo_type]}
-                      className="aspect-video w-full object-cover"
-                    />
+                    {photo.is_document ? (
+                      <span className="flex aspect-video items-center justify-center bg-muted/40 text-primary">
+                        <FileText className="h-10 w-10" />
+                      </span>
+                    ) : (
+                      <img
+                        src={photo.signedUrl ?? ""}
+                        alt={photo.caption || photoTypeLabels[photo.photo_type]}
+                        className="aspect-video w-full object-cover"
+                      />
+                    )}
                     <span className="block p-2 text-xs font-bold">
                       {selected ? "✓ " : ""}
-                      {photoTypeLabels[photo.photo_type]}
+                      {photo.is_document ? "PDF Belge" : photoTypeLabels[photo.photo_type]}
                     </span>
                   </button>
                 );
@@ -1188,11 +1293,11 @@ function JobDetailPage() {
             </div>
             {completionCandidatePhotos.length === 0 ? (
               <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200">
-                Önce “Fotoğraf Ekle” alanından en az bir fotoğraf yükleyin.
+                Önce “Fotoğraf veya Belge Ekle” alanından en az bir kanıt yükleyin.
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                {completionPhotoIds.length}/5 fotoğraf seçildi.
+                {completionPhotoIds.length}/5 kanıt seçildi.
               </p>
             )}
             <Textarea
@@ -1240,27 +1345,42 @@ function JobDetailPage() {
             </div>
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {pendingCompletionPhotos.map((photo) => (
-                <button
-                  type="button"
-                  key={photo.id}
-                  onClick={() =>
-                    photo.signedUrl &&
-                    setSelectedPhoto({
-                      url: photo.signedUrl,
-                      label: photo.caption || photoTypeLabels[photo.photo_type],
-                    })
-                  }
-                  className="overflow-hidden rounded-lg border border-border text-left"
-                >
-                  <img
-                    src={photo.signedUrl ?? ""}
-                    alt={photo.caption || photoTypeLabels[photo.photo_type]}
-                    className="aspect-video w-full object-cover"
-                  />
-                  <span className="block p-2 text-xs font-bold">
-                    {photoTypeLabels[photo.photo_type]}
-                  </span>
-                </button>
+                photo.is_document ? (
+                  <a
+                    key={photo.id}
+                    href={photo.signedUrl ?? undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="overflow-hidden rounded-lg border border-border text-left"
+                  >
+                    <span className="flex aspect-video items-center justify-center bg-muted/40 text-primary">
+                      <FileText className="h-10 w-10" />
+                    </span>
+                    <span className="block p-2 text-xs font-bold">PDF Belgeyi Aç</span>
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    key={photo.id}
+                    onClick={() =>
+                      photo.signedUrl &&
+                      setSelectedPhoto({
+                        url: photo.signedUrl,
+                        label: photo.caption || photoTypeLabels[photo.photo_type],
+                      })
+                    }
+                    className="overflow-hidden rounded-lg border border-border text-left"
+                  >
+                    <img
+                      src={photo.signedUrl ?? ""}
+                      alt={photo.caption || photoTypeLabels[photo.photo_type]}
+                      className="aspect-video w-full object-cover"
+                    />
+                    <span className="block p-2 text-xs font-bold">
+                      {photoTypeLabels[photo.photo_type]}
+                    </span>
+                  </button>
+                )
               ))}
             </div>
             <Textarea
@@ -1426,17 +1546,27 @@ function JobDetailPage() {
       ) : null}
 
       <section className="mt-7">
-        <h2 className="mb-3 text-xl font-black">Saha Fotoğrafları</h2>
+        <h2 className="mb-3 text-xl font-black">Saha Fotoğrafları ve Belgeleri</h2>
         {photos.length === 0 ? (
           <EmptyState
-            title="Henüz fotoğraf yok"
-            description="Fotoğraflar eklendiğinde burada görünecek."
+            title="Henüz kanıt yok"
+            description="Fotoğraf veya belge eklendiğinde burada görünecek."
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {photos.map((photo) => (
               <Card key={photo.id} className="overflow-hidden">
-                {photo.signedUrl ? (
+                {photo.signedUrl && photo.is_document ? (
+                  <a
+                    href={photo.signedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex aspect-video flex-col items-center justify-center bg-muted text-primary"
+                  >
+                    <FileText className="h-10 w-10" />
+                    <span className="mt-2 text-sm font-semibold">PDF belgeyi aç</span>
+                  </a>
+                ) : photo.signedUrl ? (
                   <button
                     type="button"
                     onClick={() =>
@@ -1455,12 +1585,14 @@ function JobDetailPage() {
                   </button>
                 ) : (
                   <div className="flex aspect-video items-center justify-center bg-muted text-sm text-muted-foreground">
-                    Fotoğraf açılamadı
+                    Dosya açılamadı
                   </div>
                 )}
                 <CardContent className="space-y-2 p-4">
                   <div className="flex items-center justify-between gap-2">
-                    <Badge variant="outline">{photoTypeLabels[photo.photo_type]}</Badge>
+                    <Badge variant="outline">
+                      {photo.is_document ? "PDF Belge" : photoTypeLabels[photo.photo_type]}
+                    </Badge>
                     <span className="text-xs text-muted-foreground">
                       {formatDate(photo.created_at)}
                     </span>
@@ -1484,13 +1616,13 @@ function JobDetailPage() {
                       variant="outline"
                       className="w-full border-destructive/40 text-destructive hover:text-destructive"
                       onClick={() => {
-                        if (window.confirm("Bu fotoğraf silinsin mi? Onaya bağlı fotoğraflar silinemez.")) {
+                        if (window.confirm("Bu dosya silinsin mi? Onaya bağlı kanıtlar silinemez.")) {
                           deletePhotoMutation.mutate({ photoId: photo.id, storagePath: photo.storage_path });
                         }
                       }}
                       disabled={deletePhotoMutation.isPending}
                     >
-                      <Trash2 className="mr-2 h-3.5 w-3.5" /> Fotoğrafı Sil
+                      <Trash2 className="mr-2 h-3.5 w-3.5" /> Dosyayı Sil
                     </Button>
                   ) : null}
                 </CardContent>

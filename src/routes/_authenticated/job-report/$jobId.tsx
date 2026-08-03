@@ -107,7 +107,7 @@ function JobReportPage() {
   async function downloadWordReport() {
     const reportPhotos = await Promise.all(
       photos
-        .filter((photo) => Boolean(photo.signedUrl))
+        .filter((photo) => Boolean(photo.signedUrl) && !photo.is_document)
         .map(async (photo) => ({
           ...photo,
           dataUrl: await imageAsDataUrl(photo.signedUrl!),
@@ -125,13 +125,13 @@ function JobReportPage() {
           )
           .join("")
       : '<tr><td colspan="3">Malzeme kaydı bulunmuyor.</td></tr>';
-    const photoBlocks = reportPhotos.length
-      ? reportPhotos
+    const photoBlocks = photos.length
+      ? photos
           .map(
             (photo) => `
           <div class="photo">
-            <img src="${photo.dataUrl}" alt="${escapeHtml(photo.caption)}" />
-            <strong>${escapeHtml(photoTypeLabels[photo.photo_type])}</strong>
+            ${photo.is_document ? `<p><strong>PDF belge:</strong> ${escapeHtml(photo.caption || "Açıklama eklenmemiş")}</p>` : `<img src="${escapeHtml(reportPhotos.find((reportPhoto) => reportPhoto.id === photo.id)?.dataUrl || "")}" alt="${escapeHtml(photo.caption)}" />`}
+            <strong>${escapeHtml(photo.is_document ? "PDF Belge" : photoTypeLabels[photo.photo_type])}</strong>
             <p>${escapeHtml(photo.caption || "Açıklama eklenmemiş")}</p>
           </div>`,
           )
@@ -160,7 +160,7 @@ function JobReportPage() {
         <p><strong>Onaylayan:</strong> ${escapeHtml(approvedSubmission?.reviewed_by ? profileById.get(approvedSubmission.reviewed_by) : "-")}</p>
         <h2>Kullanılan Malzemeler</h2>
         <table><thead><tr><th>Malzeme</th><th>Miktar</th><th>Kaynak</th></tr></thead><tbody>${materialRows}</tbody></table>
-        <h2>Saha Fotoğrafları</h2>${photoBlocks}
+        <h2>Saha Fotoğrafları ve Belgeleri</h2>${photoBlocks}
       </body></html>`;
     const blob = new Blob(["\ufeff", html], { type: "application/msword" });
     const url = URL.createObjectURL(blob);
@@ -270,7 +270,7 @@ function JobReportPage() {
 
         <section className="mt-7">
           <h2 className="flex items-center gap-2 text-xl font-black">
-            <FileText className="h-5 w-5 text-blue-700" /> Saha Fotoğrafları
+            <FileText className="h-5 w-5 text-blue-700" /> Saha Fotoğrafları ve Belgeleri
           </h2>
           <div className="mt-3 grid gap-5 sm:grid-cols-2">
             {photos.map((photo) => (
@@ -278,7 +278,17 @@ function JobReportPage() {
                 key={photo.id}
                 className="break-inside-avoid overflow-hidden rounded-xl border border-slate-200"
               >
-                {photo.signedUrl ? (
+                {photo.is_document ? (
+                  <a
+                    href={photo.signedUrl ?? undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-slate-100 text-blue-700"
+                  >
+                    <FileText className="h-10 w-10" />
+                    <span className="text-sm font-bold">PDF belgeyi aç</span>
+                  </a>
+                ) : photo.signedUrl ? (
                   <img
                     src={photo.signedUrl}
                     alt={photo.caption || "Saha fotoğrafı"}
