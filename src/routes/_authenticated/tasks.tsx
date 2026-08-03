@@ -419,19 +419,19 @@ function TasksPage() {
   const unifiedTasks = [
     ...visibleWorkOrders.map((task) => ({
       id: `work-order-${task.id}`,
-      category: "Saha",
+      category: "Görev",
       title: `#${task.work_order_no ?? "—"} · ${task.title}`,
       status: task.status,
       plannedDate: task.scheduled_at,
       assignee: contractorsByWorkOrder.get(task.id),
-      relation: task.project_id ? `Proje: ${projectById.get(task.project_id)?.name || "Proje"}` : "Bağımsız saha görevi",
+      relation: task.project_id ? `Bağlı proje: ${projectById.get(task.project_id)?.name || "Proje"}` : "Saha görevi",
       subtitle: `İlerleme %${task.progress_pct}`,
       onOpen: () => { window.location.href = `/jobs/${task.id}`; },
       actions: <><Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingWorkOrder(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteWorkOrderTarget(task)} disabled={deleteWorkOrder.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
     })),
     ...visibleIndependentTasks.map((task) => ({
       id: `operational-${task.id}`,
-      category: task.project_id ? "Proje bağlantılı" : "Bağımsız",
+      category: "Görev",
       title: task.title,
       status: task.status,
       plannedDate: task.planned_date,
@@ -443,17 +443,24 @@ function TasksPage() {
     })),
     ...visibleProjectTasks.map((task) => ({
       id: `project-task-${task.id}`,
-      category: "Proje süreci",
+      category: "Proje görevi",
       title: task.task_name,
       status: task.status,
       plannedDate: task.planned_date,
       assignee: task.responsible_id ? assigneeById.get(task.responsible_id) : undefined,
       relation: `Proje: ${projectById.get(task.project_id)?.name || "Proje"}`,
       subtitle: `${task.phase_name} · Onaylı ilerleme %${task.approved_progress_pct}`,
-      onOpen: () => { window.location.href = `/projects/${task.project_id}#task-${task.id}`; },
-      actions: <><Link to="/projects/$projectId" params={{ projectId: task.project_id }} hash={`task-${task.id}`}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveProjectTaskTarget(task)} disabled={removeProjectTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Kaldır</Button> : null}</>,
+      onOpen: () => startEditingProjectTask(task),
+      actions: <><Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}>Görevi Aç</Button>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveProjectTaskTarget(task)} disabled={removeProjectTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Kaldır</Button> : null}</>,
     })),
   ].sort((left, right) => (left.plannedDate || "9999-12-31").localeCompare(right.plannedDate || "9999-12-31"));
+
+  const projectTaskGroups = new Map<string, typeof unifiedTasks>();
+  const operationalTaskItems = unifiedTasks.filter((task) => task.category !== "Proje görevi");
+  for (const task of unifiedTasks.filter((item) => item.category === "Proje görevi")) {
+    const groupKey = task.relation;
+    projectTaskGroups.set(groupKey, [...(projectTaskGroups.get(groupKey) ?? []), task]);
+  }
 
   return <>
     <PageHeader title="Görevler" description="Bütün operasyon görevlerini tek merkezden açın, atayın, takip edin ve yönetin." actions={createButton} />
@@ -472,7 +479,16 @@ function TasksPage() {
     <section className="surface-panel mt-6 p-4 sm:p-5">
       <div className="mb-4"><h2 className="text-lg font-black">Görev Listesi</h2><p className="text-sm text-muted-foreground">Saha, proje ve bağımsız görevler burada tek listede yönetilir. Etiket yalnızca görevin nereden geldiğini gösterir.</p></div>
       {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Henüz atanmamış proje kontrol listesi kalemleri burada görev sayılmaz; yalnızca proje detayında görünür. Bu liste, Paneldeki görev sayılarıyla aynı kayıtları gösterir.</p> : null}
-      {unifiedTasks.length === 0 ? <EmptyState title="Bu görünümde görev yok" description="Filtreyi değiştirin veya yeni görev oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-3">{unifiedTasks.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} relation={task.relation} subtitle={task.subtitle} onOpen={task.onOpen} actions={task.actions} />)}</div>}
+      {unifiedTasks.length === 0 ? <EmptyState title="Bu görünümde görev yok" description="Filtreyi değiştirin veya yeni görev oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-5">
+        {operationalTaskItems.length > 0 ? <div className="grid gap-3">
+          <div><h3 className="font-black">Operasyon Görevleri</h3><p className="text-sm text-muted-foreground">Bağımsız ve saha görevleri aynı listede.</p></div>
+          {operationalTaskItems.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} relation={task.relation} subtitle={task.subtitle} onOpen={task.onOpen} actions={task.actions} />)}
+        </div> : null}
+        {[...projectTaskGroups.entries()].map(([projectName, tasks]) => <details key={projectName} className="rounded-xl border border-border bg-background/20 p-4" open={activeFilter !== "all"}>
+          <summary className="cursor-pointer list-none"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-black">{projectName.replace("Proje: ", "")}</h3><p className="text-sm text-muted-foreground">Proje süreçlerine bağlı {tasks.length} görev</p></div><Badge variant="secondary">Görevleri aç</Badge></div></summary>
+          <div className="mt-4 grid gap-3">{tasks.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} relation={task.relation} subtitle={task.subtitle} onOpen={task.onOpen} actions={task.actions} />)}</div>
+        </details>)}
+      </div>}
     </section>
     <Dialog open={Boolean(selectedTask)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedTask(null); }}>
       <DialogContent className="sm:max-w-lg">
