@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_authenticated/approvals")({
   component: ApprovalsPage,
 });
 
-const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled","not_applicable")';
+const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled")';
 const TERMINAL_TASK_STATUSES = ["completed", "cancelled", "not_applicable"];
 
 type WorkOrderRef = {
@@ -126,10 +126,12 @@ function ApprovalsPage() {
   const queryClient = useQueryClient();
   const canAccess = role === "admin" || role === "technical_office" || role === "contractor";
   const isAdmin = role === "admin";
+  const isTechnicalOffice = role === "technical_office";
   const isContractor = role === "contractor";
-  // Yönetici dışındaki roller iş bitirme ve saha ilerleme onay kayıtlarını RLS
-  // gereği hiç göremez; bu iki bölüm yalnızca yönetici ve ilgili taşeron için sorgulanır.
-  const canSeeCompletionAndProgress = isAdmin || isContractor;
+  // Proje görevi onayını admin ve teknik ofis verebilir (review_project_task_progress
+  // can_manage_projects kontrolü yapar); iş bitirme ve saha ilerleme onayı yalnızca
+  // yöneticiye özeldir (review_work_completion / review_progress_update admin ister).
+  const canManageProjectApprovals = isAdmin || isTechnicalOffice;
 
   const query = useQuery({
     queryKey: ["approvals", role, user?.id],
@@ -199,8 +201,8 @@ function ApprovalsPage() {
         overdueOrdersQuery,
         projectTasksQuery,
         independentTasksQuery,
-        canSeeCompletionAndProgress ? completionsQuery : Promise.resolve({ data: [], error: null }),
-        canSeeCompletionAndProgress ? progressQuery : Promise.resolve({ data: [], error: null }),
+        completionsQuery,
+        progressQuery,
         projectTaskSubmissionsQuery,
         isAdmin
           ? supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(30)
@@ -384,7 +386,7 @@ function ApprovalsPage() {
           <div>
             <h2 className="text-lg font-black">Onay Bekleyenler</h2>
             <p className="text-sm text-muted-foreground">
-              {isAdmin
+              {canManageProjectApprovals
                 ? "Karar sizi bekliyor. Onaylayın veya açıklama yazarak revizyona gönderin."
                 : "Gönderdiğiniz kayıtların onay durumu."}{" "}
               · {pendingCount} kayıt
@@ -480,7 +482,7 @@ function ApprovalsPage() {
                   evidenceCount={data.projectEvidenceCount.get(item.id) ?? 0}
                   href={task ? `/projects/${task.project_id}#task-${task.id}` : undefined}
                   actions={
-                    isAdmin ? (
+                    canManageProjectApprovals ? (
                       <ReviewActions
                         pending={reviewProjectTaskSubmission.isPending}
                         onApprove={() =>
