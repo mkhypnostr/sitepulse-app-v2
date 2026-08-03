@@ -6,6 +6,7 @@ export type PhotoType = Database["public"]["Enums"]["photo_type"];
 
 export const roleLabels: Record<AppRole, string> = {
   admin: "Yönetici",
+  technical_office: "Teknik Ofis",
   contractor: "Taşeron",
   customer: "Müşteri",
 };
