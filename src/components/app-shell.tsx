@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ShieldAlert,
   UserCog,
   UsersRound,
   X,
@@ -54,6 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     role === "admin"
       ? [
           { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
+          { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert },
           { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
           { to: "/tasks", label: "Görevler", icon: ClipboardList },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
@@ -64,6 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       : role === "technical_office"
         ? [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
+            { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert },
             { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
             { to: "/tasks", label: "Görevler", icon: ClipboardList },
             { to: "/customers", label: "Müşteriler", icon: UsersRound },
@@ -73,6 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       : role === "contractor"
         ? [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
+            { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert },
             { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
             { to: "/my-project-tasks", label: "Proje Görevlerim", icon: ClipboardList },
           ]
