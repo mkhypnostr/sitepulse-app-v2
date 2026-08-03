@@ -33,7 +33,7 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export const Route = createFileRoute("/")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
   }),
   component: IndexComponent,

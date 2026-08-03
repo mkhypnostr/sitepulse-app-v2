@@ -112,8 +112,8 @@ function CustomersPage() {
         customer_tax_office: taxOffice.trim(),
         customer_tax_no: taxNo.trim(),
         customer_billing_address: billingAddress.trim(),
-        target_contact_user_id: role === "admin" && contactUserId !== "none" ? contactUserId : null,
-        target_customer_id: editingCustomer?.id ?? null,
+        target_contact_user_id: role === "admin" && contactUserId !== "none" ? contactUserId : undefined,
+        target_customer_id: editingCustomer?.id ?? undefined,
       });
       if (error) throw error;
     },

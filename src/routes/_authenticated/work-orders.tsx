@@ -174,7 +174,9 @@ function WorkOrdersPage() {
       if (!locationUrl) throw new Error("Google Maps'ten geçerli bir konum bağlantısı girin");
       const scheduledAt = new Date(`${form.date}T${form.time}:00`).toISOString();
       const { error } = await supabase.rpc("create_work_order", {
-        target_customer_id: form.customerId || null,
+        // target_customer_id has no SQL default (must be sent even when empty);
+        // the RPC accepts NULL for a customer-less work order.
+        target_customer_id: (form.customerId || null) as string,
         order_title: form.title,
         order_description: form.description,
         order_location: "",
@@ -188,9 +190,9 @@ function WorkOrdersPage() {
         order_default_material_source:
           form.workScopeType === "labor_only" ? "none" : form.materialSource,
         visible_to_customer: form.showToCustomer,
-        assigned_contractor_id: form.assigneeId === "none" ? null : form.assigneeId,
-        target_project_id: form.projectId || null,
-      } as never);
+        assigned_contractor_id: form.assigneeId === "none" ? undefined : form.assigneeId,
+        target_project_id: form.projectId || undefined,
+      });
       if (error) throw error;
     },
     onSuccess: async () => {

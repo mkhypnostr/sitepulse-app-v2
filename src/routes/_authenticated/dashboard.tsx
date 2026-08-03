@@ -61,6 +61,16 @@ type OperationalTaskSummary = Pick<
   Database["public"]["Tables"]["operational_tasks"]["Row"],
   "id" | "title" | "project_id" | "planned_date" | "status" | "assigned_to"
 >;
+type DashboardWorkOrder = Database["public"]["Tables"]["work_orders"]["Row"] & {
+  customers: { name: string } | null;
+  projects: { name: string; project_no: string } | null;
+  work_order_financials: {
+    customer_amount: number | null;
+    contractor_labor_amount: number | null;
+    estimated_material_cost: number | null;
+    approved_progress_pct: number | null;
+  } | null;
+};
 
 function DashboardPage() {
   const { role } = useAuth();
@@ -69,17 +79,20 @@ function DashboardPage() {
     queryKey: ["dashboard", role],
     enabled: Boolean(role),
     queryFn: async () => {
-      // Technical office sees all assigned saha görevleri, but never receives
-      // financial joins or financial-table data.
+      // Technical office sees project/customer names for its assigned saha
+      // görevleri, but the query never touches work_order_financials.
       const orders =
         role === "technical_office"
           ? await (async () => {
               const { data, error } = await supabase
                 .from("work_orders")
-                .select("id, customer_id, title, description, location, scheduled_at, progress_pct, status, created_by, created_at, updated_at, work_order_no, location_url, completion_note, completion_submitted_at, completion_submitted_by, review_note, reviewed_at, reviewed_by, work_scope_type, default_material_source, project_id, show_to_customer")
+                .select("id, customer_id, title, description, location, scheduled_at, progress_pct, status, created_by, created_at, updated_at, work_order_no, location_url, completion_note, completion_submitted_at, completion_submitted_by, review_note, reviewed_at, reviewed_by, work_scope_type, default_material_source, project_id, show_to_customer, customers(name), projects(name, project_no)")
                 .order("scheduled_at", { ascending: false });
               if (error) throw error;
-              return (data ?? []) as unknown as Database["public"]["Tables"]["work_orders"]["Row"][];
+              return (data ?? []).map((row) => ({
+                ...row,
+                work_order_financials: null,
+              })) as unknown as DashboardWorkOrder[];
             })()
           : await (async () => {
               const { data, error } = await supabase
@@ -89,7 +102,7 @@ function DashboardPage() {
                 )
                 .order("scheduled_at", { ascending: false });
               if (error) throw error;
-              return data ?? [];
+              return (data ?? []) as unknown as DashboardWorkOrder[];
             })();
 
       let stock: { quantity: number; min_quantity: number }[] = [];

@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# This project uses bun.lock; ignore lockfiles from other package managers
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build output
+dist/
+.output/
+.vercel/
+.nitro/
+.vite/
+
+# Env files (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
