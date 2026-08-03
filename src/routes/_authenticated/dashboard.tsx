@@ -397,12 +397,7 @@ function DashboardPage() {
   // Tek bir kayıt varsa karta dokununca doğrudan o kaydın onayına gider.
   // Birden fazla kayıt varsa önce onay merkezi açılır; yöneticinin yanlış kayda
   // karar vermesini önlemek için burada tahmin yapılmaz.
-  const pendingTarget =
-    pendingApprovalItems.length === 1
-      ? pendingApprovalItems[0].href
-      : pendingApprovalCount > 0
-        ? "/dashboard#approval-center"
-        : undefined;
+  const pendingTarget = "/dashboard#approval-center";
 
   const taskRoute = "/tasks?filter=open";
   const openTasks = active + technicalOpenTasks + independentOpenTasks;
@@ -550,11 +545,11 @@ function DashboardPage() {
               Proje, görev, onay, gecikme ve stok bilgisini tek alanda takip edin.
             </p>
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
             {operationalMetrics.map((metric) => {
               const card = (
                 <Card
-                  className={`h-full min-h-[190px] ${
+                  className={`h-full min-h-[138px] ${
                     metric.attention === "danger" && metric.value > 0
                       ? "border-red-500/40 bg-red-500/5"
                       : metric.attention === "warning" && metric.value > 0
@@ -562,7 +557,7 @@ function DashboardPage() {
                         : "border-border bg-card"
                   }`}
                 >
-                  <CardContent className="flex h-full items-center gap-3 p-4 sm:gap-4 sm:p-5">
+                  <CardContent className="flex h-full items-center gap-3 p-3 sm:gap-4 sm:p-5">
                     <div
                       className={
                         metric.attention === "danger" && metric.value > 0
@@ -575,7 +570,7 @@ function DashboardPage() {
                       <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                     </div>
                     <div className="min-w-0">
-                      <p className="line-clamp-2 text-xs leading-snug text-muted-foreground sm:text-sm">{metric.label}</p>
+                      <p className="line-clamp-2 text-xs leading-snug text-muted-foreground">{metric.label}</p>
                       <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
                       <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">{metric.detail}</p>
                     </div>
