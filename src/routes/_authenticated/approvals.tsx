@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_authenticated/approvals")({
   component: ApprovalsPage,
 });
 
-const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled")';
+const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled","not_applicable")';
 const TERMINAL_TASK_STATUSES = ["completed", "cancelled", "not_applicable"];
 
 type WorkOrderRef = {
