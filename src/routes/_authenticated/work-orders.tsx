@@ -151,7 +151,7 @@ function WorkOrdersPage() {
     setForm((current) => ({
       ...current,
       projectId: selectedProject.id,
-      customerId: selectedProject.customer_id,
+      customerId: selectedProject.customer_id ?? "",
       locationUrl: selectedProject.location_url ?? "",
       showToCustomer: selectedProject.show_to_customer,
     }));
@@ -190,7 +190,7 @@ function WorkOrdersPage() {
         visible_to_customer: form.showToCustomer,
         assigned_contractor_id: form.assigneeId === "none" ? null : form.assigneeId,
         target_project_id: form.projectId || null,
-      });
+      } as never);
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -302,7 +302,7 @@ function WorkOrdersPage() {
                 setForm({
                   ...form,
                   projectId: project.id,
-                  customerId: project.customer_id,
+                  customerId: project.customer_id ?? "",
                   locationUrl: project.location_url ?? "",
                   showToCustomer: project.show_to_customer,
                 });
