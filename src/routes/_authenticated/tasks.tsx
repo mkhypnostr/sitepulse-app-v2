@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { errorMessage, roleLabels } from "@/lib/domain";
 import { formatDate } from "@/lib/format";
 import { isOperationalManager } from "@/lib/permissions";
+import type { ProjectTaskStatus } from "@/lib/projects";
 import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,6 +99,9 @@ function TasksPage() {
   const canViewTasks = isOperationalManager(role);
   const canCreateTasks = isOperationalManager(role);
   const canAssignTasks = role === "admin";
+  // Bağımsız görev ve saha görevi düzenleme/yeniden atama artık admin ve
+  // teknik ofis için ortak; RPC yetki kontrolü de can_manage_projects kullanıyor.
+  const canReassignTasks = isOperationalManager(role);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", projectId: "none", customerId: "none", assigneeId: "none", plannedDate: "" });
@@ -192,15 +196,16 @@ function TasksPage() {
             assigned_user_id: form.assigneeId === "none" ? undefined : form.assigneeId,
             planned_on: form.plannedDate || undefined,
           })
-        : await supabase.rpc("update_operational_task_technical" as never, {
+        : await supabase.rpc("update_operational_task_technical", {
             target_task_id: editingTask.id,
             task_title: form.title.trim(),
             task_description: form.description.trim() || undefined,
             target_project_id: form.projectId === "none" ? undefined : form.projectId,
             target_customer_id: form.customerId === "none" ? undefined : form.customerId,
+            assigned_user_id: form.assigneeId === "none" ? undefined : form.assigneeId,
             planned_on: form.plannedDate || undefined,
-            new_status: editingTask.status,
-          } as never);
+            new_status: editingTask.status as ProjectTaskStatus,
+          });
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -331,13 +336,17 @@ function TasksPage() {
   const projectById = new Map(data.projects.map((project) => [project.id, project]));
   const customerById = new Map(data.customers.map((customer) => [customer.id, customer.name]));
   const assigneeById = new Map(data.assignees.map((assignee) => [assignee.id, assignee]));
+  // Görev oluşturma anında atama hâlâ yalnızca admin yetkisinde
+  // (create_operational_task bunu sunucu tarafında da zorunlu kılar);
+  // düzenlemede ise admin ve teknik ofis eşit yetkiye sahip.
+  const showAssigneeField = editingTask ? canReassignTasks : canAssignTasks;
   const createButton = canCreateTasks ? (
     <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setEditingTask(null); }}>
       <DialogTrigger asChild><Button className="h-12 font-bold" onClick={() => setEditingTask(null)}><Plus className="mr-2 h-4 w-4" /> Yeni Bağımsız Görev</Button></DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{editingTask ? "Bağımsız görevi düzenle" : "Bağımsız görev oluştur"}</DialogTitle>
-          <DialogDescription>Müşteri ve proje isteğe bağlıdır. Finansal bilgi bu görev kaydında yer almaz. {!canAssignTasks ? "Sorumlu ataması yönetici tarafından yapılır." : ""}</DialogDescription>
+          <DialogDescription>Müşteri ve proje isteğe bağlıdır. Finansal bilgi bu görev kaydında yer almaz. {!showAssigneeField ? "Sorumlu ataması yönetici tarafından yapılır." : ""}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <label className="grid gap-1.5 text-sm font-medium">Görev Başlığı<Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} maxLength={180} /></label>
@@ -346,8 +355,8 @@ function TasksPage() {
             <label className="grid gap-1.5 text-sm font-medium">Bağlı Proje (isteğe bağlı)<Select value={form.projectId} onValueChange={(projectId) => setForm({ ...form, projectId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Bağımsız görev</SelectItem>{data.projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.project_no} · {project.name}</SelectItem>)}</SelectContent></Select></label>
             <label className="grid gap-1.5 text-sm font-medium">Müşteri (isteğe bağlı)<Select value={form.customerId} onValueChange={(customerId) => setForm({ ...form, customerId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Müşteri seçilmedi</SelectItem>{data.customers.map((customer) => <SelectItem key={customer.id} value={customer.id}>{customer.name}</SelectItem>)}</SelectContent></Select></label>
           </div>
-          <div className={canAssignTasks ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
-            {canAssignTasks ? <label className="grid gap-1.5 text-sm font-medium">Sorumlu (isteğe bağlı)<Select value={form.assigneeId} onValueChange={(assigneeId) => setForm({ ...form, assigneeId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Henüz atama yok</SelectItem>{data.assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}</SelectItem>)}</SelectContent></Select></label> : null}
+          <div className={showAssigneeField ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
+            {showAssigneeField ? <label className="grid gap-1.5 text-sm font-medium">Sorumlu (isteğe bağlı)<Select value={form.assigneeId} onValueChange={(assigneeId) => setForm({ ...form, assigneeId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Henüz atama yok</SelectItem>{data.assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}</SelectItem>)}</SelectContent></Select></label> : null}
             <label className="grid gap-1.5 text-sm font-medium">Planlanan Tarih<Input type="date" value={form.plannedDate} onChange={(event) => setForm({ ...form, plannedDate: event.target.value })} /></label>
           </div>
         </div>

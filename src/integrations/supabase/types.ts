@@ -1573,6 +1573,7 @@ export type Database = {
       }
       update_operational_task_technical: {
         Args: {
+          assigned_user_id?: string
           new_status?: Database["public"]["Enums"]["project_task_status"]
           planned_on?: string
           target_customer_id?: string
