@@ -71,7 +71,7 @@ export function MapPreview({
             tabIndex={-1}
           />
         ) : (
-          <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,hsl(var(--primary)/0.14),transparent_68%)]">
+          <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,color-mix(in_oklch,var(--primary)_14%,transparent),transparent_68%)]">
             <MapPinned className="h-10 w-10 text-highlight/70" />
           </div>
         )}
