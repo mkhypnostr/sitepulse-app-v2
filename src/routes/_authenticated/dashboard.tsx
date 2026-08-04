@@ -457,6 +457,7 @@ function DashboardPage() {
       detail: lowStock ? "Minimum seviyenin altında" : "Kritik stok yok",
       icon: Package,
       href: "/stock",
+      attention: "warning" as const,
     },
   ];
 
