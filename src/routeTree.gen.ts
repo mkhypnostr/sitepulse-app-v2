@@ -27,6 +27,7 @@ import { Route as AuthenticatedWorkOrdersRouteImport } from './routes/_authentic
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
 import { Route as AuthenticatedJobReportJobIdRouteImport } from './routes/_authenticated/job-report/$jobId'
 import { Route as AuthenticatedJobsJobIdRouteImport } from './routes/_authenticated/jobs/$jobId'
+import { Route as AuthenticatedProjectReportProjectIdRouteImport } from './routes/_authenticated/project-report/$projectId'
 import { Route as AuthenticatedProjectsProjectIdRouteImport } from './routes/_authenticated/projects/$projectId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -120,6 +121,12 @@ const AuthenticatedJobsJobIdRoute = AuthenticatedJobsJobIdRouteImport.update({
   path: '/jobs/$jobId',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedProjectReportProjectIdRoute =
+  AuthenticatedProjectReportProjectIdRouteImport.update({
+    id: '/project-report/$projectId',
+    path: '/project-report/$projectId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedProjectsProjectIdRoute =
   AuthenticatedProjectsProjectIdRouteImport.update({
     id: '/$projectId',
@@ -145,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/oauth/consent': typeof OauthConsentRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
+  '/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
 }
 export interface FileRoutesByTo {
@@ -165,6 +173,7 @@ export interface FileRoutesByTo {
   '/oauth/consent': typeof OauthConsentRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
+  '/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
 }
 export interface FileRoutesById {
@@ -187,6 +196,7 @@ export interface FileRoutesById {
   '/oauth/consent': typeof OauthConsentRoute
   '/_authenticated/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/_authenticated/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
+  '/_authenticated/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
   '/_authenticated/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
 }
 export interface FileRouteTypes {
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/oauth/consent'
     | '/job-report/$jobId'
     | '/jobs/$jobId'
+    | '/project-report/$projectId'
     | '/projects/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -229,6 +240,7 @@ export interface FileRouteTypes {
     | '/oauth/consent'
     | '/job-report/$jobId'
     | '/jobs/$jobId'
+    | '/project-report/$projectId'
     | '/projects/$projectId'
   id:
     | '__root__'
@@ -250,6 +262,7 @@ export interface FileRouteTypes {
     | '/oauth/consent'
     | '/_authenticated/job-report/$jobId'
     | '/_authenticated/jobs/$jobId'
+    | '/_authenticated/project-report/$projectId'
     | '/_authenticated/projects/$projectId'
   fileRoutesById: FileRoutesById
 }
@@ -388,6 +401,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedJobsJobIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/project-report/$projectId': {
+      id: '/_authenticated/project-report/$projectId'
+      path: '/project-report/$projectId'
+      fullPath: '/project-report/$projectId'
+      preLoaderRoute: typeof AuthenticatedProjectReportProjectIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/projects/$projectId': {
       id: '/_authenticated/projects/$projectId'
       path: '/$projectId'
@@ -426,6 +446,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedWorkOrdersRoute: typeof AuthenticatedWorkOrdersRoute
   AuthenticatedJobReportJobIdRoute: typeof AuthenticatedJobReportJobIdRoute
   AuthenticatedJobsJobIdRoute: typeof AuthenticatedJobsJobIdRoute
+  AuthenticatedProjectReportProjectIdRoute: typeof AuthenticatedProjectReportProjectIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -443,6 +464,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedWorkOrdersRoute: AuthenticatedWorkOrdersRoute,
   AuthenticatedJobReportJobIdRoute: AuthenticatedJobReportJobIdRoute,
   AuthenticatedJobsJobIdRoute: AuthenticatedJobsJobIdRoute,
+  AuthenticatedProjectReportProjectIdRoute:
+    AuthenticatedProjectReportProjectIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

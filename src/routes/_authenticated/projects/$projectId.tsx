@@ -183,6 +183,11 @@ function ProjectDetailPage() {
                 <Plus className="mr-2 h-4 w-4" /> Yeni Proje Görevi
               </Button>
             ) : null}
+            <Button asChild variant="outline">
+              <Link to="/project-report/$projectId" params={{ projectId: project.id }}>
+                <FileText className="mr-2 h-4 w-4" /> Proje Raporu
+              </Link>
+            </Button>
             <Badge variant="outline" className="px-3 py-1.5">
               {projectStatusLabel[project.status]}
             </Badge>

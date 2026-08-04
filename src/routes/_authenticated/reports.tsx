@@ -47,14 +47,16 @@ const monthOptions = [
 ];
 
 function periodBoundaries(year: string, month: string) {
+  // Yerel (TR) saatle sınırlanır; UTC kullanılsaydı ay sınırındaki son/ilk
+  // birkaç saatlik kayıtlar yanlış aya sızabilirdi.
   const yearNumber = Number(year);
   const monthNumber = month === "all" ? 0 : Number(month) - 1;
   return {
-    start: new Date(Date.UTC(yearNumber, monthNumber, 1)).toISOString(),
+    start: new Date(yearNumber, monthNumber, 1).toISOString(),
     end:
       month === "all"
-        ? new Date(Date.UTC(yearNumber + 1, 0, 1)).toISOString()
-        : new Date(Date.UTC(yearNumber, monthNumber + 1, 1)).toISOString(),
+        ? new Date(yearNumber + 1, 0, 1).toISOString()
+        : new Date(yearNumber, monthNumber + 1, 1).toISOString(),
   };
 }
 
