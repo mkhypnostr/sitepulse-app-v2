@@ -256,16 +256,19 @@ function ApprovalsPage() {
         projectEvidenceCount.set(row.submission_id, (projectEvidenceCount.get(row.submission_id) ?? 0) + 1);
       }
 
-      let financialsByOrderId = new Map<string, number | null>();
+      let financialsByOrderId = new Map<
+        string,
+        { customer_labor_amount: number; customer_material_amount: number; contractor_labor_amount: number }
+      >();
       if (isAdmin) {
         const orderIds = [...new Set(completions.map((item) => item.work_order_id))];
         if (orderIds.length) {
           const { data, error } = await supabase
             .from("work_order_financials")
-            .select("work_order_id, customer_amount")
+            .select("work_order_id, customer_labor_amount, customer_material_amount, contractor_labor_amount")
             .in("work_order_id", orderIds);
           if (error) throw error;
-          financialsByOrderId = new Map(data.map((row) => [row.work_order_id, row.customer_amount]));
+          financialsByOrderId = new Map(data.map((row) => [row.work_order_id, row]));
         }
       }
 
@@ -364,7 +367,10 @@ function ApprovalsPage() {
     activityLogs: [],
     completionEvidenceCount: new Map<string, number>(),
     projectEvidenceCount: new Map<string, number>(),
-    financialsByOrderId: new Map<string, number | null>(),
+    financialsByOrderId: new Map<
+      string,
+      { customer_labor_amount: number; customer_material_amount: number; contractor_labor_amount: number }
+    >(),
     profileNameById: new Map<string, string | null>(),
   };
 
@@ -418,9 +424,17 @@ function ApprovalsPage() {
                   href={order ? `/jobs/${order.id}#completion-approval` : undefined}
                   extra={
                     isAdmin && data.financialsByOrderId.has(item.work_order_id) ? (
-                      <Badge variant="secondary">
-                        Müşteri Tutarı: {formatTRY(data.financialsByOrderId.get(item.work_order_id))}
-                      </Badge>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge variant="secondary">
+                          Satış İşçilik: {formatTRY(data.financialsByOrderId.get(item.work_order_id)?.customer_labor_amount)}
+                        </Badge>
+                        <Badge variant="secondary">
+                          Satış Malzeme: {formatTRY(data.financialsByOrderId.get(item.work_order_id)?.customer_material_amount)}
+                        </Badge>
+                        <Badge variant="outline">
+                          Taşeron İşçilik: {formatTRY(data.financialsByOrderId.get(item.work_order_id)?.contractor_labor_amount)}
+                        </Badge>
+                      </div>
                     ) : null
                   }
                   actions={

@@ -297,12 +297,17 @@ function CustomersPage() {
                   <TableCell className="font-bold">{customer.name}</TableCell>
                   <TableCell>{customer.contact || "—"}</TableCell>
                   <TableCell>
-                    {customer.billing_title || customer.tax_no ? (
-                      <div className="space-y-0.5 text-sm">
+                    {customer.billing_title || customer.tax_no || customer.billing_address ? (
+                      <div className="max-w-56 space-y-0.5 text-sm">
                         <p className="font-semibold">{customer.billing_title || "Fatura ünvanı girilmedi"}</p>
                         <p className="text-xs text-muted-foreground">
                           {[customer.tax_office, customer.tax_no].filter(Boolean).join(" · ") || "Vergi bilgisi girilmedi"}
                         </p>
+                        {customer.billing_address ? (
+                          <p className="truncate text-xs text-muted-foreground" title={customer.billing_address}>
+                            {customer.billing_address}
+                          </p>
+                        ) : null}
                       </div>
                     ) : "—"}
                   </TableCell>
