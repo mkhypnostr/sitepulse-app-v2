@@ -14,6 +14,13 @@ export const Route = createFileRoute("/_authenticated/job-report/$jobId")({
   component: JobReportPage,
 });
 
+// NES_ANTENT.docx şirket antet şablonundan alınmıştır (logo + iletişim).
+const NES_LOGO_URL = "/nes-enerji-logo.png";
+const NES_CONTACT_ADDRESS =
+  "Orhaniye Mahallesi 12 Nolu Sokak Nur Apartmanı No:6/C Menteşe / Muğla";
+const NES_CONTACT_PHONE = "+90 554 610 24 16";
+const NES_CONTACT_EMAIL = "info@nesgrup.com";
+
 function escapeHtml(value: unknown) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -105,6 +112,7 @@ function JobReportPage() {
   const approvedSubmission = submissions.find((submission) => submission.status === "approved");
 
   async function downloadWordReport() {
+    const logoDataUrl = await imageAsDataUrl(NES_LOGO_URL);
     const reportPhotos = await Promise.all(
       photos
         .filter((photo) => Boolean(photo.signedUrl) && !photo.is_document)
@@ -145,8 +153,14 @@ function JobReportPage() {
         th,td{border:1px solid #cbd5e1;padding:9px;text-align:left}
         .photo{page-break-inside:avoid;margin:18px 0}
         .photo img{width:100%;max-height:520px;object-fit:contain;border:1px solid #cbd5e1}
+        .letterhead{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:4px solid #0755b5;padding-bottom:14px}
+        .letterhead img{height:44px}
+        .report-footer{margin-top:32px;border-top:1px solid #cbd5e1;padding-top:10px;text-align:center;font-size:10px;color:#64748b}
       </style></head><body>
-        <h1>NES ENERJİ · FOTOĞRAFLI İŞ RAPORU</h1>
+        <div class="letterhead">
+          <h1 style="margin:0">FOTOĞRAFLI İŞ RAPORU</h1>
+          <img src="${logoDataUrl}" alt="NES Enerji" />
+        </div>
         <div class="meta">
           <h2>#${escapeHtml(order.work_order_no)} · ${escapeHtml(order.title)}</h2>
           <p><strong>Müşteri:</strong> ${escapeHtml(order.customers?.name)}</p>
@@ -161,6 +175,10 @@ function JobReportPage() {
         <h2>Kullanılan Malzemeler</h2>
         <table><thead><tr><th>Malzeme</th><th>Miktar</th><th>Kaynak</th></tr></thead><tbody>${materialRows}</tbody></table>
         <h2>Saha Fotoğrafları ve Belgeleri</h2>${photoBlocks}
+        <div class="report-footer">
+          <p>${escapeHtml(NES_CONTACT_ADDRESS)}</p>
+          <p>Telefon: ${escapeHtml(NES_CONTACT_PHONE)} &middot; Mail: ${escapeHtml(NES_CONTACT_EMAIL)}</p>
+        </div>
       </body></html>`;
     const blob = new Blob(["\ufeff", html], { type: "application/msword" });
     const url = URL.createObjectURL(blob);
@@ -189,13 +207,19 @@ function JobReportPage() {
         </div>
       </div>
 
-      <article className="rounded-xl bg-white p-6 text-slate-950 shadow-sm print:rounded-none print:p-0 print:shadow-none">
-        <header className="border-b-4 border-blue-700 pb-5">
-          <p className="text-sm font-black tracking-[0.22em] text-blue-700">NES ENERJİ</p>
-          <h1 className="mt-2 text-3xl font-black">Fotoğraflı İş Raporu</h1>
-          <p className="mt-1 text-slate-500">
-            #{order.work_order_no} · {order.title}
-          </p>
+      <article className="rounded-xl bg-white p-6 pb-20 text-slate-950 shadow-sm print:rounded-none print:p-0 print:pb-24 print:shadow-none">
+        <header className="flex items-start justify-between gap-6 border-b-4 border-blue-700 pb-5">
+          <div>
+            <h1 className="text-3xl font-black">Fotoğraflı İş Raporu</h1>
+            <p className="mt-1 text-slate-500">
+              #{order.work_order_no} · {order.title}
+            </p>
+          </div>
+          <img
+            src={NES_LOGO_URL}
+            alt="NES Enerji"
+            className="h-10 w-auto shrink-0 object-contain print:h-12"
+          />
         </header>
 
         <section className="mt-6 grid gap-3 rounded-xl bg-blue-50 p-5 sm:grid-cols-2">
@@ -305,6 +329,19 @@ function JobReportPage() {
             ))}
           </div>
         </section>
+
+        <footer className="fixed inset-x-0 bottom-0 hidden border-t border-slate-200 bg-white px-6 py-2 text-center text-[10px] leading-4 text-slate-500 print:block">
+          <p>{NES_CONTACT_ADDRESS}</p>
+          <p>
+            Telefon: {NES_CONTACT_PHONE} · Mail: {NES_CONTACT_EMAIL}
+          </p>
+        </footer>
+        <footer className="mt-10 border-t border-slate-200 pt-3 text-center text-xs leading-5 text-slate-500 print:hidden">
+          <p>{NES_CONTACT_ADDRESS}</p>
+          <p>
+            Telefon: {NES_CONTACT_PHONE} · Mail: {NES_CONTACT_EMAIL}
+          </p>
+        </footer>
       </article>
     </div>
   );
