@@ -746,7 +746,7 @@ function DashboardPage() {
         </section>
       ) : null}
 
-      {role === "admin" ? (
+      {operationalManager ? (
         <section className="surface-panel mt-7 p-4 sm:p-5">
           <div className="mb-3">
             <h2 className="text-lg font-bold">Hızlı İşlemler</h2>

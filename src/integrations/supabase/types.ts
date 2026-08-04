@@ -1404,6 +1404,22 @@ export type Database = {
         }
         Returns: string
       }
+      create_work_order_technical: {
+        Args: {
+          assigned_contractor_id?: string
+          order_default_material_source?: string
+          order_description: string
+          order_location: string
+          order_location_url?: string
+          order_scheduled_at: string
+          order_title: string
+          order_work_scope_type?: string
+          target_customer_id: string
+          target_project_id?: string
+          visible_to_customer: boolean
+        }
+        Returns: string
+      }
       delete_draft_project: {
         Args: { target_project_id: string }
         Returns: undefined
@@ -1529,6 +1545,10 @@ export type Database = {
           new_role: Database["public"]["Enums"]["app_role"]
           target_user_id: string
         }
+        Returns: undefined
+      }
+      set_work_order_customer_visibility: {
+        Args: { target_work_order_id: string; visible: boolean }
         Returns: undefined
       }
       submit_progress_update: {

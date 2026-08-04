@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage, roleLabels, statusLabels } from "@/lib/domain";
+import { canSeeFinancials, isOperationalManager } from "@/lib/permissions";
 import { formatDate, formatTRY, halfHourOptions } from "@/lib/format";
 import { safeHttpsMapUrl } from "@/lib/map-location";
 import { MapPreview } from "@/components/map-preview";
@@ -43,6 +44,8 @@ export const Route = createFileRoute("/_authenticated/work-orders")({
 
 function WorkOrdersPage() {
   const { role } = useAuth();
+  const canManage = isOperationalManager(role);
+  const canSeeAmounts = canSeeFinancials(role);
   const { create, projectId } = Route.useSearch();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -69,13 +72,15 @@ function WorkOrdersPage() {
 
   const pageQuery = useQuery({
     queryKey: ["admin-work-orders"],
-    enabled: role === "admin",
+    enabled: canManage,
     queryFn: async () => {
-      const [ordersResult, customersResult, projectsResult, rolesResult, assignmentsResult] =
+      const [ordersResult, customersResult, projectsResult, assigneesResult, assignmentsResult] =
         await Promise.all([
           supabase
             .from("work_orders")
             .select(
+              // work_order_financials RLS yalnızca admin'e açık; teknik ofis
+              // için bu embed otomatik olarak null döner (bkz. canSeeAmounts).
               "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, customer_labor_amount, customer_material_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
             )
             .order("created_at", { ascending: false }),
@@ -85,35 +90,20 @@ function WorkOrdersPage() {
             .select("id, name, project_no, customer_id, location_url, show_to_customer, status")
             .not("status", "in", '("completed","cancelled")')
             .order("name"),
-          supabase.from("user_roles").select("user_id, role"),
+          supabase.rpc("list_task_assignees"),
           supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
         ]);
       if (ordersResult.error) throw ordersResult.error;
       if (customersResult.error) throw customersResult.error;
       if (projectsResult.error) throw projectsResult.error;
-      if (rolesResult.error) throw rolesResult.error;
+      if (assigneesResult.error) throw assigneesResult.error;
       if (assignmentsResult.error) throw assignmentsResult.error;
 
-      const assigneeIds = rolesResult.data.map((item) => item.user_id);
-      const profiles = assigneeIds.length
-        ? await supabase
-            .from("profiles")
-            .select("id, full_name, company_name")
-            .in("id", assigneeIds)
-            .order("full_name")
-        : { data: [], error: null };
-      if (profiles.error) throw profiles.error;
-      const roleByUserId = new Map(
-        rolesResult.data.map((item) => [item.user_id, item.role] as const),
-      );
       return {
         orders: ordersResult.data,
         customers: customersResult.data,
         projects: projectsResult.data,
-        assignees: (profiles.data ?? []).map((profile) => ({
-          ...profile,
-          role: roleByUserId.get(profile.id) ?? "customer",
-        })),
+        assignees: assigneesResult.data ?? [],
         assignments: assignmentsResult.data,
       };
     },
@@ -159,36 +149,58 @@ function WorkOrdersPage() {
 
   const createOrder = useMutation({
     mutationFn: async () => {
-      const customerLaborAmount = Number(form.customerLaborAmount.replace(",", "."));
-      const customerMaterialAmount = Number(form.customerMaterialAmount.replace(",", "."));
-      const contractorLaborAmount = Number(form.contractorLaborAmount.replace(",", "."));
-      const estimatedMaterialCost = Number(form.estimatedMaterialCost.replace(",", "."));
-      if (
-        ![customerLaborAmount, customerMaterialAmount, contractorLaborAmount, estimatedMaterialCost].every(
-          (value) => Number.isFinite(value) && value >= 0,
-        )
-      ) {
-        throw new Error("Ticari tutarları kontrol edin");
-      }
       const locationUrl = safeHttpsMapUrl(form.locationUrl);
       if (!locationUrl) throw new Error("Google Maps'ten geçerli bir konum bağlantısı girin");
       const scheduledAt = new Date(`${form.date}T${form.time}:00`).toISOString();
-      const { error } = await supabase.rpc("create_work_order", {
-        // target_customer_id has no SQL default (must be sent even when empty);
-        // the RPC accepts NULL for a customer-less work order.
+      const workScopeType = form.workScopeType;
+      const materialSource = form.workScopeType === "labor_only" ? "none" : form.materialSource;
+
+      if (canSeeAmounts) {
+        const customerLaborAmount = Number(form.customerLaborAmount.replace(",", "."));
+        const customerMaterialAmount = Number(form.customerMaterialAmount.replace(",", "."));
+        const contractorLaborAmount = Number(form.contractorLaborAmount.replace(",", "."));
+        const estimatedMaterialCost = Number(form.estimatedMaterialCost.replace(",", "."));
+        if (
+          ![customerLaborAmount, customerMaterialAmount, contractorLaborAmount, estimatedMaterialCost].every(
+            (value) => Number.isFinite(value) && value >= 0,
+          )
+        ) {
+          throw new Error("Ticari tutarları kontrol edin");
+        }
+        const { error } = await supabase.rpc("create_work_order", {
+          // target_customer_id has no SQL default (must be sent even when empty);
+          // the RPC accepts NULL for a customer-less work order.
+          target_customer_id: (form.customerId || null) as string,
+          order_title: form.title,
+          order_description: form.description,
+          order_location: "",
+          order_location_url: locationUrl,
+          order_scheduled_at: scheduledAt,
+          order_customer_labor_amount: customerLaborAmount,
+          order_customer_material_amount: customerMaterialAmount,
+          order_contractor_labor_amount: contractorLaborAmount,
+          order_estimated_material_cost: estimatedMaterialCost,
+          order_work_scope_type: workScopeType,
+          order_default_material_source: materialSource,
+          visible_to_customer: form.showToCustomer,
+          assigned_contractor_id: form.assigneeId === "none" ? undefined : form.assigneeId,
+          target_project_id: form.projectId || undefined,
+        });
+        if (error) throw error;
+        return;
+      }
+
+      // Teknik ofis ticari tutar giremez; saha görevi finans kaydı 0 ile
+      // oluşturulur, tutarları yalnızca admin sonradan girer.
+      const { error } = await supabase.rpc("create_work_order_technical", {
         target_customer_id: (form.customerId || null) as string,
         order_title: form.title,
         order_description: form.description,
         order_location: "",
         order_location_url: locationUrl,
         order_scheduled_at: scheduledAt,
-        order_customer_labor_amount: customerLaborAmount,
-        order_customer_material_amount: customerMaterialAmount,
-        order_contractor_labor_amount: contractorLaborAmount,
-        order_estimated_material_cost: estimatedMaterialCost,
-        order_work_scope_type: form.workScopeType,
-        order_default_material_source:
-          form.workScopeType === "labor_only" ? "none" : form.materialSource,
+        order_work_scope_type: workScopeType,
+        order_default_material_source: materialSource,
         visible_to_customer: form.showToCustomer,
         assigned_contractor_id: form.assigneeId === "none" ? undefined : form.assigneeId,
         target_project_id: form.projectId || undefined,
@@ -223,17 +235,17 @@ function WorkOrdersPage() {
 
   const visibilityMutation = useMutation({
     mutationFn: async ({ id, visible }: { id: string; visible: boolean }) => {
-      const { error } = await supabase
-        .from("work_orders")
-        .update({ show_to_customer: visible, updated_at: new Date().toISOString() })
-        .eq("id", id);
+      const { error } = await supabase.rpc("set_work_order_customer_visibility", {
+        target_work_order_id: id,
+        visible,
+      });
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] }),
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  if (role !== "admin") return <AccessDenied />;
+  if (!canManage) return <AccessDenied />;
   if (pageQuery.isLoading) return <LoadingState />;
 
   const data = pageQuery.data ?? {
@@ -467,49 +479,58 @@ function WorkOrdersPage() {
               </SelectContent>
             </Select>
           </label>
-          <label className="grid gap-1 text-sm">
-            Müşteriye İşçilik Satış Bedeli (₺)
-            <Input
-              inputMode="decimal"
-              value={form.customerLaborAmount}
-              onChange={(event) => setForm({ ...form, customerLaborAmount: event.target.value })}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            Müşteriye Malzeme Satış Bedeli (₺)
-            <Input
-              inputMode="decimal"
-              value={form.customerMaterialAmount}
-              onChange={(event) => setForm({ ...form, customerMaterialAmount: event.target.value })}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            Taşeron İşçilik Bedeli (₺)
-            <Input
-              inputMode="decimal"
-              value={form.contractorLaborAmount}
-              onChange={(event) => setForm({ ...form, contractorLaborAmount: event.target.value })}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            Tahmini Malzeme / Diğer Maliyet (₺)
-            <Input
-              inputMode="decimal"
-              value={form.estimatedMaterialCost}
-              onChange={(event) => setForm({ ...form, estimatedMaterialCost: event.target.value })}
-            />
-          </label>
-          <div className="rounded-md border bg-muted/40 p-3 text-sm">
-            <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
-            <p className="mt-1 text-lg font-black text-primary">
-              {formatTRY(
-                (Number(form.customerLaborAmount.replace(",", ".")) || 0) +
-                  (Number(form.customerMaterialAmount.replace(",", ".")) || 0) -
-                  (Number(form.contractorLaborAmount.replace(",", ".")) || 0) -
-                  (Number(form.estimatedMaterialCost.replace(",", ".")) || 0),
-              )}
+          {canSeeAmounts ? (
+            <>
+              <label className="grid gap-1 text-sm">
+                Müşteriye İşçilik Satış Bedeli (₺)
+                <Input
+                  inputMode="decimal"
+                  value={form.customerLaborAmount}
+                  onChange={(event) => setForm({ ...form, customerLaborAmount: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Müşteriye Malzeme Satış Bedeli (₺)
+                <Input
+                  inputMode="decimal"
+                  value={form.customerMaterialAmount}
+                  onChange={(event) => setForm({ ...form, customerMaterialAmount: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Taşeron İşçilik Bedeli (₺)
+                <Input
+                  inputMode="decimal"
+                  value={form.contractorLaborAmount}
+                  onChange={(event) => setForm({ ...form, contractorLaborAmount: event.target.value })}
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                Tahmini Malzeme / Diğer Maliyet (₺)
+                <Input
+                  inputMode="decimal"
+                  value={form.estimatedMaterialCost}
+                  onChange={(event) => setForm({ ...form, estimatedMaterialCost: event.target.value })}
+                />
+              </label>
+              <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
+                <p className="mt-1 text-lg font-black text-primary">
+                  {formatTRY(
+                    (Number(form.customerLaborAmount.replace(",", ".")) || 0) +
+                      (Number(form.customerMaterialAmount.replace(",", ".")) || 0) -
+                      (Number(form.contractorLaborAmount.replace(",", ".")) || 0) -
+                      (Number(form.estimatedMaterialCost.replace(",", ".")) || 0),
+                  )}
+                </p>
+              </div>
+            </>
+          ) : (
+            <p className="rounded-lg border border-border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground sm:col-span-2">
+              Ticari tutarlar bu görevde görünmez; satış ve işçilik bedelleri yönetici tarafından
+              girilir.
             </p>
-          </div>
+          )}
           <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
             Müşteriye Göster
             <Switch
@@ -625,28 +646,30 @@ function WorkOrdersPage() {
                       <strong>%{order.progress_pct}</strong>
                     </div>
                     <Progress value={order.progress_pct} />
-                    <div className="mt-2 space-y-1 text-right text-xs">
-                      <p>
-                        Müşteri:{" "}
-                        <strong>{formatTRY(order.work_order_financials?.customer_amount)}</strong>
-                      </p>
-                      <p>
-                        Taşeron:{" "}
-                        <strong>
-                          {formatTRY(order.work_order_financials?.contractor_labor_amount)}
-                        </strong>
-                      </p>
-                      <p className="text-primary">
-                        Brüt fark:{" "}
-                        <strong>
-                          {formatTRY(
-                            (order.work_order_financials?.customer_amount ?? 0) -
-                              (order.work_order_financials?.contractor_labor_amount ?? 0) -
-                              (order.work_order_financials?.estimated_material_cost ?? 0),
-                          )}
-                        </strong>
-                      </p>
-                    </div>
+                    {canSeeAmounts ? (
+                      <div className="mt-2 space-y-1 text-right text-xs">
+                        <p>
+                          Müşteri:{" "}
+                          <strong>{formatTRY(order.work_order_financials?.customer_amount)}</strong>
+                        </p>
+                        <p>
+                          Taşeron:{" "}
+                          <strong>
+                            {formatTRY(order.work_order_financials?.contractor_labor_amount)}
+                          </strong>
+                        </p>
+                        <p className="text-primary">
+                          Brüt fark:{" "}
+                          <strong>
+                            {formatTRY(
+                              (order.work_order_financials?.customer_amount ?? 0) -
+                                (order.work_order_financials?.contractor_labor_amount ?? 0) -
+                                (order.work_order_financials?.estimated_material_cost ?? 0),
+                            )}
+                          </strong>
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex items-center justify-between gap-3 rounded-md border p-3 lg:w-44">
                     <div>
@@ -668,14 +691,16 @@ function WorkOrdersPage() {
                       <Eye className="mr-2 h-4 w-4" /> Detay
                     </Link>
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-12 border-destructive/50 text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTarget({ id: order.id, title: order.title, no: order.work_order_no })}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" /> Sil
-                  </Button>
+                  {role === "admin" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-12 border-destructive/50 text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget({ id: order.id, title: order.title, no: order.work_order_no })}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" /> Sil
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             );
