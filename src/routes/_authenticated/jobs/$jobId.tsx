@@ -25,6 +25,7 @@ import { formatProjectDateTime } from "@/lib/projects";
 import { compressImage } from "@/lib/image-compress";
 import { EmptyState, LoadingState, PageHeader } from "@/components/page-states";
 import { MapPreview } from "@/components/map-preview";
+import { PhotoCaptureField } from "@/components/photo-capture-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,8 +50,6 @@ function JobDetailPage() {
   const { jobId } = Route.useParams();
   const { role, user } = useAuth();
   const queryClient = useQueryClient();
-  const cameraInput = useRef<HTMLInputElement>(null);
-  const galleryInput = useRef<HTMLInputElement>(null);
   const progressCameraInput = useRef<HTMLInputElement>(null);
   const progressGalleryInput = useRef<HTMLInputElement>(null);
   const progressDocumentInput = useRef<HTMLInputElement>(null);
@@ -58,12 +57,12 @@ function JobDetailPage() {
   const [progressPct, setProgressPct] = useState("0");
   const [progressNote, setProgressNote] = useState("");
   const [progressEvidence, setProgressEvidence] = useState<File | null>(null);
+  const [progressEvidenceUrl, setProgressEvidenceUrl] = useState<string | null>(null);
   const [progressReviewNote, setProgressReviewNote] = useState("");
   const [completionNote, setCompletionNote] = useState("");
   const [completionPhotoIds, setCompletionPhotoIds] = useState<string[]>([]);
   const [reviewNote, setReviewNote] = useState("");
   const [photoType, setPhotoType] = useState<PhotoType>("saha");
-  const [photoCaption, setPhotoCaption] = useState("");
   const [uploading, setUploading] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<{
     url: string;
@@ -276,6 +275,16 @@ function JobDetailPage() {
     }, 80);
     return () => window.clearTimeout(timer);
   }, [detailQuery.data]);
+
+  useEffect(() => {
+    if (!progressEvidence || !progressEvidence.type.startsWith("image/")) {
+      setProgressEvidenceUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(progressEvidence);
+    setProgressEvidenceUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [progressEvidence]);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["job-detail", jobId] });
@@ -531,43 +540,37 @@ function JobDetailPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  async function uploadPhotos(files: FileList | null) {
-    if (!files?.length || !user) return;
+  async function uploadPhoto(file: File, caption: string) {
+    if (!user) throw new Error("Oturum bulunamadı");
     setUploading(true);
-    let uploaded = 0;
     try {
-      for (const file of Array.from(files)) {
-        const compressed = await compressImage(file);
-        const storagePath = `${user.id}/${jobId}/${crypto.randomUUID()}.jpg`;
-        const { error: uploadError } = await supabase.storage
-          .from("work-photos")
-          .upload(storagePath, compressed, { contentType: "image/jpeg", upsert: false });
-        if (uploadError) throw uploadError;
+      const compressed = await compressImage(file);
+      const storagePath = `${user.id}/${jobId}/${crypto.randomUUID()}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from("work-photos")
+        .upload(storagePath, compressed, { contentType: "image/jpeg", upsert: false });
+      if (uploadError) throw uploadError;
 
-        const { error: recordError } = await supabase.from("photos").insert({
-          work_order_id: jobId,
-          uploaded_by: user.id,
-          storage_path: storagePath,
-          caption: photoCaption.trim() || null,
-          photo_type: photoType,
-          show_to_customer: false,
-          is_document: false,
-        });
-        if (recordError) {
-          await supabase.storage.from("work-photos").remove([storagePath]);
-          throw recordError;
-        }
-        uploaded += 1;
+      const { error: recordError } = await supabase.from("photos").insert({
+        work_order_id: jobId,
+        uploaded_by: user.id,
+        storage_path: storagePath,
+        caption: caption || null,
+        photo_type: photoType,
+        show_to_customer: false,
+        is_document: false,
+      });
+      if (recordError) {
+        await supabase.storage.from("work-photos").remove([storagePath]);
+        throw recordError;
       }
       await refresh();
-      setPhotoCaption("");
-      toast.success(`${uploaded} fotoğraf yüklendi`);
+      toast.success("Fotoğrafınız eklendi");
     } catch (error) {
-      toast.error(`${uploaded} fotoğraf yüklendi; işlem durdu: ${errorMessage(error)}`);
+      toast.error(errorMessage(error));
+      throw error;
     } finally {
       setUploading(false);
-      if (cameraInput.current) cameraInput.current.value = "";
-      if (galleryInput.current) galleryInput.current.value = "";
     }
   }
 
@@ -593,7 +596,7 @@ function JobDetailPage() {
           work_order_id: jobId,
           uploaded_by: user.id,
           storage_path: storagePath,
-          caption: photoCaption.trim() || `Belge: ${file.name}`,
+          caption: `Belge: ${file.name}`,
           photo_type: "diger",
           show_to_customer: false,
           is_document: true,
@@ -605,7 +608,6 @@ function JobDetailPage() {
         uploaded += 1;
       }
       await refresh();
-      setPhotoCaption("");
       toast.success(`${uploaded} belge yüklendi`);
     } catch (error) {
       toast.error(`${uploaded} belge yüklendi; işlem durdu: ${errorMessage(error)}`);
@@ -1050,7 +1052,16 @@ function JobDetailPage() {
                   </Button>
                 </div>
                 {progressEvidence ? (
-                  <p className="text-xs font-semibold text-highlight">{progressEvidence.name}</p>
+                  <div className="space-y-1.5">
+                    {progressEvidenceUrl ? (
+                      <img
+                        src={progressEvidenceUrl}
+                        alt="Kanıt önizleme"
+                        className="max-h-48 w-full rounded-lg border border-border bg-black/20 object-contain"
+                      />
+                    ) : null}
+                    <p className="text-xs font-semibold text-highlight">{progressEvidence.name}</p>
+                  </div>
                 ) : null}
                 <p className="text-xs text-muted-foreground">
                   İlerleme talebi için yeni fotoğraf veya PDF belge ve en az 10 karakter açıklama zorunludur.
@@ -1078,50 +1089,36 @@ function JobDetailPage() {
               <CardTitle>Fotoğraf veya Belge Ekle</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm">
-                  Fotoğraf Türü
-                  <Select
-                    value={photoType}
-                    onValueChange={(value: PhotoType) => setPhotoType(value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.keys(photoTypeLabels) as PhotoType[]).map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {photoTypeLabels[type]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-                <label className="grid gap-1 text-sm">
-                  Açıklama
-                  <Input
-                    value={photoCaption}
-                    onChange={(event) => setPhotoCaption(event.target.value)}
-                    placeholder="Fotoğrafta ne görülüyor?"
-                  />
-                </label>
+              <label className="grid gap-1 text-sm">
+                Fotoğraf Türü
+                <Select value={photoType} onValueChange={(value: PhotoType) => setPhotoType(value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(photoTypeLabels) as PhotoType[]).map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {photoTypeLabels[type]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <PhotoCaptureField
+                accept="image/*"
+                cameraLabel="Kameradan Çek"
+                galleryLabel="Galeriden Seç"
+                confirmLabel="Fotoğraf Ekle"
+                disabled={uploading}
+                onConfirm={(file, caption) => uploadPhoto(file, caption)}
+              />
+              <div className="flex items-center gap-2">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  veya
+                </span>
+                <div className="h-px flex-1 bg-border" />
               </div>
-              <input
-                ref={cameraInput}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={(event) => uploadPhotos(event.target.files)}
-              />
-              <input
-                ref={galleryInput}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(event) => uploadPhotos(event.target.files)}
-              />
               <input
                 ref={documentInput}
                 type="file"
@@ -1130,32 +1127,14 @@ function JobDetailPage() {
                 className="hidden"
                 onChange={(event) => uploadDocuments(event.target.files)}
               />
-              <div className="grid gap-2 sm:grid-cols-3">
-                <Button
-                  variant="outline"
-                  className="h-14"
-                  onClick={() => cameraInput.current?.click()}
-                  disabled={uploading}
-                >
-                  <Camera className="mr-2 h-5 w-5" /> Kameradan Çek
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-14"
-                  onClick={() => galleryInput.current?.click()}
-                  disabled={uploading}
-                >
-                  <Images className="mr-2 h-5 w-5" /> Galeriden Seç
-                </Button>
-                <Button
-                  variant="outline"
-                  className="h-14"
-                  onClick={() => documentInput.current?.click()}
-                  disabled={uploading}
-                >
-                  <FileText className="mr-2 h-5 w-5" /> PDF Belge Ekle
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                className="h-14 w-full"
+                onClick={() => documentInput.current?.click()}
+                disabled={uploading}
+              >
+                <FileText className="mr-2 h-5 w-5" /> PDF Belge Ekle
+              </Button>
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
                 <UploadCloud className="h-4 w-4" /> Fotoğraflar yüklemeden önce yaklaşık 300 KB
                 altına sıkıştırılır; PDF belgeler en fazla 20 MB olabilir.

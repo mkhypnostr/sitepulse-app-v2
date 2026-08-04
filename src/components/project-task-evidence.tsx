@@ -1,11 +1,12 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Camera, Download, FileText, Images, Loader2, Paperclip, Trash2 } from "lucide-react";
+import { Download, FileText, Images, Loader2, Paperclip, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { Button } from "@/components/ui/button";
+import { PhotoCaptureField } from "@/components/photo-capture-field";
 
 type EvidenceType = "photo" | "document";
 
@@ -39,8 +40,6 @@ export function ProjectTaskEvidence({
 }) {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
-  const photoCameraInput = useRef<HTMLInputElement>(null);
-  const photoGalleryInput = useRef<HTMLInputElement>(null);
   const documentInput = useRef<HTMLInputElement>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
 
@@ -59,7 +58,15 @@ export function ProjectTaskEvidence({
   });
 
   const uploadEvidence = useMutation({
-    mutationFn: async ({ file, evidenceType }: { file: File; evidenceType: EvidenceType }) => {
+    mutationFn: async ({
+      file,
+      evidenceType,
+      description,
+    }: {
+      file: File;
+      evidenceType: EvidenceType;
+      description?: string;
+    }) => {
       if (!user) throw new Error("Oturum bulunamadı.");
       if (file.size > maxFileSize) throw new Error("Dosya en fazla 20 MB olabilir.");
       if (!permittedMimeTypes.has(file.type)) {
@@ -86,14 +93,17 @@ export function ProjectTaskEvidence({
         mime_type: file.type,
         size_bytes: file.size,
         evidence_type: evidenceType,
+        description: description?.trim() || null,
         uploaded_by: user.id,
       });
       if (error) throw error;
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["project-task-evidence", taskId] });
       await queryClient.invalidateQueries({ queryKey: ["project-detail", projectId] });
-      toast.success("Kanıt dosyası eklendi");
+      toast.success(
+        variables.evidenceType === "photo" ? "Fotoğrafınız eklendi" : "Kanıt dosyası eklendi",
+      );
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -134,10 +144,10 @@ export function ProjectTaskEvidence({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const startUpload = (event: ChangeEvent<HTMLInputElement>, evidenceType: EvidenceType) => {
+  const startDocumentUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) uploadEvidence.mutate({ file, evidenceType });
+    if (file) uploadEvidence.mutate({ file, evidenceType: "document" });
   };
 
   const evidence = evidenceQuery.data ?? [];
@@ -150,83 +160,50 @@ export function ProjectTaskEvidence({
         compact ? "mt-3" : "mt-4 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-3"
       }
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-highlight">
-          <Paperclip className="h-3.5 w-3.5" /> Kanıt Dosyaları
-        </p>
-        {canUpload ? (
-          <div className="flex flex-wrap gap-2">
-            {requiresPhoto || !requiresDocument ? (
-              <>
-                <input
-                  ref={photoCameraInput}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(event) => startUpload(event, "photo")}
-                />
-                <input
-                  ref={photoGalleryInput}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={(event) => startUpload(event, "photo")}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => photoCameraInput.current?.click()}
-                  disabled={uploadEvidence.isPending}
-                >
-                  {uploadEvidence.isPending ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Camera className="mr-1.5 h-3.5 w-3.5" />
-                  )}
-                  Kamera
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => photoGalleryInput.current?.click()}
-                  disabled={uploadEvidence.isPending}
-                >
-                  <Images className="mr-1.5 h-3.5 w-3.5" />
-                  Galeri
-                </Button>
-              </>
-            ) : null}
-            {requiresDocument || !requiresPhoto ? (
-              <>
-                <input
-                  ref={documentInput}
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  onChange={(event) => startUpload(event, "document")}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => documentInput.current?.click()}
-                  disabled={uploadEvidence.isPending}
-                >
-                  {uploadEvidence.isPending ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <FileText className="mr-1.5 h-3.5 w-3.5" />
-                  )}
-                  Belge Ekle
-                </Button>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-highlight">
+        <Paperclip className="h-3.5 w-3.5" /> Kanıt Dosyaları
+      </p>
+      {canUpload ? (
+        <div className="mt-2 space-y-3">
+          {requiresPhoto || !requiresDocument ? (
+            <PhotoCaptureField
+              accept="image/jpeg,image/png,image/webp"
+              cameraLabel="Kamera"
+              galleryLabel="Galeri"
+              confirmLabel="Fotoğraf Ekle"
+              disabled={uploadEvidence.isPending}
+              onConfirm={(file, caption) =>
+                uploadEvidence.mutateAsync({ file, evidenceType: "photo", description: caption })
+              }
+            />
+          ) : null}
+          {requiresDocument || !requiresPhoto ? (
+            <div className="flex flex-wrap gap-2">
+              <input
+                ref={documentInput}
+                type="file"
+                accept="application/pdf"
+                className="hidden"
+                onChange={startDocumentUpload}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => documentInput.current?.click()}
+                disabled={uploadEvidence.isPending}
+              >
+                {uploadEvidence.isPending ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileText className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Belge Ekle
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {evidence.length ? (
         <div className="mt-2 space-y-1.5">
           {evidence.map((item) => {
@@ -249,7 +226,14 @@ export function ProjectTaskEvidence({
                     ) : (
                       <FileText className="h-3.5 w-3.5 shrink-0 text-highlight" />
                     )}
-                    <span className="truncate font-semibold">{item.file_name}</span>
+                    <span className="min-w-0 truncate">
+                      <span className="font-semibold">{item.file_name}</span>
+                      {item.description ? (
+                        <span className="block truncate text-muted-foreground">
+                          {item.description}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                   {openingId === item.id ? (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
