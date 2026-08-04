@@ -42,6 +42,10 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -70,7 +74,8 @@
   --card-foreground: oklch(0.98 0.004 250);
   --popover: oklch(0.22 0.03 250);
   --popover-foreground: oklch(0.98 0.004 250);
-  --primary: oklch(0.46 0.17 257);
+  /* Ana vurgu rengi #0046a4 (tam eşleşme, bkz. tasarım standardı). */
+  --primary: oklch(0.42 0.164 259);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.28 0.033 250);
   --secondary-foreground: oklch(0.98 0.004 250);
@@ -80,9 +85,13 @@
   --accent-foreground: oklch(0.98 0.004 250);
   --destructive: oklch(0.64 0.24 27);
   --destructive-foreground: oklch(0.98 0.005 90);
+  --success: oklch(0.696 0.149 162.5);
+  --success-foreground: oklch(0.15 0.03 162);
+  --warning: oklch(0.769 0.165 70.1);
+  --warning-foreground: oklch(0.18 0.04 70);
   --border: oklch(0.35 0.04 250);
   --input: oklch(0.26 0.032 250);
-  --ring: oklch(0.55 0.18 257);
+  --ring: oklch(0.5 0.164 259);
   --chart-1: oklch(0.55 0.18 257);
   --chart-2: oklch(0.72 0.12 225);
   --chart-3: oklch(0.68 0.1 190);
@@ -90,12 +99,12 @@
   --chart-5: oklch(0.98 0.005 90);
   --sidebar: oklch(0.115 0.022 250);
   --sidebar-foreground: oklch(0.98 0.004 250);
-  --sidebar-primary: oklch(0.46 0.17 257);
+  --sidebar-primary: oklch(0.42 0.164 259);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.23 0.04 252);
   --sidebar-accent-foreground: oklch(0.98 0.004 250);
   --sidebar-border: oklch(0.29 0.035 250);
-  --sidebar-ring: oklch(0.55 0.18 257);
+  --sidebar-ring: oklch(0.5 0.164 259);
 }
 
 .dark {
