@@ -26,7 +26,7 @@ export function PageHeader({
 export function LoadingState({ label = "Veriler yükleniyor..." }: { label?: string }) {
   return (
     <div className="flex min-h-52 items-center justify-center gap-3 text-muted-foreground">
-      <LoaderCircle className="h-5 w-5 animate-spin text-primary" />
+      <LoaderCircle className="h-5 w-5 animate-spin text-highlight" />
       <span>{label}</span>
     </div>
   );
@@ -43,7 +43,7 @@ export function EmptyState({
 }) {
   return (
     <div className="surface-panel flex min-h-56 flex-col items-center justify-center p-8 text-center">
-      <PackageOpen className="mb-4 h-10 w-10 text-primary" />
+      <PackageOpen className="mb-4 h-10 w-10 text-highlight" />
       <h2 className="text-lg font-bold text-foreground">{title}</h2>
       {description ? (
         <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">{description}</p>

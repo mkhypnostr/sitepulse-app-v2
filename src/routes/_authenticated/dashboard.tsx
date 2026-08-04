@@ -578,7 +578,7 @@ function DashboardPage() {
                           ? "rounded-lg bg-red-500/15 p-3 text-red-300 animate-pulse"
                           : metric.attention === "warning" && metric.value > 0
                             ? "rounded-lg bg-amber-500/15 p-3 text-amber-300"
-                            : "rounded-lg bg-primary/15 p-3 text-primary"
+                            : "rounded-lg bg-primary/15 p-3 text-highlight"
                       }
                     >
                       <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -623,7 +623,7 @@ function DashboardPage() {
             const card = (
               <Card className="border-border bg-card">
                 <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
-                  <div className="rounded-lg bg-primary/15 p-3 text-primary">
+                  <div className="rounded-lg bg-primary/15 p-3 text-highlight">
                     <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                   </div>
                   <div>
@@ -669,9 +669,9 @@ function DashboardPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>{item.submittedBy}{item.submittedAt ? ` · ${formatProjectDateTime(item.submittedAt)}` : ""}</span>
-                  <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/40 px-2 py-1 font-bold text-foreground"><Paperclip className="h-3.5 w-3.5 text-primary" /> {item.evidenceCount} kanıt</span>
+                  <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/40 px-2 py-1 font-bold text-foreground"><Paperclip className="h-3.5 w-3.5 text-highlight" /> {item.evidenceCount} kanıt</span>
                 </div>
-                <p className="mt-2 text-xs font-bold text-primary">Kaydı aç ve karar ver →</p>
+                <p className="mt-2 text-xs font-bold text-highlight">Kaydı aç ve karar ver →</p>
               </a>
             ))}
           </div>
@@ -763,7 +763,7 @@ function DashboardPage() {
                 search={"search" in action ? action.search : undefined}
                 className="group rounded-xl border border-border bg-card/60 flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:bg-accent/40"
               >
-                <span className="rounded-xl bg-primary/15 p-3 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                <span className="rounded-xl bg-primary/15 p-3 text-highlight transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                   <action.icon className="h-6 w-6" />
                 </span>
                 <span>
@@ -785,7 +785,7 @@ function DashboardPage() {
                 Sorumlu ataması, plan tarihi ve ilerleme için projeyi açın.
               </p>
             </div>
-            <Link to="/projects" className="text-sm font-semibold text-primary">
+            <Link to="/projects" className="text-sm font-semibold text-highlight">
               Tüm projeler
             </Link>
           </div>
@@ -804,7 +804,7 @@ function DashboardPage() {
                     <p className="mt-1 text-xs text-muted-foreground">{task.phase_name}</p>
                   </div>
                   <div className="text-left sm:text-right">
-                    <p className="text-sm font-black text-primary">%{task.approved_progress_pct}</p>
+                    <p className="text-sm font-black text-highlight">%{task.approved_progress_pct}</p>
                     <p className="text-xs text-muted-foreground">
                       {task.planned_date ? formatDate(task.planned_date) : "Plan tarihi girilmedi"}
                     </p>
@@ -831,7 +831,7 @@ function DashboardPage() {
                   ? "/my-jobs"
                   : "/work-orders"
             }
-            className="text-sm font-semibold text-primary"
+            className="text-sm font-semibold text-highlight"
           >
             Tümünü gör
           </Link>
@@ -854,7 +854,7 @@ function DashboardPage() {
                   </div>
                   <h3 className="mt-2 truncate font-bold">{order.title}</h3>
                   {order.projects ? (
-                    <p className="text-xs font-semibold text-primary">
+                    <p className="text-xs font-semibold text-highlight">
                       {order.projects.project_no} · {order.projects.name}
                     </p>
                   ) : null}

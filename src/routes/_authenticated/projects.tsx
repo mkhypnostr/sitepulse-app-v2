@@ -565,11 +565,11 @@ function ProjectsPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-3">
-                    <div className="rounded-xl bg-primary/15 p-2.5 text-primary">
+                    <div className="rounded-xl bg-primary/15 p-2.5 text-highlight">
                       <FolderKanban className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-black tracking-wider text-primary">
+                      <p className="text-xs font-black tracking-wider text-highlight">
                         {project.project_no}
                       </p>
                       <h2 className="mt-1 truncate text-lg font-black">{project.name}</h2>
@@ -582,17 +582,17 @@ function ProjectsPage() {
 
                 <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
                   <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-primary" />
+                    <Building2 className="h-4 w-4 text-highlight" />
                     <span className="truncate">
                       {customerById.get(project.customer_id) || "Müşteri"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CalendarDays className="h-4 w-4 text-primary" />
+                    <CalendarDays className="h-4 w-4 text-highlight" />
                     <span>{formatProjectDate(project.target_end_date)} hedef</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-primary" />
+                    <MapPin className="h-4 w-4 text-highlight" />
                     <span className="truncate">{location || "Konum girilmedi"}</span>
                   </div>
                   <div className="truncate text-xs">
@@ -616,7 +616,7 @@ function ProjectsPage() {
                     >
                       <div className="flex items-start justify-between gap-2 text-xs">
                         <span className="font-bold">{projectTypeLabel[process.process_type]}</span>
-                        <span className="shrink-0 font-black text-primary">
+                        <span className="shrink-0 font-black text-highlight">
                           %{process.progress.percentage}
                         </span>
                       </div>
@@ -628,7 +628,7 @@ function ProjectsPage() {
                   ))}
                 </div>
 
-                <div className="mt-4 flex items-center justify-end gap-1 text-sm font-bold text-primary">
+                <div className="mt-4 flex items-center justify-end gap-1 text-sm font-bold text-highlight">
                   Projeyi aç
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </div>

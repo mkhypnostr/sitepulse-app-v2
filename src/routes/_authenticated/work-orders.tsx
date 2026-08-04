@@ -515,7 +515,7 @@ function WorkOrdersPage() {
               </label>
               <div className="rounded-md border bg-muted/40 p-3 text-sm">
                 <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
-                <p className="mt-1 text-lg font-black text-primary">
+                <p className="mt-1 text-lg font-black text-highlight">
                   {formatTRY(
                     (Number(form.customerLaborAmount.replace(",", ".")) || 0) +
                       (Number(form.customerMaterialAmount.replace(",", ".")) || 0) -
@@ -619,7 +619,7 @@ function WorkOrdersPage() {
                     </div>
                     <h2 className="mt-2 text-lg font-black">{order.title}</h2>
                     {order.projects ? (
-                      <p className="mt-1 text-sm font-semibold text-primary">
+                      <p className="mt-1 text-sm font-semibold text-highlight">
                         {order.projects.project_no} · {order.projects.name}
                       </p>
                     ) : (
@@ -658,7 +658,7 @@ function WorkOrdersPage() {
                             {formatTRY(order.work_order_financials?.contractor_labor_amount)}
                           </strong>
                         </p>
-                        <p className="text-primary">
+                        <p className="text-highlight">
                           Brüt fark:{" "}
                           <strong>
                             {formatTRY(

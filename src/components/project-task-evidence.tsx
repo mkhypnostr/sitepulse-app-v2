@@ -151,7 +151,7 @@ export function ProjectTaskEvidence({
       }
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-primary">
+        <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-highlight">
           <Paperclip className="h-3.5 w-3.5" /> Kanıt Dosyaları
         </p>
         {canUpload ? (
@@ -239,15 +239,15 @@ export function ProjectTaskEvidence({
               >
                 <button
                   type="button"
-                  className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left transition-colors hover:text-primary"
+                  className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left transition-colors hover:text-highlight"
                   onClick={() => openEvidence(item.id, item.storage_path)}
                   disabled={openingId === item.id}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {item.evidence_type === "photo" ? (
-                      <Images className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <Images className="h-3.5 w-3.5 shrink-0 text-highlight" />
                     ) : (
-                      <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-highlight" />
                     )}
                     <span className="truncate font-semibold">{item.file_name}</span>
                   </span>

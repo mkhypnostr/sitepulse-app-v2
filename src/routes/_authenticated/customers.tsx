@@ -229,7 +229,7 @@ function CustomersPage() {
             </p>
           )}
           <div className="border-t border-border pt-4 sm:col-span-2">
-            <p className="mb-3 flex items-center gap-2 text-sm font-bold"><FileText className="h-4 w-4 text-primary" /> Fatura Bilgileri</p>
+            <p className="mb-3 flex items-center gap-2 text-sm font-bold"><FileText className="h-4 w-4 text-highlight" /> Fatura Bilgileri</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm font-medium">
                 Fatura Ünvanı

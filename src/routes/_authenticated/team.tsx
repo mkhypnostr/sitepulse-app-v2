@@ -249,7 +249,7 @@ function TeamPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Rol</p>
-                <p className="font-bold text-primary">Taşeron</p>
+                <p className="font-bold text-highlight">Taşeron</p>
               </div>
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
@@ -378,7 +378,7 @@ function TeamPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((value) => !value)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-primary"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-highlight"
                     aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -441,7 +441,7 @@ function TeamPage() {
                   <TableCell>{member.phone || "—"}</TableCell>
                   <TableCell>
                     {member.role === "admin" || member.role === "technical_office" ? (
-                      <div className="inline-flex h-11 min-w-48 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 font-bold text-primary">
+                      <div className="inline-flex h-11 min-w-48 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 font-bold text-highlight">
                         <ShieldCheck className="h-4 w-4" />
                         <span>{member.role === "admin" ? "Yönetici" : "Teknik Ofis"} — Korumalı</span>
                       </div>
@@ -493,7 +493,7 @@ function TeamPage() {
         </section>
       )}
       <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
-        <ShieldCheck className="h-4 w-4 text-primary" /> {isAdmin
+        <ShieldCheck className="h-4 w-4 text-highlight" /> {isAdmin
           ? "Yönetici ve teknik ofis rolleri korumalıdır. Bu ekrandan yalnızca taşeron ve müşteri rolleri değiştirilebilir; geçici şifreler kaydedilmez."
           : "Bu ekran yalnızca taşeron oluşturma ve iletişim bilgisini görüntüleme içindir; rol ve şifre değiştirilemez."}
       </div>

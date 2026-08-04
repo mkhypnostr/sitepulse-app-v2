@@ -46,6 +46,8 @@
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -67,50 +69,59 @@
 
 :root {
   --radius: 0.5rem;
-  /* NES Enerji — logodaki mavi, beyaz ve koyu lacivert */
-  --background: oklch(0.125 0.024 250);
-  --foreground: oklch(0.98 0.004 250);
-  --card: oklch(0.22 0.03 250);
-  --card-foreground: oklch(0.98 0.004 250);
-  --popover: oklch(0.22 0.03 250);
-  --popover-foreground: oklch(0.98 0.004 250);
+  /* NES Enerji — logodaki mavi, beyaz ve koyu lacivert. Hex kaynak
+     değerleri tasarım standardından (#111827/#1e293b/#334155/#f1f5f9/
+     #94a3b8/#60a5fa/#0046a4) birebir dönüştürülmüştür. */
+  --background: oklch(0.21 0.032 264.7);
+  --foreground: oklch(0.968 0.007 247.9);
+  --card: oklch(0.279 0.037 260);
+  --card-foreground: oklch(0.968 0.007 247.9);
+  --popover: oklch(0.279 0.037 260);
+  --popover-foreground: oklch(0.968 0.007 247.9);
   /* Ana vurgu rengi #0046a4 (tam eşleşme, bkz. tasarım standardı). */
   --primary: oklch(0.42 0.164 259);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.28 0.033 250);
-  --secondary-foreground: oklch(0.98 0.004 250);
-  --muted: oklch(0.27 0.03 250);
-  --muted-foreground: oklch(0.75 0.025 250);
-  --accent: oklch(0.27 0.055 252);
-  --accent-foreground: oklch(0.98 0.004 250);
+  --secondary: oklch(0.32 0.035 259);
+  --secondary-foreground: oklch(0.968 0.007 247.9);
+  --muted: oklch(0.279 0.037 260);
+  --muted-foreground: oklch(0.711 0.035 256.8);
+  --accent: oklch(0.32 0.045 259);
+  --accent-foreground: oklch(0.968 0.007 247.9);
   --destructive: oklch(0.64 0.24 27);
   --destructive-foreground: oklch(0.98 0.005 90);
   --success: oklch(0.696 0.149 162.5);
   --success-foreground: oklch(0.15 0.03 162);
   --warning: oklch(0.769 0.165 70.1);
   --warning-foreground: oklch(0.18 0.04 70);
-  --border: oklch(0.35 0.04 250);
-  --input: oklch(0.26 0.032 250);
+  /* "Vurgu" metin rengi: koyu zeminde okunurluk için --primary'den daha
+     açık (bkz. WCAG kontrastı — #0046a4 metin olarak koyu zeminde ~2:1,
+     #60a5fa ~7:1). Buton/kart dolgusu hâlâ --primary (#0046a4). */
+  --highlight: oklch(0.714 0.143 254.6);
+  --highlight-foreground: oklch(0.18 0.04 259);
+  --border: oklch(0.372 0.039 257.3);
+  --input: oklch(0.32 0.04 259);
   --ring: oklch(0.5 0.164 259);
   --chart-1: oklch(0.55 0.18 257);
   --chart-2: oklch(0.72 0.12 225);
   --chart-3: oklch(0.68 0.1 190);
   --chart-4: oklch(0.64 0.24 27);
   --chart-5: oklch(0.98 0.005 90);
-  --sidebar: oklch(0.115 0.022 250);
-  --sidebar-foreground: oklch(0.98 0.004 250);
+  /* Sol menü zemini: gradient (bkz. .app-sidebar-gradient) #0046a4 üstten
+     #003380 alta; bu değişken gradient'in üst rengiyle aynı flat fallback. */
+  --sidebar: oklch(0.42 0.164 259);
+  --sidebar-foreground: oklch(0.968 0.007 247.9);
   --sidebar-primary: oklch(0.42 0.164 259);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.23 0.04 252);
-  --sidebar-accent-foreground: oklch(0.98 0.004 250);
-  --sidebar-border: oklch(0.29 0.035 250);
+  --sidebar-accent: oklch(0.34 0.12 259.8);
+  --sidebar-accent-foreground: oklch(0.968 0.007 247.9);
+  --sidebar-border: oklch(0.36 0.15 259.5);
   --sidebar-ring: oklch(0.5 0.164 259);
 }
 
 .dark {
   /* Zaten koyu tema; light/dark toggle yok. */
-  --background: oklch(0.125 0.024 250);
-  --foreground: oklch(0.98 0.004 250);
+  --background: oklch(0.21 0.032 264.7);
+  --foreground: oklch(0.968 0.007 247.9);
 }
 
 @layer base {
@@ -441,11 +452,26 @@
 }
 
 @utility surface-panel {
-  /* Her ekranda bölüm zemini ile iç kartlar belirgin biçimde ayrışır. */
-  background: oklch(0.18 0.03 250 / 0.94);
-  border: 1px solid oklch(0.38 0.04 250 / 0.92);
-  border-radius: 0.75rem;
+  /* Kart standardı: #1e293b zemin, 1px #334155 border, 10px radius,
+     subtle gölge — her ekranda bölüm zemininden net ayrışır. */
+  background: oklch(0.279 0.037 260);
+  border: 1px solid oklch(0.372 0.039 257.3);
+  border-radius: 0.625rem;
   box-shadow:
-    inset 0 1px 0 oklch(0.98 0.004 250 / 0.06),
-    0 10px 26px oklch(0.03 0.02 250 / 0.12);
+    inset 0 1px 0 oklch(0.968 0.007 247.9 / 0.05),
+    0 8px 20px oklch(0.03 0.02 250 / 0.28);
+}
+
+@utility surface-panel-accent {
+  /* Vurgu gerektiren kartlar için: aynı kart standardı, #0046a4 border. */
+  border-color: oklch(0.42 0.164 259 / 0.55);
+}
+
+@utility app-sidebar-gradient {
+  /* Sol menü: #0046a4 üstten #003380 alta. */
+  background-image: linear-gradient(
+    180deg,
+    oklch(0.42 0.164 259) 0%,
+    oklch(0.346 0.14 259.8) 100%
+  );
 }

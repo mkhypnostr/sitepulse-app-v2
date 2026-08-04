@@ -191,7 +191,7 @@ function ReportsPage() {
         <Card>
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground">Onaylanan Hakediş Toplamı</p>
-            <p className="text-2xl font-black text-primary">{formatTRY(approvedTotal)}</p>
+            <p className="text-2xl font-black text-highlight">{formatTRY(approvedTotal)}</p>
           </CardContent>
         </Card>
       </div>

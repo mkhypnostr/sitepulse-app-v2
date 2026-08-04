@@ -72,7 +72,7 @@ export function MapPreview({
           />
         ) : (
           <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_center,hsl(var(--primary)/0.14),transparent_68%)]">
-            <MapPinned className="h-10 w-10 text-primary/70" />
+            <MapPinned className="h-10 w-10 text-highlight/70" />
           </div>
         )}
         <a
@@ -92,7 +92,7 @@ export function MapPreview({
         href={safeUrl}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-primary hover:bg-primary/5"
+        className="flex items-center justify-between gap-3 px-4 py-3 text-sm font-bold text-highlight hover:bg-primary/5"
       >
         <span className="flex items-center gap-2">
           <MapPinned className="h-4 w-4" /> Konumu haritada aç

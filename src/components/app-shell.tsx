@@ -134,7 +134,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background lg:pl-64">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
+      <aside className="app-sidebar-gradient fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-sidebar-border text-sidebar-foreground lg:flex">
         <Link
           to="/dashboard"
           className="flex h-20 shrink-0 items-center gap-3 border-b border-sidebar-border px-5"
@@ -146,7 +146,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           />
           <div className="leading-tight">
             <div className="text-base font-black tracking-wide text-foreground">NES ENERJİ</div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-highlight">
               Saha Operasyon
             </div>
           </div>
@@ -168,7 +168,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <img src="/app-icon.svg" alt="NES Enerji" className="h-9 w-9 rounded-lg bg-white" />
           <div className="leading-tight">
             <div className="text-sm font-black">NES ENERJİ</div>
-            <div className="text-[9px] font-bold uppercase tracking-widest text-primary">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-highlight">
               Saha Operasyon
             </div>
           </div>
@@ -186,12 +186,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => setMobileOpen(false)}
             aria-label="Menüyü kapat"
           />
-          <aside className="relative flex h-full w-[82%] max-w-80 flex-col border-r border-sidebar-border bg-sidebar shadow-2xl">
+          <aside className="app-sidebar-gradient relative flex h-full w-[82%] max-w-80 flex-col border-r border-sidebar-border text-sidebar-foreground shadow-2xl">
             <div className="flex h-20 items-center gap-3 border-b border-sidebar-border px-5">
               <img src="/app-icon.svg" alt="NES Enerji" className="h-11 w-11 rounded-xl bg-white" />
               <div className="leading-tight">
                 <div className="font-black">NES ENERJİ</div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-highlight">
                   Saha Operasyon
                 </div>
               </div>

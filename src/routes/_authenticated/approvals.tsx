@@ -388,7 +388,7 @@ function ApprovalsPage() {
 
       <section className="surface-panel mt-6 p-4 sm:p-5">
         <div className="mb-4 flex items-center gap-2">
-          <Clock3 className="h-5 w-5 text-primary" />
+          <Clock3 className="h-5 w-5 text-highlight" />
           <div>
             <h2 className="text-lg font-black">Onay Bekleyenler</h2>
             <p className="text-sm text-muted-foreground">
@@ -572,7 +572,7 @@ function ApprovalsPage() {
       {isAdmin ? (
         <section className="surface-panel mt-6 p-4 sm:p-5">
           <div className="mb-4 flex items-center gap-2">
-            <History className="h-5 w-5 text-primary" />
+            <History className="h-5 w-5 text-highlight" />
             <div>
               <h2 className="text-lg font-black">Aktivite Geçmişi</h2>
               <p className="text-sm text-muted-foreground">Sistemdeki son 30 değişiklik kaydı.</p>
@@ -682,7 +682,7 @@ function PendingCard({
         <div className="min-w-0">
           <p className="text-xs font-black uppercase tracking-wide text-red-500">{category}</p>
           {href ? (
-            <a href={href} className="mt-1 block font-black hover:text-primary">
+            <a href={href} className="mt-1 block font-black hover:text-highlight">
               {title}
             </a>
           ) : (
@@ -700,12 +700,12 @@ function PendingCard({
         <div className="flex flex-wrap items-center gap-2">
           {extra}
           <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/40 px-2 py-1 font-bold text-foreground">
-            <Paperclip className="h-3.5 w-3.5 text-primary" /> {evidenceCount} kanıt
+            <Paperclip className="h-3.5 w-3.5 text-highlight" /> {evidenceCount} kanıt
           </span>
         </div>
       </div>
       {href ? (
-        <a href={href} className="mt-2 block text-xs font-bold text-primary">
+        <a href={href} className="mt-2 block text-xs font-bold text-highlight">
           Kaydı aç →
         </a>
       ) : null}

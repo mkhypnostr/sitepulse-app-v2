@@ -40,7 +40,7 @@ export function JobList({ orders, emptyLabel }: { orders: Order[]; emptyLabel: s
                 {order.customers?.name} · {formatDate(order.scheduled_at)}
               </p>
               {order.location_url ? (
-                <p className="mt-1 flex items-center gap-1.5 text-sm text-primary">
+                <p className="mt-1 flex items-center gap-1.5 text-sm text-highlight">
                   <MapPin className="h-3.5 w-3.5" /> Harita konumu eklendi
                 </p>
               ) : order.location ? (

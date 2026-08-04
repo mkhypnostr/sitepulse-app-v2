@@ -242,7 +242,7 @@ function ProjectDetailPage() {
 
           {project.status_note ? (
             <div className="mt-5 rounded-xl border border-primary/20 bg-primary/5 p-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-primary">
+              <p className="text-xs font-bold uppercase tracking-wider text-highlight">
                 Durum Açıklaması
               </p>
               <p className="mt-2 whitespace-pre-wrap text-sm">{project.status_note}</p>
@@ -310,7 +310,7 @@ function ProjectDetailPage() {
                       {process.progress.completed}/{process.progress.total} görev tamamlandı
                     </p>
                   </div>
-                  <span className="text-xl font-black text-primary">
+                  <span className="text-xl font-black text-highlight">
                     %{process.progress.percentage}
                   </span>
                 </div>
@@ -421,7 +421,7 @@ function InfoItem({
 }) {
   return (
     <div className="flex items-start gap-3">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-highlight" />
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className="mt-0.5 break-words font-bold">{value}</p>
@@ -667,7 +667,7 @@ function TaskEditor({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-black text-primary">{task.task_order}</span>
+            <span className="text-xs font-black text-highlight">{task.task_order}</span>
             <h4 className="font-bold">{task.task_name}</h4>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">

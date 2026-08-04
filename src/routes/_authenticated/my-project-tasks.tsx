@@ -57,7 +57,7 @@ function MyProjectTasksPage() {
                     <Badge variant="outline" className={taskStatusClass[task.status]}>
                       {projectTaskStatusLabel[task.status]}
                     </Badge>
-                    <span className="text-xs font-bold text-primary">{task.phase_name}</span>
+                    <span className="text-xs font-bold text-highlight">{task.phase_name}</span>
                   </div>
                   <h2 className="mt-2 text-lg font-black">{task.task_name}</h2>
                 </div>
@@ -77,7 +77,7 @@ function MyProjectTasksPage() {
               />
               <ProjectTaskProgress task={task} canSubmit canReview={false} />
               <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                <ClipboardCheck className="h-4 w-4 text-primary" /> Kanıtı ve açıklamayı gönderin; ilerleme yalnızca yönetici onayından sonra projeye yansır.
+                <ClipboardCheck className="h-4 w-4 text-highlight" /> Kanıtı ve açıklamayı gönderin; ilerleme yalnızca yönetici onayından sonra projeye yansır.
               </div>
             </article>
           ))}

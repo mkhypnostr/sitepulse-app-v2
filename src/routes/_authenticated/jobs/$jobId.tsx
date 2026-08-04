@@ -728,7 +728,7 @@ function JobDetailPage() {
         <Card className="mb-6 border-primary/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CalendarClock className="h-5 w-5 text-primary" /> Planlanan Tarih
+              <CalendarClock className="h-5 w-5 text-highlight" /> Planlanan Tarih
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -781,13 +781,13 @@ function JobDetailPage() {
               <MapPreview mapUrl={order.location_url} />
             ) : order.location ? (
               <p className="flex items-center gap-2 text-sm">
-                <MapPin className="h-4 w-4 text-primary" /> {order.location}
+                <MapPin className="h-4 w-4 text-highlight" /> {order.location}
               </p>
             ) : null}
             <div>
               <div className="mb-2 flex justify-between">
                 <span className="font-semibold">Genel İlerleme</span>
-                <strong className="text-primary">%{order.progress_pct}</strong>
+                <strong className="text-highlight">%{order.progress_pct}</strong>
               </div>
               <Progress value={order.progress_pct} className="h-4" />
             </div>
@@ -829,7 +829,7 @@ function JobDetailPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Onaylı Hakediş</p>
-                <p className="text-xl font-black text-primary">{formatTRY(payableAmount)}</p>
+                <p className="text-xl font-black text-highlight">{formatTRY(payableAmount)}</p>
               </div>
               <div className="rounded-md border bg-muted/40 p-3">
                 <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
@@ -1050,7 +1050,7 @@ function JobDetailPage() {
                   </Button>
                 </div>
                 {progressEvidence ? (
-                  <p className="text-xs font-semibold text-primary">{progressEvidence.name}</p>
+                  <p className="text-xs font-semibold text-highlight">{progressEvidence.name}</p>
                 ) : null}
                 <p className="text-xs text-muted-foreground">
                   İlerleme talebi için yeni fotoğraf veya PDF belge ve en az 10 karakter açıklama zorunludur.
@@ -1179,7 +1179,7 @@ function JobDetailPage() {
                   href={pendingEvidence.signedUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex aspect-video flex-col items-center justify-center rounded-lg border bg-muted/30 text-primary"
+                  className="flex aspect-video flex-col items-center justify-center rounded-lg border bg-muted/30 text-highlight"
                 >
                   <FileText className="h-10 w-10" />
                   <span className="mt-2 text-sm font-semibold">Kanıt belgesini aç</span>
@@ -1273,7 +1273,7 @@ function JobDetailPage() {
                     }`}
                   >
                     {photo.is_document ? (
-                      <span className="flex aspect-video items-center justify-center bg-muted/40 text-primary">
+                      <span className="flex aspect-video items-center justify-center bg-muted/40 text-highlight">
                         <FileText className="h-10 w-10" />
                       </span>
                     ) : (
@@ -1353,7 +1353,7 @@ function JobDetailPage() {
                     rel="noreferrer"
                     className="overflow-hidden rounded-lg border border-border text-left"
                   >
-                    <span className="flex aspect-video items-center justify-center bg-muted/40 text-primary">
+                    <span className="flex aspect-video items-center justify-center bg-muted/40 text-highlight">
                       <FileText className="h-10 w-10" />
                     </span>
                     <span className="block p-2 text-xs font-bold">PDF Belgeyi Aç</span>
@@ -1561,7 +1561,7 @@ function JobDetailPage() {
                     href={photo.signedUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex aspect-video flex-col items-center justify-center bg-muted text-primary"
+                    className="flex aspect-video flex-col items-center justify-center bg-muted text-highlight"
                   >
                     <FileText className="h-10 w-10" />
                     <span className="mt-2 text-sm font-semibold">PDF belgeyi aç</span>
@@ -1635,7 +1635,7 @@ function JobDetailPage() {
       {role === "admin" ? (
         <section className="mt-7">
           <h2 className="mb-3 flex items-center gap-2 text-xl font-black">
-            <History className="h-5 w-5 text-primary" /> Değişiklik Geçmişi
+            <History className="h-5 w-5 text-highlight" /> Değişiklik Geçmişi
           </h2>
           {activityLogs.length === 0 ? (
             <div className="surface-panel p-4 text-sm text-muted-foreground">

@@ -188,7 +188,7 @@ export function ProjectTaskProgress({
           <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
             Onaylı Görev İlerlemesi
           </p>
-          <p className="mt-1 text-2xl font-black text-primary">%{task.approved_progress_pct}</p>
+          <p className="mt-1 text-2xl font-black text-highlight">%{task.approved_progress_pct}</p>
         </div>
         {pendingSubmission ? (
           <Badge className="border-red-400/50 bg-red-500/15 text-red-300 animate-pulse">
@@ -342,7 +342,7 @@ export function ProjectTaskProgress({
                   Gönderen: {profileById.get(submission.submitted_by) || "Kullanıcı"}
                 </p>
                 {(evidenceCountBySubmission.get(submission.id) ?? 0) > 0 ? (
-                  <p className="mt-1 flex items-center gap-1 text-primary">
+                  <p className="mt-1 flex items-center gap-1 text-highlight">
                     <Paperclip className="h-3.5 w-3.5" /> Kanıt: {evidenceCountBySubmission.get(submission.id)} dosya
                   </p>
                 ) : null}
