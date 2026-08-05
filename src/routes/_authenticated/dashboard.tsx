@@ -92,7 +92,7 @@ type DashboardWorkOrder = Database["public"]["Tables"]["work_orders"]["Row"] & {
   } | null;
 };
 
-const EYEBROW = "text-[8.5px] font-bold uppercase tracking-[0.08em] text-[#2d3748]";
+const EYEBROW = "text-[8.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground";
 
 const projectStatusVariant: Record<ProjectStatus, NonNullable<BadgeProps["variant"]>> = {
   draft: "outline",

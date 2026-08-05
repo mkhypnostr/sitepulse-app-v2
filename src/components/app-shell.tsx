@@ -228,7 +228,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-background lg:pl-14">
+    <div className="min-h-screen overflow-x-hidden bg-background lg:pl-14">
       <aside className="group sidebar-transition fixed inset-y-0 left-0 z-40 hidden w-14 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground hover:w-[210px] lg:flex">
         <Link
           to="/dashboard"
@@ -351,11 +351,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       ) : null}
 
-      <main
-        className={`mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 ${
-          location.pathname === "/dashboard" ? "dashboard-energy-background" : ""
-        }`}
-      >
+      <main className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
         {children}
       </main>
     </div>

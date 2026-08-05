@@ -87,7 +87,7 @@
   --secondary: oklch(0.225 0.027 284);
   --secondary-foreground: oklch(0.968 0.007 247.9);
   --muted: oklch(0.186 0.03 283);
-  --muted-foreground: oklch(0.405 0.035 256.6);
+  --muted-foreground: oklch(0.711 0.035 256.8);
   --accent: oklch(0.225 0.027 284);
   --accent-foreground: oklch(0.968 0.007 247.9);
   --destructive: oklch(0.711 0.166 22.2);
@@ -169,25 +169,6 @@
   background-position: right center;
   background-repeat: no-repeat;
   background-size: cover;
-}
-
-.dashboard-energy-background {
-  position: relative;
-  isolation: isolate;
-}
-
-.dashboard-energy-background::before {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  background-color: #020f24;
-  background-image: url("/dashboard-energy-dark.webp");
-  background-position: right bottom;
-  background-repeat: no-repeat;
-  background-size: cover;
-  content: "";
-  opacity: 0.62;
-  pointer-events: none;
 }
 
 @media (max-width: 1023px) {
@@ -392,11 +373,6 @@
     line-height: 0.9rem;
   }
 
-  .dashboard-energy-background::before {
-    background-position: 68% bottom;
-    background-size: auto 68%;
-    opacity: 0.48;
-  }
 }
 
 @media (max-width: 1023px) and (max-height: 700px) {
