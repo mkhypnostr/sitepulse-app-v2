@@ -228,8 +228,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-background lg:pl-14">
-      <aside className="group sidebar-transition fixed inset-y-0 left-0 z-40 hidden w-14 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground hover:w-[210px] lg:flex">
+    <div className="flex min-h-screen overflow-x-hidden bg-background">
+      <aside className="group sidebar-transition sticky top-0 z-40 hidden h-screen w-14 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground hover:w-[210px] lg:flex">
         <Link
           to="/dashboard"
           className="flex h-16 shrink-0 items-center gap-3 overflow-hidden border-b border-sidebar-border px-[13px]"
@@ -250,110 +250,112 @@ export function AppShell({ children }: { children: ReactNode }) {
         {accountArea()}
       </aside>
 
-      <header className="sticky top-0 z-30 flex h-16 items-center border-b border-sidebar-border bg-sidebar/95 px-4 backdrop-blur lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sidebar-border text-foreground"
-          aria-label="Menüyü aç"
-        >
-          <Menu className="h-6 w-6" />
-        </button>
-        <Link to="/dashboard" className="ml-3 flex items-center gap-2">
-          <img src="/app-icon.svg" alt="NES Enerji" className="h-9 w-9 rounded-lg bg-white" />
-          <div className="leading-tight">
-            <div className="text-sm font-black">NES ENERJİ</div>
-            <div className="text-[9px] font-bold uppercase tracking-widest text-highlight">
-              Saha Operasyon
-            </div>
-          </div>
-        </Link>
-        <span className="ml-auto max-w-32 truncate text-xs text-muted-foreground">
-          {displayName}
-        </span>
-      </header>
-
-      {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-30 flex h-16 items-center border-b border-sidebar-border bg-sidebar/95 px-4 backdrop-blur lg:hidden">
           <button
             type="button"
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Menüyü kapat"
-          />
-          <aside className="relative flex h-full w-[82%] max-w-80 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
-            <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
-              <img src="/app-icon.svg" alt="NES Enerji" className="h-11 w-11 rounded-xl bg-white" />
-              <div className="leading-tight">
-                <div className="font-black">NES ENERJİ</div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-highlight">
-                  Saha Operasyon
-                </div>
+            onClick={() => setMobileOpen(true)}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sidebar-border text-foreground"
+            aria-label="Menüyü aç"
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <Link to="/dashboard" className="ml-3 flex items-center gap-2">
+            <img src="/app-icon.svg" alt="NES Enerji" className="h-9 w-9 rounded-lg bg-white" />
+            <div className="leading-tight">
+              <div className="text-sm font-black">NES ENERJİ</div>
+              <div className="text-[9px] font-bold uppercase tracking-widest text-highlight">
+                Saha Operasyon
               </div>
-              <button
-                type="button"
-                onClick={() => setMobileOpen(false)}
-                className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border"
-                aria-label="Menüyü kapat"
-              >
-                <X className="h-5 w-5" />
-              </button>
             </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-              {nav.map((item, index) =>
-                "separator" in item ? (
-                  <div key={`sep-mobile-${index}`} className="my-2 border-t border-sidebar-border" />
-                ) : (
-                  (() => {
-                    const active = location.pathname.startsWith(item.to);
-                    const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
-                    return (
-                      <Link
-                        key={item.label}
-                        to={item.to}
-                        hash={item.hash}
-                        onClick={() => setMobileOpen(false)}
-                        className={`relative flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-bold transition-colors ${
-                          active
-                            ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[2px] before:-translate-y-1/2 before:rounded-r before:bg-sidebar-active-border"
-                            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                        }`}
-                      >
-                        <item.icon className="h-5 w-5 shrink-0" />
-                        {item.label}
-                        {badgeCount > 0 ? (
-                          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
-                            {badgeCount}
-                          </span>
-                        ) : null}
-                      </Link>
-                    );
-                  })()
-                ),
-              )}
-            </nav>
-            <div className="border-t border-sidebar-border p-3">
-              <div className="mb-3 rounded-xl bg-sidebar-accent/60 p-3">
-                <p className="text-xs font-semibold text-muted-foreground">
-                  {role ? roleLabels[role] : "Kullanıcı"}
-                </p>
-                <p className="mt-1 truncate text-sm font-bold text-foreground">{displayName}</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-              >
-                <LogOut className="h-5 w-5" /> Çıkış Yap
-              </button>
-            </div>
-          </aside>
-        </div>
-      ) : null}
+          </Link>
+          <span className="ml-auto max-w-32 truncate text-xs text-muted-foreground">
+            {displayName}
+          </span>
+        </header>
 
-      <main className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-        {children}
-      </main>
+        {mobileOpen ? (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setMobileOpen(false)}
+              aria-label="Menüyü kapat"
+            />
+            <aside className="relative flex h-full w-[82%] max-w-80 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
+              <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
+                <img src="/app-icon.svg" alt="NES Enerji" className="h-11 w-11 rounded-xl bg-white" />
+                <div className="leading-tight">
+                  <div className="font-black">NES ENERJİ</div>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-highlight">
+                    Saha Operasyon
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileOpen(false)}
+                  className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border"
+                  aria-label="Menüyü kapat"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+                {nav.map((item, index) =>
+                  "separator" in item ? (
+                    <div key={`sep-mobile-${index}`} className="my-2 border-t border-sidebar-border" />
+                  ) : (
+                    (() => {
+                      const active = location.pathname.startsWith(item.to);
+                      const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
+                      return (
+                        <Link
+                          key={item.label}
+                          to={item.to}
+                          hash={item.hash}
+                          onClick={() => setMobileOpen(false)}
+                          className={`relative flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-bold transition-colors ${
+                            active
+                              ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[2px] before:-translate-y-1/2 before:rounded-r before:bg-sidebar-active-border"
+                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                          }`}
+                        >
+                          <item.icon className="h-5 w-5 shrink-0" />
+                          {item.label}
+                          {badgeCount > 0 ? (
+                            <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
+                              {badgeCount}
+                            </span>
+                          ) : null}
+                        </Link>
+                      );
+                    })()
+                  ),
+                )}
+              </nav>
+              <div className="border-t border-sidebar-border p-3">
+                <div className="mb-3 rounded-xl bg-sidebar-accent/60 p-3">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {role ? roleLabels[role] : "Kullanıcı"}
+                  </p>
+                  <p className="mt-1 truncate text-sm font-bold text-foreground">{displayName}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <LogOut className="h-5 w-5" /> Çıkış Yap
+                </button>
+              </div>
+            </aside>
+          </div>
+        ) : null}
+
+        <main className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
