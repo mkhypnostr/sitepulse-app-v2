@@ -60,10 +60,10 @@ function WorkOrdersPage() {
     locationUrl: "",
     date: new Date().toISOString().slice(0, 10),
     time: "08:00",
-    customerLaborAmount: "0",
-    customerMaterialAmount: "0",
-    contractorLaborAmount: "0",
-    estimatedMaterialCost: "0",
+    customerLaborAmount: "",
+    customerMaterialAmount: "",
+    contractorLaborAmount: "",
+    estimatedMaterialCost: "",
     workScopeType: "labor_only",
     materialSource: "none",
     assigneeId: "none",
@@ -219,10 +219,10 @@ function WorkOrdersPage() {
         locationUrl: "",
         date: new Date().toISOString().slice(0, 10),
         time: "08:00",
-        customerLaborAmount: "0",
-        customerMaterialAmount: "0",
-        contractorLaborAmount: "0",
-        estimatedMaterialCost: "0",
+        customerLaborAmount: "",
+        customerMaterialAmount: "",
+        contractorLaborAmount: "",
+        estimatedMaterialCost: "",
         workScopeType: "labor_only",
         materialSource: "none",
         assigneeId: "none",
@@ -435,64 +435,66 @@ function WorkOrdersPage() {
               </SelectContent>
             </Select>
           </label>
-          <label className="grid gap-1 text-sm">
-            İş Kapsamı
-            <Select
-              value={form.workScopeType}
-              onValueChange={(workScopeType) =>
-                setForm({
-                  ...form,
-                  workScopeType,
-                  materialSource:
-                    workScopeType === "labor_only"
-                      ? "none"
-                      : form.materialSource === "none"
-                        ? "nes_stock"
-                        : form.materialSource,
-                })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="labor_only">Yalnızca işçilik</SelectItem>
-                <SelectItem value="labor_and_material">İşçilik + malzeme</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="grid gap-1 text-sm">
-            Malzeme Kaynağı
-            <Select
-              value={form.materialSource}
-              disabled={form.workScopeType === "labor_only"}
-              onValueChange={(materialSource) => setForm({ ...form, materialSource })}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Malzeme kullanılmayacak</SelectItem>
-                <SelectItem value="nes_stock">NES deposu</SelectItem>
-                <SelectItem value="contractor">Taşeron malzemesi</SelectItem>
-                <SelectItem value="customer_site">Müşteri / şantiye malzemesi</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
           {canSeeAmounts ? (
             <>
               <label className="grid gap-1 text-sm">
-                Müşteriye İşçilik Satış Bedeli (₺)
+                İş Kapsamı
+                <Select
+                  value={form.workScopeType}
+                  onValueChange={(workScopeType) =>
+                    setForm({
+                      ...form,
+                      workScopeType,
+                      materialSource:
+                        workScopeType === "labor_only"
+                          ? "none"
+                          : form.materialSource === "none"
+                            ? "nes_stock"
+                            : form.materialSource,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="labor_only">Yalnızca işçilik</SelectItem>
+                    <SelectItem value="labor_and_material">İşçilik + malzeme</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="grid gap-1 text-sm">
+                Varsayılan Malzeme Kaynağı
+                <Select
+                  value={form.materialSource}
+                  disabled={form.workScopeType === "labor_only"}
+                  onValueChange={(materialSource) => setForm({ ...form, materialSource })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Malzeme kullanılmayacak</SelectItem>
+                    <SelectItem value="nes_stock">NES deposu</SelectItem>
+                    <SelectItem value="contractor">Taşeron malzemesi</SelectItem>
+                    <SelectItem value="customer_site">Müşteri / şantiye malzemesi</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="grid gap-1 text-sm">
+                Müşteri İşçilik Satış Bedeli (₺)
                 <Input
                   inputMode="decimal"
+                  placeholder="0"
                   value={form.customerLaborAmount}
                   onChange={(event) => setForm({ ...form, customerLaborAmount: event.target.value })}
                 />
               </label>
               <label className="grid gap-1 text-sm">
-                Müşteriye Malzeme Satış Bedeli (₺)
+                Müşteri Malzeme Satış Bedeli (₺)
                 <Input
                   inputMode="decimal"
+                  placeholder="0"
                   value={form.customerMaterialAmount}
                   onChange={(event) => setForm({ ...form, customerMaterialAmount: event.target.value })}
                 />
@@ -501,6 +503,7 @@ function WorkOrdersPage() {
                 Taşeron İşçilik Bedeli (₺)
                 <Input
                   inputMode="decimal"
+                  placeholder="0"
                   value={form.contractorLaborAmount}
                   onChange={(event) => setForm({ ...form, contractorLaborAmount: event.target.value })}
                 />
@@ -509,6 +512,7 @@ function WorkOrdersPage() {
                 Tahmini Malzeme / Diğer Maliyet (₺)
                 <Input
                   inputMode="decimal"
+                  placeholder="0"
                   value={form.estimatedMaterialCost}
                   onChange={(event) => setForm({ ...form, estimatedMaterialCost: event.target.value })}
                 />
