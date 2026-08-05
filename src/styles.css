@@ -66,6 +66,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-border: var(--sidebar-active-border);
 }
 
 :root {
@@ -114,8 +115,9 @@
   --sidebar-accent-foreground: oklch(0.968 0.007 247.9);
   --sidebar-border: oklch(0.225 0.027 284);
   --sidebar-ring: oklch(0.714 0.143 254.6);
-  /* Aktif menü öğesi zemini #0f1529. */
+  /* Aktif menü öğesi zemini #0f1529, sol border #3b82f6. */
   --sidebar-active: oklch(0.201 0.041 269.8);
+  --sidebar-active-border: oklch(0.623 0.188 259.8);
 }
 
 .dark {

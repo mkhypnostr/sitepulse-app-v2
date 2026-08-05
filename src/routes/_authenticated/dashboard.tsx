@@ -1,35 +1,49 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { toast } from "sonner";
+import { useEffect, useState } from "react";
 import {
-  AlertTriangle,
   Boxes,
   BriefcaseBusiness,
   CheckCircle2,
   Clock3,
+  FileDown,
   FolderKanban,
+  ListChecks,
   Package,
-  Paperclip,
-  PlusCircle,
-  UserCog,
-  UsersRound,
+  Plus,
+  ShieldAlert,
+  Wallet,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth-context";
-import { isOperationalManager } from "@/lib/permissions";
+import { isOperationalManager, canSeeFinancials } from "@/lib/permissions";
 import { errorMessage, statusLabels } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
+import {
+  formatProjectDateTime,
+  projectApprovedProgress,
+  projectStatusLabel,
+  type ProjectStatus,
+  type ProjectTaskStatus,
+} from "@/lib/projects";
 import { PageHeader, LoadingState } from "@/components/page-states";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { formatProjectDateTime } from "@/lib/projects";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
 });
+
+const TERMINAL_ORDER_STATUSES = [
+  "completed",
+  "cancelled",
+  "not_applicable",
+  "external_approval",
+  "review_pending",
+];
 
 type ProjectSubmission = Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
 type WorkSubmission = Database["public"]["Tables"]["progress_updates"]["Row"];
@@ -44,8 +58,8 @@ type ProjectSummary = Pick<
 >;
 type ProjectDashboardSummary = Pick<
   Database["public"]["Tables"]["projects"]["Row"],
-  "id" | "status"
->;
+  "id" | "name" | "project_no" | "status"
+> & { customers: { name: string } | null };
 type VisibleProjectTask = Pick<
   Database["public"]["Tables"]["project_tasks"]["Row"],
   | "id"
@@ -61,20 +75,44 @@ type OperationalTaskSummary = Pick<
   Database["public"]["Tables"]["operational_tasks"]["Row"],
   "id" | "title" | "project_id" | "planned_date" | "status" | "assigned_to"
 >;
+type StockItemSummary = Pick<
+  Database["public"]["Tables"]["stock_items"]["Row"],
+  "id" | "name" | "quantity" | "min_quantity" | "unit"
+>;
 type DashboardWorkOrder = Database["public"]["Tables"]["work_orders"]["Row"] & {
   customers: { name: string } | null;
   projects: { name: string; project_no: string } | null;
   work_order_financials: {
     customer_amount: number | null;
+    customer_labor_amount: number | null;
+    customer_material_amount: number | null;
     contractor_labor_amount: number | null;
     estimated_material_cost: number | null;
     approved_progress_pct: number | null;
   } | null;
 };
 
+const EYEBROW = "text-[8.5px] font-bold uppercase tracking-[0.08em] text-[#2d3748]";
+
+const projectStatusVariant: Record<ProjectStatus, NonNullable<BadgeProps["variant"]>> = {
+  draft: "outline",
+  active: "default",
+  on_hold: "warning",
+  completed: "success",
+  cancelled: "destructive",
+};
+
 function DashboardPage() {
   const { role } = useAuth();
   const operationalManager = isOperationalManager(role);
+  const canFinance = canSeeFinancials(role);
+
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const query = useQuery({
     queryKey: ["dashboard", role],
     enabled: Boolean(role),
@@ -98,33 +136,37 @@ function DashboardPage() {
               const { data, error } = await supabase
                 .from("work_orders")
                 .select(
-                  "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
+                  "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, customer_labor_amount, customer_material_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
                 )
                 .order("scheduled_at", { ascending: false });
               if (error) throw error;
               return (data ?? []) as unknown as DashboardWorkOrder[];
             })();
 
-      let stock: { quantity: number; min_quantity: number }[] = [];
+      let stock: StockItemSummary[] = [];
       let projectSubmissions: ProjectSubmission[] = [];
       let workSubmissions: WorkSubmission[] = [];
       let pendingCompletionSubmissions: CompletionSubmission[] = [];
-      let projectEvidenceSubmissionIds: string[] = [];
-      let completionEvidenceSubmissionIds: string[] = [];
       let projectTasks: ProjectTaskSummary[] = [];
       let projects: ProjectSummary[] = [];
       let allProjects: ProjectDashboardSummary[] = [];
-      let profileNames: Array<{ id: string; full_name: string }> = [];
       let visibleProjectTasks: VisibleProjectTask[] = [];
       let independentTasks: OperationalTaskSummary[] = [];
+
       if (operationalManager || role === "contractor") {
-        const { data, error } = await supabase.from("stock_items").select("quantity, min_quantity");
+        const { data, error } = await supabase
+          .from("stock_items")
+          .select("id, name, quantity, min_quantity, unit");
         if (error) throw error;
         stock = data;
       }
+
       if (operationalManager) {
         const [allProjectsResult, visibleTasksResult, independentTasksResult] = await Promise.all([
-          supabase.from("projects").select("id, status"),
+          supabase
+            .from("projects")
+            .select("id, name, project_no, status, customers(name)")
+            .order("created_at", { ascending: false }),
           supabase
             .from("project_tasks")
             .select("id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date, responsible_id")
@@ -137,80 +179,35 @@ function DashboardPage() {
         if (allProjectsResult.error) throw allProjectsResult.error;
         if (visibleTasksResult.error) throw visibleTasksResult.error;
         if (independentTasksResult.error) throw independentTasksResult.error;
-        allProjects = allProjectsResult.data ?? [];
+        allProjects = (allProjectsResult.data ?? []) as unknown as ProjectDashboardSummary[];
         visibleProjectTasks = visibleTasksResult.data ?? [];
         independentTasks = independentTasksResult.data ?? [];
-      }
-      if (role === "admin") {
-        const [
-          pendingResult,
-          approvedResult,
-          workPendingResult,
-          workApprovedResult,
-        ] = await Promise.all([
+
+        // Yalnızca yönetici kararı bekleyen (pending) kayıtlar getirilir; onay
+        // geçmişi bu panelde artık gösterilmiyor (bkz. Raporlar).
+        const [pendingResult, workPendingResult, completionResult] = await Promise.all([
           supabase
             .from("project_task_progress_submissions")
             .select("*")
             .eq("status", "pending")
             .order("submitted_at", { ascending: false }),
           supabase
-            .from("project_task_progress_submissions")
-            .select("*")
-            .eq("status", "approved")
-            .order("reviewed_at", { ascending: false })
-            .limit(8),
-          supabase
             .from("progress_updates")
             .select("*")
             .eq("status", "pending")
             .order("created_at", { ascending: false }),
           supabase
-            .from("progress_updates")
+            .from("work_completion_submissions")
             .select("*")
-            .eq("status", "approved")
-            .not("reviewed_at", "is", null)
-            .order("reviewed_at", { ascending: false })
-            .limit(8),
+            .eq("status", "pending")
+            .order("submitted_at", { ascending: false }),
         ]);
         if (pendingResult.error) throw pendingResult.error;
-        if (approvedResult.error) throw approvedResult.error;
         if (workPendingResult.error) throw workPendingResult.error;
-        if (workApprovedResult.error) throw workApprovedResult.error;
-        projectSubmissions = [...pendingResult.data, ...approvedResult.data];
-        workSubmissions = [...workPendingResult.data, ...workApprovedResult.data];
-
-        const completionResult = await supabase
-          .from("work_completion_submissions")
-          .select("*")
-          .eq("status", "pending")
-          .order("submitted_at", { ascending: false });
         if (completionResult.error) throw completionResult.error;
+        projectSubmissions = pendingResult.data;
+        workSubmissions = workPendingResult.data;
         pendingCompletionSubmissions = completionResult.data ?? [];
-
-        const pendingProjectSubmissionIds = projectSubmissions
-          .filter((item) => item.status === "pending")
-          .map((item) => item.id);
-        const pendingCompletionSubmissionIds = pendingCompletionSubmissions.map((item) => item.id);
-        const [projectEvidenceResult, completionEvidenceResult] = await Promise.all([
-          pendingProjectSubmissionIds.length
-            ? supabase
-                .from("project_task_evidence")
-                .select("submission_id")
-                .in("submission_id", pendingProjectSubmissionIds)
-            : Promise.resolve({ data: [], error: null }),
-          pendingCompletionSubmissionIds.length
-            ? supabase
-                .from("work_completion_evidence")
-                .select("submission_id")
-                .in("submission_id", pendingCompletionSubmissionIds)
-            : Promise.resolve({ data: [], error: null }),
-        ]);
-        if (projectEvidenceResult.error) throw projectEvidenceResult.error;
-        if (completionEvidenceResult.error) throw completionEvidenceResult.error;
-        projectEvidenceSubmissionIds = (projectEvidenceResult.data ?? [])
-          .flatMap((item) => (item.submission_id ? [item.submission_id] : []));
-        completionEvidenceSubmissionIds = (completionEvidenceResult.data ?? [])
-          .flatMap((item) => (item.submission_id ? [item.submission_id] : []));
 
         const taskIds = [...new Set(projectSubmissions.map((item) => item.project_task_id))];
         if (taskIds.length) {
@@ -228,38 +225,17 @@ function DashboardPage() {
           if (projectsResult.error) throw projectsResult.error;
           projects = projectsResult.data ?? [];
         }
-
-        const userIds = [
-          ...new Set(
-            [
-              ...projectSubmissions.flatMap((item) => [item.submitted_by, item.reviewed_by]),
-              ...workSubmissions.flatMap((item) => [item.contractor_id, item.reviewed_by]),
-              ...pendingCompletionSubmissions.flatMap((item) => [item.submitted_by, item.reviewed_by]),
-              ...orders.flatMap((item) => [item.completion_submitted_by, item.reviewed_by]),
-            ].filter(Boolean) as string[],
-          ),
-        ];
-        if (userIds.length) {
-          const profilesResult = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", userIds);
-          if (profilesResult.error) throw profilesResult.error;
-          profileNames = profilesResult.data ?? [];
-        }
       }
+
       return {
         orders,
         stock,
         projectSubmissions,
         workSubmissions,
         pendingCompletionSubmissions,
-        projectEvidenceSubmissionIds,
-        completionEvidenceSubmissionIds,
         projectTasks,
         projects,
         allProjects,
-        profileNames,
         visibleProjectTasks,
         independentTasks,
       };
@@ -273,7 +249,7 @@ function DashboardPage() {
     if (!query.data || typeof window === "undefined") return;
 
     const targetId = window.location.hash.replace("#", "");
-    if (!["approval-center", "overdue-tasks"].includes(targetId)) return;
+    if (!["approval-center", "finance", "project-status"].includes(targetId)) return;
 
     const timer = window.setTimeout(() => {
       document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -288,352 +264,42 @@ function DashboardPage() {
   }
 
   const orders = query.data?.orders ?? [];
-  const active = orders.filter(
-    (order) => !["completed", "cancelled", "not_applicable", "external_approval", "review_pending"].includes(order.status),
-  ).length;
+  const active = orders.filter((order) => !TERMINAL_ORDER_STATUSES.includes(order.status)).length;
   const completed = orders.filter((order) => order.status === "completed").length;
-  const allProjects = query.data?.allProjects ?? [];
-  const visibleProjectTasks = query.data?.visibleProjectTasks ?? [];
-  const independentTasks = query.data?.independentTasks ?? [];
-  const activeProjects = allProjects.filter((project) => project.status === "active").length;
-  // Proje oluşturulurken gelen şablon satırları, bir sorumlusu veya gerçek bir
-  // saha hareketi yoksa operasyon görevi olarak sayılmaz.
-  const trackedProjectTasks = visibleProjectTasks.filter(
-    (task) =>
-      Boolean(task.responsible_id) ||
-      task.approved_progress_pct > 0 ||
-      ["in_progress", "external_approval", "revision_required", "blocked", "completed"].includes(task.status),
-  );
-  const technicalOpenTasks = trackedProjectTasks.filter(
-    (task) => !["completed", "cancelled", "not_applicable", "external_approval", "review_pending"].includes(task.status),
-  ).length;
-  const technicalCompletedTasks = trackedProjectTasks.filter((task) => task.status === "completed").length;
-  const independentOpenTasks = independentTasks.filter(
-    (task) => !["completed", "cancelled", "not_applicable", "external_approval", "review_pending"].includes(task.status),
-  ).length;
-  const independentCompletedTasks = independentTasks.filter((task) => task.status === "completed").length;
-  const projectSubmissions = query.data?.projectSubmissions ?? [];
-  const workSubmissions = query.data?.workSubmissions ?? [];
-  const pendingCompletionSubmissions = query.data?.pendingCompletionSubmissions ?? [];
-  const projectEvidenceCountBySubmission = new Map<string, number>();
-  for (const submissionId of query.data?.projectEvidenceSubmissionIds ?? []) {
-    projectEvidenceCountBySubmission.set(submissionId, (projectEvidenceCountBySubmission.get(submissionId) ?? 0) + 1);
-  }
-  const completionEvidenceCountBySubmission = new Map<string, number>();
-  for (const submissionId of query.data?.completionEvidenceSubmissionIds ?? []) {
-    completionEvidenceCountBySubmission.set(submissionId, (completionEvidenceCountBySubmission.get(submissionId) ?? 0) + 1);
-  }
-  const pendingCompletionByWorkOrder = new Map(
-    pendingCompletionSubmissions.map((item) => [item.work_order_id, item]),
-  );
-  const pendingWorkSubmissions = workSubmissions.filter((item) => item.status === "pending");
-  const approvedWorkSubmissions = workSubmissions.filter((item) => item.status === "approved");
-  const pendingProjectSubmissions = projectSubmissions.filter((item) => item.status === "pending");
-  const approvedProjectSubmissions = projectSubmissions.filter(
-    (item) => item.status === "approved",
-  );
-  const pendingCompletionOrders = orders.filter(
-    (order) => order.status === "review_pending" || pendingCompletionByWorkOrder.has(order.id),
-  );
-  const overdueOrders = orders.filter(
-    (order) =>
-      new Date(order.scheduled_at).getTime() < Date.now() &&
-      !["completed", "cancelled", "not_applicable"].includes(order.status),
-  );
-  const overdueProjectTasks = trackedProjectTasks.filter(
-    (task) =>
-      Boolean(task.planned_date) &&
-      new Date(`${task.planned_date}T23:59:59`).getTime() < Date.now() &&
-      !["completed", "cancelled", "not_applicable"].includes(task.status),
-  );
-  const overdueIndependentTasks = independentTasks.filter(
-    (task) =>
-      Boolean(task.planned_date) &&
-      new Date(`${task.planned_date}T23:59:59`).getTime() < Date.now() &&
-      !["completed", "cancelled", "not_applicable"].includes(task.status),
-  );
-  const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
-  const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
-  const profileNameById = new Map(
-    (query.data?.profileNames ?? []).map((item) => [item.id, item.full_name]),
-  );
-  const lowStock = (query.data?.stock ?? []).filter(
-    (item) => item.quantity <= item.min_quantity,
-  ).length;
-  const pendingApprovalCount =
-    pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
-  const pendingApprovalItems = [
-    ...pendingCompletionOrders.map((order) => {
-      const submission = pendingCompletionByWorkOrder.get(order.id);
-      return {
-      id: `completion-${submission?.id ?? order.id}`,
-      href: `/jobs/${order.id}#completion-approval`,
-      category: "İş Bitirme Onayı",
-      title: `#${order.work_order_no} · ${order.title}`,
-      detail: submission?.note || order.completion_note || "İş bitirme açıklaması",
-      submittedBy: profileNameById.get(submission?.submitted_by ?? order.completion_submitted_by ?? "") || "Taşeron",
-      submittedAt: submission?.submitted_at ?? order.completion_submitted_at,
-      evidenceCount: submission ? (completionEvidenceCountBySubmission.get(submission.id) ?? 0) : 0,
-    };
-    }),
-    ...pendingWorkSubmissions.flatMap((submission) => {
-      const order = orders.find((item) => item.id === submission.work_order_id);
-      if (!order) return [];
-      return [{
-        id: `progress-${submission.id}`,
-        href: `/jobs/${order.id}#progress-approval`,
-        category: `Görev İlerlemesi · %${submission.pct}`,
-        title: `#${order.work_order_no} · ${order.title}`,
-        detail: submission.note,
-        submittedBy: profileNameById.get(submission.contractor_id) || "Taşeron",
-        submittedAt: submission.created_at,
-        evidenceCount: submission.evidence_photo_id ? 1 : 0,
-      }];
-    }),
-    ...pendingProjectSubmissions.flatMap((submission) => {
-      const task = projectTaskById.get(submission.project_task_id);
-      const project = task ? projectById.get(task.project_id) : undefined;
-      if (!task || !project) return [];
-      return [{
-        id: `project-${submission.id}`,
-        href: `/projects/${project.id}#task-${task.id}`,
-        category: `Proje Görevi · %${submission.proposed_pct}`,
-        title: task.task_name,
-        detail: `${project.project_no} · ${project.name} · ${task.phase_name}`,
-        submittedBy: profileNameById.get(submission.submitted_by) || "Kullanıcı",
-        submittedAt: submission.submitted_at,
-        evidenceCount: projectEvidenceCountBySubmission.get(submission.id) ?? 0,
-      }];
-    }),
-  ];
-  const overdueTaskCount = overdueOrders.length + overdueProjectTasks.length + overdueIndependentTasks.length;
-  // Tek bir kayıt varsa karta dokununca doğrudan o kaydın onayına gider.
-  // Birden fazla kayıt varsa önce onay merkezi açılır; yöneticinin yanlış kayda
-  // karar vermesini önlemek için burada tahmin yapılmaz.
-  const pendingTarget = "/dashboard#approval-center";
 
-  const taskRoute = "/tasks?filter=open";
-  const openTasks = active + technicalOpenTasks + independentOpenTasks;
-  const operationalMetrics = [
-    {
-      label: "Projeler / Şantiyeler",
-      value: allProjects.length,
-      detail: `${activeProjects} aktif`,
-      icon: FolderKanban,
-      href: "/projects",
-    },
-    {
-      label: "Açık Görevler",
-      value: openTasks,
-      detail: openTasks ? "Açık görevleri görüntüle" : "Açık görev yok",
-      icon: BriefcaseBusiness,
-      href: taskRoute,
-    },
-    ...(role === "admin"
-      ? [
-          {
-            label: "Onay Bekleyen",
-            value: pendingApprovalCount,
-            detail: pendingApprovalCount ? "Yönetici kararı gerekiyor" : "Bekleyen kayıt yok",
-            icon: AlertTriangle,
-            href: pendingTarget,
-            attention: "danger" as const,
-            emptyMessage: "Onay bekleyen kayıt yok.",
-          },
-          {
-            label: "Geciken Görevler",
-            value: overdueTaskCount,
-            detail: overdueTaskCount ? "Plan tarihi geçmiş görevler" : "Geciken görev yok",
-            icon: AlertTriangle,
-            href: overdueTaskCount > 0 ? "/tasks?filter=overdue" : undefined,
-            attention: "warning" as const,
-            emptyMessage: "Geciken görev yok.",
-          },
-        ]
-      : []),
-    {
-      label: "Kritik Stok",
-      value: lowStock,
-      detail: lowStock ? "Minimum seviyenin altında" : "Kritik stok yok",
-      icon: Package,
-      href: "/stock",
-      attention: "warning" as const,
-    },
-  ];
+  // ── Kişisel panel: taşeron / müşteri ──────────────────────────────────
+  if (!operationalManager) {
+    const personalMetrics = [
+      {
+        label: "Aktif İş",
+        value: active,
+        icon: BriefcaseBusiness,
+        href: role === "customer" ? "/my-projects" : "/my-jobs",
+      },
+      {
+        label: "Tamamlanan",
+        value: completed,
+        icon: CheckCircle2,
+        href: role === "customer" ? "/my-projects" : "/my-jobs",
+      },
+      {
+        label: "Toplam İş",
+        value: orders.length,
+        icon: Clock3,
+        href: role === "customer" ? "/my-projects" : "/my-jobs",
+      },
+    ];
 
-  const personalMetrics = [
-    {
-      label: "Aktif İş",
-      value: active,
-      icon: BriefcaseBusiness,
-      href: role === "customer" ? "/my-projects" : "/my-jobs",
-    },
-    {
-      label: "Tamamlanan",
-      value: completed,
-      icon: CheckCircle2,
-      href: role === "customer" ? "/my-projects" : "/my-jobs",
-    },
-    {
-      label: "Toplam İş",
-      value: orders.length,
-      icon: Clock3,
-      href: role === "customer" ? "/my-projects" : "/my-jobs",
-    },
-  ];
-
-  const recentApprovalItems = [
-    ...approvedWorkSubmissions.flatMap((submission) => {
-      const order = orders.find((item) => item.id === submission.work_order_id);
-      if (!order) return [];
-      return [{
-        id: `work-approved-${submission.id}`,
-        href: `/jobs/${order.id}`,
-        title: `%${submission.pct} · #${order.work_order_no} · ${order.title}`,
-        detail: "Saha görevi ilerlemesi",
-        reviewedBy: profileNameById.get(submission.reviewed_by ?? "") || "Yönetici",
-        reviewedAt: submission.reviewed_at,
-      }];
-    }),
-    ...approvedProjectSubmissions.flatMap((submission) => {
-      const task = projectTaskById.get(submission.project_task_id);
-      const project = task ? projectById.get(task.project_id) : undefined;
-      if (!task || !project) return [];
-      return [{
-        id: `project-approved-${submission.id}`,
-        href: `/projects/${project.id}#task-${task.id}`,
-        title: `%${submission.proposed_pct} · ${task.task_name}`,
-        detail: `${project.project_no} · ${project.name} · ${task.phase_name}`,
-        reviewedBy: profileNameById.get(submission.reviewed_by ?? "") || "Yönetici",
-        reviewedAt: submission.reviewed_at,
-      }];
-    }),
-  ]
-    .sort((left, right) => new Date(right.reviewedAt ?? 0).getTime() - new Date(left.reviewedAt ?? 0).getTime())
-    .slice(0, 6);
-
-  const quickActions = [
-    {
-      label: "Yeni Görev",
-      description: "Projeye bağla veya bağımsız ata",
-      to: "/work-orders" as const,
-      search: { create: true },
-      icon: PlusCircle,
-    },
-    {
-      label: "Müşteri Ekle",
-      description: "Firma ve portal bağlantısı",
-      to: "/customers" as const,
-      icon: UsersRound,
-    },
-    {
-      label: "Stok Yönetimi",
-      description: "Malzeme ve kritik stok",
-      to: "/stock" as const,
-      icon: Boxes,
-    },
-    {
-      label: "Ekip ve Yetkiler",
-      description: "Yönetici, taşeron, müşteri",
-      to: "/team" as const,
-      icon: UserCog,
-    },
-  ];
-
-  return (
-    <>
-      <PageHeader
-        title="Operasyon Paneli"
-        description={
-          operationalManager
-            ? "Saha, taşeron, ilerleme ve stok durumunun güncel özeti."
-            : "Size açık işlerin ve projelerin güncel özeti."
-        }
-      />
-
-      {operationalManager ? (
-        <section className="surface-panel p-4 sm:p-5">
-          <div className="mb-4">
-            <h2 className="text-lg font-black">Genel Durum</h2>
-            <p className="text-sm text-muted-foreground">
-              Proje, görev, onay, gecikme ve stok bilgisini tek alanda takip edin.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {operationalMetrics.map((metric) => {
-              const wide = ["Projeler / Şantiyeler", "Onay Bekleyen", "Kritik Stok"].includes(
-                metric.label,
-              );
-              const card = (
-                <Card
-                  className={`h-full min-h-[138px] ${
-                    metric.attention === "danger" && metric.value > 0
-                      ? "border-destructive/40 bg-destructive/5"
-                      : metric.attention === "warning" && metric.value > 0
-                        ? "border-warning/40 bg-warning/5"
-                        : "border-border bg-card"
-                  }`}
-                >
-                  <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="line-clamp-2 text-xs font-semibold leading-snug text-muted-foreground">
-                        {metric.label}
-                      </p>
-                      <div
-                        className={
-                          metric.attention === "danger" && metric.value > 0
-                            ? "shrink-0 rounded-lg bg-destructive/15 p-2 text-destructive animate-pulse"
-                            : metric.attention === "warning" && metric.value > 0
-                              ? "shrink-0 rounded-lg bg-warning/15 p-2 text-warning"
-                              : "shrink-0 rounded-lg bg-primary/15 p-2 text-highlight"
-                        }
-                      >
-                        <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
-                      <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">
-                        {metric.detail}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-              return metric.href ? (
-                <a
-                  key={metric.label}
-                  href={metric.href}
-                  aria-label={`${metric.label}: ${metric.value}`}
-                  className={`block h-full cursor-pointer transition-transform hover:-translate-y-0.5 ${wide ? "col-span-2" : ""}`}
-                >
-                  {card}
-                </a>
-              ) : metric.emptyMessage ? (
-                <button
-                  key={metric.label}
-                  type="button"
-                  onClick={() => toast.info(metric.emptyMessage)}
-                  className={`block h-full w-full cursor-pointer text-left transition-transform hover:-translate-y-0.5 ${wide ? "col-span-2" : ""}`}
-                >
-                  {card}
-                </button>
-              ) : (
-                <div key={metric.label} className={wide ? "col-span-2" : ""}>
-                  {card}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ) : (
+    return (
+      <>
+        <PageHeader title="Panel" description="Size açık işlerin ve projelerin güncel özeti." />
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {personalMetrics.map((metric) => {
-            const card = (
+          {personalMetrics.map((metric) => (
+            <a key={metric.label} href={metric.href} className="block h-full">
               <Card className="h-full border-border bg-card">
                 <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-xs font-semibold text-muted-foreground">{metric.label}</p>
+                    <p className={EYEBROW}>{metric.label}</p>
                     <div className="shrink-0 rounded-lg bg-primary/15 p-2 text-highlight">
                       <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
                     </div>
@@ -641,261 +307,431 @@ function DashboardPage() {
                   <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
                 </CardContent>
               </Card>
-            );
-            return metric.href ? (
-              <a key={metric.label} href={metric.href} className="block h-full">
-                {card}
-              </a>
-            ) : (
-              <div key={metric.label} className="h-full">
-                {card}
-              </div>
-            );
-          })}
+            </a>
+          ))}
         </div>
-      )}
 
-      {role === "admin" && pendingApprovalItems.length > 0 ? (
-        <section id="approval-center" className="surface-panel mt-7 scroll-mt-6 p-4 sm:p-5">
-          <div className="mb-3">
-            <h2 className="text-lg font-bold">Onay Merkezi</h2>
-            <p className="text-sm text-muted-foreground">
-              Yalnızca yönetici kararı bekleyen kayıtlar. Kaydı açtığınızda onay ve revizyon düğmeleri en üstte görünür.
-            </p>
-          </div>
-          <div className="grid gap-3 xl:grid-cols-2">
-            {pendingApprovalItems.map((item) => (
-              <a
-                key={item.id}
-                href={item.href}
-                className="surface-panel block border-destructive/40 bg-destructive/5 p-4 transition-colors hover:bg-destructive/10"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="animate-pulse text-xs font-black text-destructive">{item.category.toUpperCase()} BEKLİYOR</p>
-                    <p className="mt-1 font-black">{item.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
-                  </div>
-                  <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
-                </div>
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span>{item.submittedBy}{item.submittedAt ? ` · ${formatProjectDateTime(item.submittedAt)}` : ""}</span>
-                  <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/40 px-2 py-1 font-bold text-foreground"><Paperclip className="h-3.5 w-3.5 text-highlight" /> {item.evidenceCount} kanıt</span>
-                </div>
-                <p className="mt-2 text-xs font-bold text-highlight">Kaydı aç ve karar ver →</p>
-              </a>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {role === "admin" && overdueTaskCount ? (
-        <section id="overdue-tasks" className="surface-panel mt-7 scroll-mt-6 p-4 sm:p-5">
-          <div className="mb-3">
-            <h2 className="text-lg font-bold">Geciken Görevler</h2>
-            <p className="text-sm text-muted-foreground">Planlanan tarihi geçmiş, henüz kapanmamış kayıtlar.</p>
-          </div>
-          <div className="grid gap-3 xl:grid-cols-2">
-            {overdueOrders.map((order) => (
-              <a key={order.id} href={`/tasks?filter=overdue#work-order-${order.id}`} className="surface-panel block border-warning/40 bg-warning/5 p-4 transition-colors hover:bg-warning/10">
-                <p className="text-xs font-black text-warning">SAHA GÖREVİ GECİKTİ</p>
-                <p className="mt-1 font-black">#{order.work_order_no} · {order.title}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {formatDate(order.scheduled_at)}</p>
-              </a>
-            ))}
-            {overdueProjectTasks.map((task) => (
-              <a key={task.id} href={`/tasks?filter=overdue#project-task-${task.id}`} className="surface-panel block border-warning/40 bg-warning/5 p-4 transition-colors hover:bg-warning/10">
-                <p className="text-xs font-black text-warning">PROJE GÖREVİ GECİKTİ</p>
-                <p className="mt-1 font-black">{task.task_name}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{task.phase_name} · Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
-              </a>
-            ))}
-            {overdueIndependentTasks.map((task) => (
-              <a key={task.id} href={`/tasks?filter=overdue#operational-${task.id}`} className="surface-panel block border-warning/40 bg-warning/5 p-4 transition-colors hover:bg-warning/10">
-                <p className="text-xs font-black text-warning">BAĞIMSIZ GÖREV GECİKTİ</p>
-                <p className="mt-1 font-black">{task.title}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
-              </a>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {role === "admin" ? (
-        <section id="recent-approvals" className="surface-panel mt-7 scroll-mt-6 p-4 sm:p-5">
-          <div className="mb-3">
-            <h2 className="text-lg font-black">Son Onaylar</h2>
-            <p className="text-sm text-muted-foreground">
-              Proje ve saha görevlerindeki son yönetici kararları.
-            </p>
-          </div>
-          <div className="grid gap-3 xl:grid-cols-2">
-            {recentApprovalItems.map((item) => (
-              <a
-                key={item.id}
-                href={item.href}
-                className="rounded-[14px] border border-success/30 bg-success/5 p-4 transition-colors hover:bg-success/10"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black text-success">ONAYLANDI</p>
-                    <p className="mt-1 font-black">{item.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
-                  </div>
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
-                </div>
-                <p className="mt-3 text-xs text-success/80">
-                  {item.reviewedBy} tarafından {formatProjectDateTime(item.reviewedAt)} tarihinde onaylandı
-                </p>
-              </a>
-            ))}
-            {recentApprovalItems.length === 0 ? (
-              <div className="rounded-[14px] border border-border bg-muted/20 p-5 text-sm text-muted-foreground xl:col-span-2">
-                Henüz onaylanmış kayıt yok.
-              </div>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      {operationalManager ? (
-        <section className="surface-panel mt-7 p-4 sm:p-5">
-          <div className="mb-3">
-            <h2 className="text-lg font-bold">Hızlı İşlemler</h2>
-            <p className="text-sm text-muted-foreground">
-              Sık kullandığınız alanlara tek dokunuşla gidin.
-            </p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {quickActions.map((action) => (
-              <Link
-                key={action.label}
-                to={action.to}
-                search={"search" in action ? action.search : undefined}
-                className="group rounded-[14px] border border-border bg-card/60 flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:bg-accent/40"
-              >
-                <span className="rounded-[14px] bg-primary/15 p-3 text-highlight transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                  <action.icon className="h-6 w-6" />
-                </span>
-                <span>
-                  <span className="block font-bold">{action.label}</span>
-                  <span className="block text-xs text-muted-foreground">{action.description}</span>
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {role === "technical_office" ? (
         <section className="surface-panel mt-7 p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold">Proje Görevleri</h2>
-              <p className="text-sm text-muted-foreground">
-                Sorumlu ataması, plan tarihi ve ilerleme için projeyi açın.
-              </p>
-            </div>
-            <Link to="/projects" className="text-sm font-semibold text-highlight">
-              Tüm projeler
+            <h2 className="text-lg font-bold">Son Görevler</h2>
+            <Link
+              to={role === "customer" ? "/my-projects" : "/my-jobs"}
+              className="text-sm font-semibold text-highlight"
+            >
+              Tümünü gör
             </Link>
           </div>
           <div className="grid gap-3">
-            {visibleProjectTasks.slice(0, 6).map((task) => (
+            {orders.slice(0, 6).map((order) => (
               <Link
-                key={task.id}
-                to="/projects/$projectId"
-                params={{ projectId: task.project_id }}
-                hash={`task-${task.id}`}
+                key={order.id}
+                to="/jobs/$jobId"
+                params={{ jobId: order.id }}
                 className="block rounded-[14px] border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
               >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="font-bold">{task.task_name}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{task.phase_name}</p>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <p className="text-sm font-black text-highlight">%{task.approved_progress_pct}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {task.planned_date ? formatDate(task.planned_date) : "Plan tarihi girilmedi"}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        #{order.work_order_no}
+                      </span>
+                      <Badge variant="outline">{statusLabels[order.status]}</Badge>
+                    </div>
+                    <h3 className="mt-2 truncate font-bold">{order.title}</h3>
+                    {order.projects ? (
+                      <p className="text-xs font-semibold text-highlight">
+                        {order.projects.project_no} · {order.projects.name}
+                      </p>
+                    ) : null}
+                    <p className="text-sm text-muted-foreground">
+                      {order.customers?.name} · {formatDate(order.scheduled_at)}
                     </p>
+                  </div>
+                  <div className="w-full shrink-0 sm:w-56">
+                    <div className="mb-1 flex justify-between text-xs">
+                      <span>İlerleme</span>
+                      <span className="font-bold">%{order.progress_pct}</span>
+                    </div>
+                    <Progress value={order.progress_pct} />
                   </div>
                 </div>
               </Link>
             ))}
-            {visibleProjectTasks.length === 0 ? (
+            {orders.length === 0 ? (
               <div className="rounded-[14px] border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-                Henüz görüntülenecek proje görevi yok.
+                Henüz görüntülenecek görev yok.
               </div>
             ) : null}
           </div>
         </section>
-      ) : (
-      <section className="surface-panel mt-7 p-4 sm:p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-bold">Son Görevler</h2>
-          <Link
-            to={
-              role === "customer"
-                ? "/my-projects"
-                : role === "contractor"
-                  ? "/my-jobs"
-                  : "/work-orders"
-            }
-            className="text-sm font-semibold text-highlight"
+      </>
+    );
+  }
+
+  // ── Operasyon paneli: yönetici / teknik ofis ──────────────────────────
+  const allProjects = query.data?.allProjects ?? [];
+  const visibleProjectTasks = query.data?.visibleProjectTasks ?? [];
+  const stock = query.data?.stock ?? [];
+  const lowStock = stock.filter((item) => item.quantity <= item.min_quantity);
+
+  const pendingProjectSubmissions = query.data?.projectSubmissions ?? [];
+  const pendingWorkSubmissions = query.data?.workSubmissions ?? [];
+  const pendingCompletionSubmissions = query.data?.pendingCompletionSubmissions ?? [];
+  const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
+  const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
+  const pendingCompletionByWorkOrder = new Map(
+    pendingCompletionSubmissions.map((item) => [item.work_order_id, item]),
+  );
+  const pendingCompletionOrders = orders.filter(
+    (order) => order.status === "review_pending" || pendingCompletionByWorkOrder.has(order.id),
+  );
+  const pendingApprovalCount =
+    pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
+
+  const pendingApprovalItems = [
+    ...pendingCompletionOrders.map((order) => {
+      const submission = pendingCompletionByWorkOrder.get(order.id);
+      return {
+        id: `completion-${submission?.id ?? order.id}`,
+        href: `/jobs/${order.id}#completion-approval`,
+        icon: CheckCircle2,
+        label: "İş Bitirme Onayı",
+        title: `#${order.work_order_no} · ${order.title}`,
+        time: submission?.submitted_at ?? order.completion_submitted_at,
+      };
+    }),
+    ...pendingWorkSubmissions.flatMap((submission) => {
+      const order = orders.find((item) => item.id === submission.work_order_id);
+      if (!order) return [];
+      return [
+        {
+          id: `progress-${submission.id}`,
+          href: `/jobs/${order.id}#progress-approval`,
+          icon: Clock3,
+          label: `Görev İlerlemesi · %${submission.pct}`,
+          title: `#${order.work_order_no} · ${order.title}`,
+          time: submission.created_at,
+        },
+      ];
+    }),
+    ...pendingProjectSubmissions.flatMap((submission) => {
+      const task = projectTaskById.get(submission.project_task_id);
+      const project = task ? projectById.get(task.project_id) : undefined;
+      if (!task || !project) return [];
+      return [
+        {
+          id: `project-${submission.id}`,
+          href: `/projects/${project.id}#task-${task.id}`,
+          icon: FolderKanban,
+          label: `Proje Görevi · %${submission.proposed_pct}`,
+          title: `${project.project_no} · ${task.task_name}`,
+          time: submission.submitted_at,
+        },
+      ];
+    }),
+  ].sort((a, b) => new Date(b.time ?? 0).getTime() - new Date(a.time ?? 0).getTime());
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const monthOrders = orders.filter((order) => {
+    const d = new Date(order.scheduled_at);
+    return d >= monthStart && d < monthEnd;
+  });
+  const completedThisMonth = orders.filter((order) => {
+    if (order.status !== "completed") return false;
+    const d = new Date(order.completion_submitted_at ?? order.updated_at);
+    return d >= monthStart && d < monthEnd;
+  }).length;
+  const financeTotals = monthOrders.reduce(
+    (acc, order) => {
+      const f = order.work_order_financials;
+      if (f) {
+        acc.laborSales += f.customer_labor_amount ?? 0;
+        acc.materialSales += f.customer_material_amount ?? 0;
+        acc.contractorCost += f.contractor_labor_amount ?? 0;
+        acc.materialCost += f.estimated_material_cost ?? 0;
+      }
+      return acc;
+    },
+    { laborSales: 0, materialSales: 0, contractorCost: 0, materialCost: 0 },
+  );
+  const netProfit =
+    financeTotals.laborSales + financeTotals.materialSales - financeTotals.contractorCost - financeTotals.materialCost;
+  const monthLabel = new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" }).format(now);
+
+  const tasksByProject = new Map<string, VisibleProjectTask[]>();
+  for (const task of visibleProjectTasks) {
+    const list = tasksByProject.get(task.project_id) ?? [];
+    list.push(task);
+    tasksByProject.set(task.project_id, list);
+  }
+  const projectRows = allProjects
+    .filter((project) => project.status !== "cancelled")
+    .slice(0, 6)
+    .map((project) => {
+      const tasks = (tasksByProject.get(project.id) ?? []) as Array<{
+        approved_progress_pct: number;
+        status: ProjectTaskStatus;
+      }>;
+      return { ...project, percentage: projectApprovedProgress(tasks).percentage };
+    });
+
+  const statCards = [
+    {
+      label: "Aktif İş Emirleri",
+      value: active,
+      detail: `${orders.length} toplam iş emri`,
+      icon: ListChecks,
+      href: "/work-orders",
+    },
+    {
+      label: "Bekleyen Onaylar",
+      value: pendingApprovalCount,
+      detail: pendingApprovalCount ? "Karar bekleyen kayıt var" : "Bekleyen kayıt yok",
+      icon: ShieldAlert,
+      href: "/approvals",
+      attention: pendingApprovalCount > 0 ? ("danger" as const) : undefined,
+    },
+    {
+      label: "Tamamlanan (Ay)",
+      value: completedThisMonth,
+      detail: monthLabel,
+      icon: CheckCircle2,
+      href: "/work-orders",
+    },
+    {
+      label: "Kritik Stok",
+      value: lowStock.length,
+      detail: lowStock.length ? "Minimum seviyenin altında" : "Kritik stok yok",
+      icon: Package,
+      href: "/stock",
+      attention: lowStock.length > 0 ? ("warning" as const) : undefined,
+    },
+  ];
+
+  const dateLabel = new Intl.DateTimeFormat("tr-TR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(now);
+  const timeLabel = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(now);
+
+  return (
+    <>
+      <PageHeader
+        title="Genel Bakış"
+        description={`${dateLabel} · ${timeLabel}`}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/reports">
+                <FileDown className="h-4 w-4" /> Rapor Al
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link to="/work-orders" search={{ create: true, projectId: undefined }}>
+                <Plus className="h-4 w-4" /> Yeni İş Emri
+              </Link>
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {statCards.map((metric) => (
+          <a
+            key={metric.label}
+            href={metric.href}
+            className="block h-full transition-transform hover:-translate-y-0.5"
           >
-            Tümünü gör
-          </Link>
-        </div>
-        <div className="grid gap-3">
-          {orders.slice(0, 6).map((order) => (
-            <Link
-              key={order.id}
-              to="/jobs/$jobId"
-              params={{ jobId: order.id }}
-              className="block rounded-[14px] border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
+            <Card
+              className={`h-full min-h-[132px] ${
+                metric.attention === "danger"
+                  ? "border-destructive/40 bg-destructive/5"
+                  : metric.attention === "warning"
+                    ? "border-warning/40 bg-warning/5"
+                    : "border-border bg-card"
+              }`}
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-muted-foreground">
-                      #{order.work_order_no}
-                    </span>
-                    <Badge variant="outline">{statusLabels[order.status]}</Badge>
+              <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className={EYEBROW}>{metric.label}</p>
+                  <div
+                    className={`shrink-0 rounded-lg p-2 ${
+                      metric.attention === "danger"
+                        ? "bg-destructive/15 text-destructive"
+                        : metric.attention === "warning"
+                          ? "bg-warning/15 text-warning"
+                          : "bg-primary/15 text-highlight"
+                    }`}
+                  >
+                    <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
                   </div>
-                  <h3 className="mt-2 truncate font-bold">{order.title}</h3>
-                  {order.projects ? (
-                    <p className="text-xs font-semibold text-highlight">
-                      {order.projects.project_no} · {order.projects.name}
-                    </p>
-                  ) : null}
-                  <p className="text-sm text-muted-foreground">
-                    {order.customers?.name} · {formatDate(order.scheduled_at)}
+                </div>
+                <div>
+                  <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
+                  <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">
+                    {metric.detail}
                   </p>
                 </div>
-                <div className="w-full shrink-0 sm:w-56">
-                  <div className="mb-1 flex justify-between text-xs">
-                    <span>İlerleme</span>
-                    <span className="font-bold">%{order.progress_pct}</span>
-                  </div>
-                  <Progress value={order.progress_pct} />
-                  {role === "admin" ? (
-                    <p className="mt-2 text-right text-xs text-muted-foreground">
-                      Müşteri: {formatTRY(order.work_order_financials?.customer_amount)}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
+              </CardContent>
+            </Card>
+          </a>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <section id="project-status" className="surface-panel scroll-mt-6 p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <p className={EYEBROW}>Proje Durumu</p>
+            <Link to="/projects" className="text-xs font-semibold text-highlight">
+              Tümünü gör
             </Link>
-          ))}
-          {orders.length === 0 ? (
-            <div className="rounded-[14px] border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-              Henüz görüntülenecek görev yok.
+          </div>
+          <div className="space-y-3">
+            {projectRows.map((project) => (
+              <Link
+                key={project.id}
+                to="/projects/$projectId"
+                params={{ projectId: project.id }}
+                className="block rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-highlight">
+                      <FolderKanban className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-foreground">{project.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {project.customers?.name ?? "Müşteri atanmadı"}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant={projectStatusVariant[project.status]} className="shrink-0">
+                    {projectStatusLabel[project.status]}
+                  </Badge>
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <Progress value={project.percentage} className="h-2 flex-1" />
+                  <span className="w-10 shrink-0 text-right text-xs font-bold text-foreground">
+                    %{project.percentage}
+                  </span>
+                </div>
+              </Link>
+            ))}
+            {projectRows.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Henüz proje yok.</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section id="finance" className="surface-panel scroll-mt-6 p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <p className={EYEBROW}>Aylık Finans</p>
+            <span className="text-xs text-muted-foreground">{monthLabel}</span>
+          </div>
+          {canFinance ? (
+            <div className="space-y-2.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Satış İşçilik</span>
+                <span className="font-bold text-foreground">{formatTRY(financeTotals.laborSales)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Satış Malzeme</span>
+                <span className="font-bold text-foreground">{formatTRY(financeTotals.materialSales)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Taşeron Maliyeti</span>
+                <span className="font-bold text-destructive">-{formatTRY(financeTotals.contractorCost)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Malzeme Maliyeti</span>
+                <span className="font-bold text-destructive">-{formatTRY(financeTotals.materialCost)}</span>
+              </div>
+              <div className="my-1 border-t border-border" />
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-foreground">Net Kar</span>
+                <span
+                  className={`text-lg font-black ${netProfit >= 0 ? "text-success" : "text-destructive"}`}
+                >
+                  {formatTRY(netProfit)}
+                </span>
+              </div>
             </div>
-          ) : null}
-        </div>
-      </section>
-      )}
+          ) : (
+            <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center">
+              <Wallet className="h-8 w-8 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">
+                Finansal veriler yalnızca yöneticiye görünür.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <section id="approval-center" className="surface-panel scroll-mt-6 p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <p className={EYEBROW}>Onay Merkezi</p>
+            <Link to="/approvals" className="text-xs font-semibold text-highlight">
+              Tümünü gör
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {pendingApprovalItems.slice(0, 3).map((item) => (
+              <a
+                key={item.id}
+                href={item.href}
+                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-destructive/50"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
+                  <item.icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-foreground">{item.title}</p>
+                  <p className="truncate text-xs text-muted-foreground">{item.label}</p>
+                </div>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {item.time ? formatProjectDateTime(item.time) : "—"}
+                </span>
+              </a>
+            ))}
+            {pendingApprovalItems.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Onay bekleyen kayıt yok.</p>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="surface-panel p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <p className={EYEBROW}>Kritik Stok</p>
+            <Link to="/stock" className="text-xs font-semibold text-highlight">
+              Tümünü gör
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {lowStock.slice(0, 5).map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
+                  <Boxes className="h-4 w-4" />
+                </span>
+                <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">{item.name}</p>
+                <span className="shrink-0 text-xs font-bold text-warning">
+                  {item.quantity} {item.unit}
+                </span>
+              </div>
+            ))}
+            {lowStock.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">Kritik stok yok.</p>
+            ) : null}
+          </div>
+        </section>
+      </div>
     </>
   );
 }

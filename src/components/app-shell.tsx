@@ -9,11 +9,13 @@ import {
   ClipboardList,
   FolderKanban,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   Menu,
   ShieldAlert,
   UserCog,
   UsersRound,
+  Wallet,
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -21,12 +23,16 @@ import { roleLabels } from "@/lib/domain";
 import { isOperationalManager } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 
+const TERMINAL_STATUSES = ["completed", "cancelled", "not_applicable", "external_approval", "review_pending"];
+
 interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
-  badgeKey?: "approvals" | "stock";
+  badgeKey?: "approvals" | "stock" | "workOrders" | "tasks";
+  hash?: string;
 }
+type NavEntry = NavItem | { separator: true };
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { role, user, signOut } = useAuth();
@@ -55,11 +61,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Menü rozet sayıları: yalnızca görsel bir ipucu, karar mantığı değil.
   // Sorgular RLS ile zaten role göre sınırlanır; hata durumunda sessizce 0 gösterilir.
+  const operationalManager = isOperationalManager(role);
   const canSeeApprovals = role === "admin" || role === "technical_office" || role === "contractor";
-  const canSeeStock = isOperationalManager(role);
   const badgeQuery = useQuery({
     queryKey: ["sidebar-badges", role],
-    enabled: canSeeApprovals || canSeeStock,
+    enabled: canSeeApprovals || operationalManager,
     queryFn: async () => {
       let approvals = 0;
       if (canSeeApprovals) {
@@ -81,39 +87,65 @@ export function AppShell({ children }: { children: ReactNode }) {
           (completion.count ?? 0) + (progress.count ?? 0) + (projectTasks.count ?? 0);
       }
       let stock = 0;
-      if (canSeeStock) {
-        const { data } = await supabase.from("stock_items").select("quantity, min_quantity");
-        stock = (data ?? []).filter((item) => item.quantity <= item.min_quantity).length;
+      let workOrders = 0;
+      let tasks = 0;
+      if (operationalManager) {
+        const [stockResult, workOrdersResult, projectTasksResult, independentTasksResult] =
+          await Promise.all([
+            supabase.from("stock_items").select("quantity, min_quantity"),
+            supabase
+              .from("work_orders")
+              .select("id", { count: "exact", head: true })
+              .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
+            supabase
+              .from("project_tasks")
+              .select("id", { count: "exact", head: true })
+              .not("status", "in", "(completed,cancelled,not_applicable)"),
+            supabase
+              .from("operational_tasks")
+              .select("id", { count: "exact", head: true })
+              .not("status", "in", "(completed,cancelled,not_applicable)"),
+          ]);
+        stock = (stockResult.data ?? []).filter((item) => item.quantity <= item.min_quantity).length;
+        workOrders = workOrdersResult.count ?? 0;
+        tasks = (projectTasksResult.count ?? 0) + (independentTasksResult.count ?? 0);
       }
-      return { approvals, stock };
+      return { approvals, stock, workOrders, tasks };
     },
   });
   const badgeCounts: Record<string, number> = {
     approvals: badgeQuery.data?.approvals ?? 0,
     stock: badgeQuery.data?.stock ?? 0,
+    workOrders: badgeQuery.data?.workOrders ?? 0,
+    tasks: badgeQuery.data?.tasks ?? 0,
   };
 
-  const nav: NavItem[] =
+  const nav: NavEntry[] =
     role === "admin"
       ? [
-          { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-          { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
-          { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
-          { to: "/tasks", label: "Görevler", icon: ClipboardList },
-          { to: "/customers", label: "Müşteriler", icon: UsersRound },
+          { to: "/dashboard", label: "Genel Bakış", icon: LayoutDashboard },
+          { to: "/work-orders", label: "İş Emirleri", icon: ListChecks, badgeKey: "workOrders" },
+          { to: "/projects", label: "Projeler", icon: FolderKanban },
+          { to: "/tasks", label: "Görevler", icon: ClipboardList, badgeKey: "tasks" },
+          { separator: true },
           { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
-          { to: "/team", label: "Ekip ve Yetkiler", icon: UserCog },
+          { to: "/dashboard", label: "Finans", icon: Wallet, hash: "finance" },
+          { to: "/customers", label: "Müşteriler", icon: UsersRound },
+          { separator: true },
+          { to: "/approvals", label: "Onay Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
           { to: "/reports", label: "Raporlar", icon: BarChart3 },
         ]
       : role === "technical_office"
         ? [
-            { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-            { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
-            { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
-            { to: "/tasks", label: "Görevler", icon: ClipboardList },
-            { to: "/customers", label: "Müşteriler", icon: UsersRound },
+            { to: "/dashboard", label: "Genel Bakış", icon: LayoutDashboard },
+            { to: "/work-orders", label: "İş Emirleri", icon: ListChecks, badgeKey: "workOrders" },
+            { to: "/projects", label: "Projeler", icon: FolderKanban },
+            { to: "/tasks", label: "Görevler", icon: ClipboardList, badgeKey: "tasks" },
+            { separator: true },
             { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
-            { to: "/team", label: "Taşeronlar", icon: UserCog },
+            { to: "/customers", label: "Müşteriler", icon: UsersRound },
+            { separator: true },
+            { to: "/approvals", label: "Onay Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
           ]
       : role === "contractor"
         ? [
@@ -133,32 +165,41 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate({ to: "/", replace: true });
   };
 
+  const navLink = (item: NavItem, closeAfterClick: boolean) => {
+    const active = location.pathname.startsWith(item.to);
+    const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
+    return (
+      <Link
+        key={item.label}
+        to={item.to}
+        hash={item.hash}
+        onClick={() => closeAfterClick && setMobileOpen(false)}
+        className={`relative flex h-11 items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap transition-colors ${
+          active
+            ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[2px] before:-translate-y-1/2 before:rounded-r before:bg-sidebar-active-border"
+            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+        }`}
+      >
+        <item.icon className="h-5 w-5 shrink-0" />
+        <span className="sidebar-reveal">{item.label}</span>
+        {badgeCount > 0 ? (
+          <span className="sidebar-reveal ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
+            {badgeCount}
+          </span>
+        ) : null}
+      </Link>
+    );
+  };
+
   const navigation = (closeAfterClick = false) => (
     <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-4">
-      {nav.map((item) => {
-        const active = location.pathname.startsWith(item.to);
-        const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
-        return (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={() => closeAfterClick && setMobileOpen(false)}
-            className={`relative flex h-11 items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap transition-colors ${
-              active
-                ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-primary"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-            }`}
-          >
-            <item.icon className="h-5 w-5 shrink-0" />
-            <span className="sidebar-reveal">{item.label}</span>
-            {badgeCount > 0 ? (
-              <span className="sidebar-reveal ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
-                {badgeCount}
-              </span>
-            ) : null}
-          </Link>
-        );
-      })}
+      {nav.map((item, index) =>
+        "separator" in item ? (
+          <div key={`sep-${index}`} className="my-2 border-t border-sidebar-border" />
+        ) : (
+          navLink(item, closeAfterClick)
+        ),
+      )}
     </nav>
   );
 
@@ -259,30 +300,37 @@ export function AppShell({ children }: { children: ReactNode }) {
               </button>
             </div>
             <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-              {nav.map((item) => {
-                const active = location.pathname.startsWith(item.to);
-                const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => setMobileOpen(false)}
-                    className={`relative flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-bold transition-colors ${
-                      active
-                        ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-primary"
-                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                    }`}
-                  >
-                    <item.icon className="h-5 w-5 shrink-0" />
-                    {item.label}
-                    {badgeCount > 0 ? (
-                      <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
-                        {badgeCount}
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              })}
+              {nav.map((item, index) =>
+                "separator" in item ? (
+                  <div key={`sep-mobile-${index}`} className="my-2 border-t border-sidebar-border" />
+                ) : (
+                  (() => {
+                    const active = location.pathname.startsWith(item.to);
+                    const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
+                    return (
+                      <Link
+                        key={item.label}
+                        to={item.to}
+                        hash={item.hash}
+                        onClick={() => setMobileOpen(false)}
+                        className={`relative flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-bold transition-colors ${
+                          active
+                            ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[2px] before:-translate-y-1/2 before:rounded-r before:bg-sidebar-active-border"
+                            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                        }`}
+                      >
+                        <item.icon className="h-5 w-5 shrink-0" />
+                        {item.label}
+                        {badgeCount > 0 ? (
+                          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
+                            {badgeCount}
+                          </span>
+                        ) : null}
+                      </Link>
+                    );
+                  })()
+                ),
+              )}
             </nav>
             <div className="border-t border-sidebar-border p-3">
               <div className="mb-3 rounded-xl bg-sidebar-accent/60 p-3">
