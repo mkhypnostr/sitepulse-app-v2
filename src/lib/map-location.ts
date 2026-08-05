@@ -64,22 +64,16 @@ export function extractMapCoordinates(value: string | null | undefined) {
   return null;
 }
 
-export function openStreetMapEmbedUrl({ latitude, longitude }: MapCoordinates) {
-  const longitudeDelta = 0.012;
-  const latitudeDelta = 0.008;
-  const bbox = [
-    longitude - longitudeDelta,
-    latitude - latitudeDelta,
-    longitude + longitudeDelta,
-    latitude + latitudeDelta,
-  ].join(",");
-
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${latitude},${longitude}`)}`;
+// "maps.google.com" bir iframe içinden yüklendiğinde Google bağlantıyı
+// reddediyor (ERR_CONNECTION_CLOSED); embed her zaman "www.google.com"
+// üzerinden istenmeli — 301 ile resmi /maps/embed sayfasına yönlenir.
+export function googleMapsCoordinateEmbedUrl({ latitude, longitude }: MapCoordinates) {
+  return `https://www.google.com/maps?q=${latitude},${longitude}&z=16&output=embed`;
 }
 
 export function googleMapsEmbedUrl(query: string | null | undefined) {
   const normalized = query?.trim();
   return normalized
-    ? `https://maps.google.com/maps?q=${encodeURIComponent(normalized)}&z=15&output=embed`
+    ? `https://www.google.com/maps?q=${encodeURIComponent(normalized)}&z=15&output=embed`
     : null;
 }

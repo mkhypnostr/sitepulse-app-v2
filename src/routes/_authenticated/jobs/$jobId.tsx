@@ -780,7 +780,10 @@ function JobDetailPage() {
               </Badge>
             </div>
             {order.location_url ? (
-              <MapPreview mapUrl={order.location_url} />
+              <MapPreview
+                mapUrl={order.location_url}
+                fallbackQuery={order.location || order.customers?.name || order.title}
+              />
             ) : order.location ? (
               <p className="flex items-center gap-2 text-sm">
                 <MapPin className="h-4 w-4 text-highlight" /> {order.location}

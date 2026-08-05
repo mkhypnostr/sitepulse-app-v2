@@ -3,8 +3,8 @@ import { ExternalLink, MapPinned } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   extractMapCoordinates,
+  googleMapsCoordinateEmbedUrl,
   googleMapsEmbedUrl,
-  openStreetMapEmbedUrl,
   safeMapUrl,
   type MapCoordinates,
 } from "@/lib/map-location";
@@ -55,7 +55,7 @@ export function MapPreview({
 
   const mapCoordinates = directCoordinates ?? resolvedLocation.data;
   const embedUrl = mapCoordinates
-    ? openStreetMapEmbedUrl(mapCoordinates)
+    ? googleMapsCoordinateEmbedUrl(mapCoordinates)
     : googleMapsEmbedUrl(fallbackQuery);
 
   return (
