@@ -137,7 +137,9 @@ function ProjectsPage() {
       }
 
       const { data, error } = await supabase.rpc("create_project_with_workflow", {
-        target_customer_id: form.customerId,
+        // target_customer_id has no SQL default (must be sent even when empty);
+        // the RPC accepts NULL for a customer-less project.
+        target_customer_id: (form.customerId || null) as string,
         project_name: form.name.trim(),
         selected_processes: form.processes,
         project_external_reference_no: form.externalReference.trim() || undefined,
@@ -213,7 +215,7 @@ function ProjectsPage() {
       return [
         project.project_no,
         project.name,
-        customerById.get(project.customer_id),
+        project.customer_id ? customerById.get(project.customer_id) : null,
         project.province,
         project.district,
         project.external_reference_no,
@@ -228,7 +230,7 @@ function ProjectsPage() {
   const createButton = (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="h-12 font-bold" disabled={data.customers.length === 0}>
+        <Button className="h-12 font-bold">
           <Plus className="mr-2 h-4 w-4" /> Yeni Proje
         </Button>
       </DialogTrigger>
@@ -244,15 +246,22 @@ function ProjectsPage() {
         <div className="grid gap-5">
           <section className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-medium">
-              Müşteri / Firma <span className="text-destructive">*</span>
+              Müşteri / Firma
               <Select
-                value={form.customerId}
-                onValueChange={(customerId) => setForm({ ...form, customerId })}
+                value={form.customerId || "none"}
+                onValueChange={(customerId) =>
+                  setForm({
+                    ...form,
+                    customerId: customerId === "none" ? "" : customerId,
+                    showToCustomer: customerId === "none" ? false : form.showToCustomer,
+                  })
+                }
               >
                 <SelectTrigger className="h-11">
                   <SelectValue placeholder="Müşteri seçin" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">Müşterisiz proje</SelectItem>
                   {data.customers.map((customer) => (
                     <SelectItem key={customer.id} value={customer.id}>
                       {customer.name}
@@ -455,6 +464,7 @@ function ProjectsPage() {
               </div>
               <Switch
                 checked={form.showToCustomer}
+                disabled={!form.customerId}
                 onCheckedChange={(showToCustomer) => setForm({ ...form, showToCustomer })}
               />
             </div>
@@ -465,7 +475,6 @@ function ProjectsPage() {
           <Button
             onClick={() => createProject.mutate()}
             disabled={
-              !form.customerId ||
               !form.name.trim() ||
               !safeHttpsMapUrl(form.locationUrl) ||
               form.processes.length === 0 ||
@@ -584,7 +593,9 @@ function ProjectsPage() {
                   <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4 text-highlight" />
                     <span className="truncate">
-                      {customerById.get(project.customer_id) || "Müşteri"}
+                      {project.customer_id
+                        ? customerById.get(project.customer_id) || "Müşteri"
+                        : "Müşterisiz proje"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock3, History, Paperclip, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, FileText, History, Paperclip, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
@@ -15,8 +15,8 @@ export const Route = createFileRoute("/_authenticated/approvals")({
   component: ApprovalsPage,
 });
 
-const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled")';
-const TERMINAL_TASK_STATUSES = ["completed", "cancelled"];
+const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled","not_applicable")';
+const TERMINAL_TASK_STATUSES = ["completed", "cancelled", "not_applicable"];
 
 type WorkOrderRef = {
   id: string;
@@ -90,6 +90,13 @@ type OverdueIndependentTask = {
   planned_date: string | null;
   assigned_to: string | null;
   projects: { name: string; project_no: string } | null;
+};
+
+type CompletionEvidencePhoto = {
+  id: string;
+  signedUrl: string | null;
+  isDocument: boolean;
+  caption: string | null;
 };
 
 type ActivityLogRow = {
@@ -236,7 +243,10 @@ function ApprovalsPage() {
       const projectSubmissionIds = projectTaskSubmissions.map((item) => item.id);
       const [completionEvidenceResult, projectEvidenceResult] = await Promise.all([
         completionIds.length
-          ? supabase.from("work_completion_evidence").select("submission_id").in("submission_id", completionIds)
+          ? supabase
+              .from("work_completion_evidence")
+              .select("submission_id, photos(id, storage_path, is_document, caption)")
+              .in("submission_id", completionIds)
           : Promise.resolve({ data: [], error: null }),
         projectSubmissionIds.length
           ? supabase.from("project_task_evidence").select("submission_id").in("submission_id", projectSubmissionIds)
@@ -245,11 +255,31 @@ function ApprovalsPage() {
       if (completionEvidenceResult.error) throw completionEvidenceResult.error;
       if (projectEvidenceResult.error) throw projectEvidenceResult.error;
 
-      const completionEvidenceCount = new Map<string, number>();
-      for (const row of completionEvidenceResult.data ?? []) {
-        if (!row.submission_id) continue;
-        completionEvidenceCount.set(row.submission_id, (completionEvidenceCount.get(row.submission_id) ?? 0) + 1);
-      }
+      // İş bitirme kartlarında kanıt önizlemesi (fotoğraf thumbnail / PDF linki)
+      // gösterebilmek için sadece sayım değil, imzalı URL ile birlikte fotoğraf
+      // kaydını da tutuyoruz.
+      const completionEvidenceRows = (completionEvidenceResult.data ?? []) as unknown as Array<{
+        submission_id: string;
+        photos: { id: string; storage_path: string; is_document: boolean; caption: string | null } | null;
+      }>;
+      const completionEvidenceBySubmission = new Map<string, CompletionEvidencePhoto[]>();
+      await Promise.all(
+        completionEvidenceRows.map(async (row) => {
+          if (!row.submission_id || !row.photos) return;
+          const { data, error } = await supabase.storage
+            .from("work-photos")
+            .createSignedUrl(row.photos.storage_path, 3600);
+          const list = completionEvidenceBySubmission.get(row.submission_id) ?? [];
+          list.push({
+            id: row.photos.id,
+            signedUrl: error ? null : data.signedUrl,
+            isDocument: row.photos.is_document,
+            caption: row.photos.caption,
+          });
+          completionEvidenceBySubmission.set(row.submission_id, list);
+        }),
+      );
+
       const projectEvidenceCount = new Map<string, number>();
       for (const row of projectEvidenceResult.data ?? []) {
         if (!row.submission_id) continue;
@@ -291,7 +321,7 @@ function ApprovalsPage() {
         overdueProjectTasks,
         overdueIndependentTasks,
         activityLogs,
-        completionEvidenceCount,
+        completionEvidenceBySubmission,
         projectEvidenceCount,
         financialsByOrderId,
         profileNameById,
@@ -365,7 +395,7 @@ function ApprovalsPage() {
     overdueProjectTasks: [],
     overdueIndependentTasks: [],
     activityLogs: [],
-    completionEvidenceCount: new Map<string, number>(),
+    completionEvidenceBySubmission: new Map<string, CompletionEvidencePhoto[]>(),
     projectEvidenceCount: new Map<string, number>(),
     financialsByOrderId: new Map<
       string,
@@ -420,7 +450,7 @@ function ApprovalsPage() {
                   note={item.note}
                   submittedBy={data.profileNameById.get(item.submitted_by) ?? "Kullanıcı"}
                   submittedAt={item.submitted_at}
-                  evidenceCount={data.completionEvidenceCount.get(item.id) ?? 0}
+                  evidence={data.completionEvidenceBySubmission.get(item.id) ?? []}
                   href={order ? `/jobs/${order.id}#completion-approval` : undefined}
                   extra={
                     isAdmin && data.financialsByOrderId.has(item.work_order_id) ? (
@@ -661,6 +691,7 @@ function PendingCard({
   submittedBy,
   submittedAt,
   evidenceCount,
+  evidence,
   href,
   extra,
   actions,
@@ -671,11 +702,13 @@ function PendingCard({
   note: string | null;
   submittedBy: string;
   submittedAt: string;
-  evidenceCount: number;
+  evidenceCount?: number;
+  evidence?: CompletionEvidencePhoto[];
   href?: string;
   extra?: ReactNode;
   actions?: ReactNode;
 }) {
+  const resolvedEvidenceCount = evidence ? evidence.length : (evidenceCount ?? 0);
   return (
     <div className="surface-panel border-destructive/40 bg-destructive/5 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -693,6 +726,43 @@ function PendingCard({
         <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
       </div>
       {note ? <p className="mt-2 rounded-lg bg-background/40 p-2 text-xs text-muted-foreground">{note}</p> : null}
+      {evidence && evidence.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {evidence.map((item) =>
+            item.isDocument ? (
+              <a
+                key={item.id}
+                href={item.signedUrl ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background/40 px-2 py-1.5 text-xs font-bold text-highlight hover:bg-background/60"
+              >
+                <FileText className="h-3.5 w-3.5" /> Belgeyi Aç
+              </a>
+            ) : (
+              <a
+                key={item.id}
+                href={item.signedUrl ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="block h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/70 bg-background/40"
+              >
+                {item.signedUrl ? (
+                  <img
+                    src={item.signedUrl}
+                    alt={item.caption || "Kanıt fotoğrafı"}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                    —
+                  </span>
+                )}
+              </a>
+            ),
+          )}
+        </div>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
           {submittedBy} · {formatDate(submittedAt)}
@@ -700,7 +770,7 @@ function PendingCard({
         <div className="flex flex-wrap items-center gap-2">
           {extra}
           <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/40 px-2 py-1 font-bold text-foreground">
-            <Paperclip className="h-3.5 w-3.5 text-highlight" /> {evidenceCount} kanıt
+            <Paperclip className="h-3.5 w-3.5 text-highlight" /> {resolvedEvidenceCount} kanıt
           </span>
         </div>
       </div>

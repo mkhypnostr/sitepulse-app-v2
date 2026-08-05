@@ -693,7 +693,7 @@ export type Database = {
           block_no: string | null
           created_at: string
           created_by: string
-          customer_id: string
+          customer_id: string | null
           description: string | null
           district: string | null
           external_reference_no: string | null
@@ -719,7 +719,7 @@ export type Database = {
           block_no?: string | null
           created_at?: string
           created_by: string
-          customer_id: string
+          customer_id?: string | null
           description?: string | null
           district?: string | null
           external_reference_no?: string | null
@@ -745,7 +745,7 @@ export type Database = {
           block_no?: string | null
           created_at?: string
           created_by?: string
-          customer_id?: string
+          customer_id?: string | null
           description?: string | null
           district?: string | null
           external_reference_no?: string | null
