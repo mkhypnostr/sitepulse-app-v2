@@ -513,7 +513,7 @@ function WorkOrdersPage() {
                   onChange={(event) => setForm({ ...form, estimatedMaterialCost: event.target.value })}
                 />
               </label>
-              <div className="rounded-md border bg-muted/40 p-3 text-sm">
+              <div className="rounded-[14px] border border-border/60 bg-background/30 p-3 text-sm">
                 <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
                 <p className="mt-1 text-lg font-black text-highlight">
                   {formatTRY(
@@ -526,12 +526,12 @@ function WorkOrdersPage() {
               </div>
             </>
           ) : (
-            <p className="rounded-lg border border-border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground sm:col-span-2">
+            <p className="rounded-[14px] border border-border/60 bg-background/30 p-3 text-xs leading-5 text-muted-foreground sm:col-span-2">
               Ticari tutarlar bu görevde görünmez; satış ve işçilik bedelleri yönetici tarafından
               girilir.
             </p>
           )}
-          <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-3 text-sm">
             Müşteriye Göster
             <Switch
               checked={form.showToCustomer}
@@ -566,7 +566,7 @@ function WorkOrdersPage() {
         actions={createButton}
       />
       {data.orders.length > 0 ? (
-        <div className="mb-4 grid gap-3 rounded-xl border border-border bg-card p-3 sm:grid-cols-[1fr_220px]">
+        <div className="mb-4 grid gap-3 rounded-[14px] border border-border bg-card p-3 sm:grid-cols-[1fr_220px]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -671,7 +671,7 @@ function WorkOrdersPage() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-md border p-3 lg:w-44">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-3 lg:w-44">
                     <div>
                       <p className="text-xs text-muted-foreground">Müşteri görünümü</p>
                       <p className="text-sm font-semibold">
