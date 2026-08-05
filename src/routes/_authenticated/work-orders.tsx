@@ -285,12 +285,12 @@ function WorkOrdersPage() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="h-12 font-bold">
-          <Plus className="mr-2 h-4 w-4" /> Yeni Görev
+          <Plus className="mr-2 h-4 w-4" /> Yeni İş Emri
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Yeni görev</DialogTitle>
+          <DialogTitle>Yeni iş emri</DialogTitle>
           <DialogDescription>
             Bağımsız bir görev oluşturun veya görevi mevcut bir projeye bağlayın.
           </DialogDescription>
