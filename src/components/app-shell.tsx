@@ -18,12 +18,14 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { roleLabels } from "@/lib/domain";
+import { isOperationalManager } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 
 interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
+  badgeKey?: "approvals" | "stock";
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -51,32 +53,72 @@ export function AppShell({ children }: { children: ReactNode }) {
     "Kullanıcı"
   ).toLocaleUpperCase("tr-TR");
 
+  // Menü rozet sayıları: yalnızca görsel bir ipucu, karar mantığı değil.
+  // Sorgular RLS ile zaten role göre sınırlanır; hata durumunda sessizce 0 gösterilir.
+  const canSeeApprovals = role === "admin" || role === "technical_office" || role === "contractor";
+  const canSeeStock = isOperationalManager(role);
+  const badgeQuery = useQuery({
+    queryKey: ["sidebar-badges", role],
+    enabled: canSeeApprovals || canSeeStock,
+    queryFn: async () => {
+      let approvals = 0;
+      if (canSeeApprovals) {
+        const [completion, progress, projectTasks] = await Promise.all([
+          supabase
+            .from("work_completion_submissions")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending"),
+          supabase
+            .from("progress_updates")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending"),
+          supabase
+            .from("project_task_progress_submissions")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "pending"),
+        ]);
+        approvals =
+          (completion.count ?? 0) + (progress.count ?? 0) + (projectTasks.count ?? 0);
+      }
+      let stock = 0;
+      if (canSeeStock) {
+        const { data } = await supabase.from("stock_items").select("quantity, min_quantity");
+        stock = (data ?? []).filter((item) => item.quantity <= item.min_quantity).length;
+      }
+      return { approvals, stock };
+    },
+  });
+  const badgeCounts: Record<string, number> = {
+    approvals: badgeQuery.data?.approvals ?? 0,
+    stock: badgeQuery.data?.stock ?? 0,
+  };
+
   const nav: NavItem[] =
     role === "admin"
       ? [
           { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-          { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert },
+          { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
           { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
           { to: "/tasks", label: "Görevler", icon: ClipboardList },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
-          { to: "/stock", label: "Stok", icon: Boxes },
+          { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
           { to: "/team", label: "Ekip ve Yetkiler", icon: UserCog },
           { to: "/reports", label: "Raporlar", icon: BarChart3 },
         ]
       : role === "technical_office"
         ? [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-            { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert },
+            { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
             { to: "/projects", label: "Projeler ve Şantiyeler", icon: FolderKanban },
             { to: "/tasks", label: "Görevler", icon: ClipboardList },
             { to: "/customers", label: "Müşteriler", icon: UsersRound },
-            { to: "/stock", label: "Stok", icon: Boxes },
+            { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
             { to: "/team", label: "Taşeronlar", icon: UserCog },
           ]
       : role === "contractor"
         ? [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-            { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert },
+            { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
             { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
             { to: "/my-project-tasks", label: "Proje Görevlerim", icon: ClipboardList },
           ]
@@ -92,22 +134,28 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const navigation = (closeAfterClick = false) => (
-    <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+    <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-4">
       {nav.map((item) => {
         const active = location.pathname.startsWith(item.to);
+        const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
         return (
           <Link
             key={item.to}
             to={item.to}
             onClick={() => closeAfterClick && setMobileOpen(false)}
-            className={`flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-bold transition-colors ${
+            className={`relative flex h-11 items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap transition-colors ${
               active
-                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/15"
+                ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-primary"
                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             }`}
           >
             <item.icon className="h-5 w-5 shrink-0" />
-            {item.label}
+            <span className="sidebar-reveal">{item.label}</span>
+            {badgeCount > 0 ? (
+              <span className="sidebar-reveal ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
+                {badgeCount}
+              </span>
+            ) : null}
           </Link>
         );
       })}
@@ -115,41 +163,47 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   const accountArea = () => (
-    <div className="border-t border-sidebar-border p-3">
-      <div className="mb-3 rounded-xl bg-sidebar-accent/60 p-3">
-        <p className="text-xs font-semibold text-muted-foreground">
-          {role ? roleLabels[role] : "Kullanıcı"}
-        </p>
-        <p className="mt-1 truncate text-sm font-bold text-foreground">{displayName}</p>
+    <div className="border-t border-sidebar-border p-2">
+      <div className="mb-1 flex items-center gap-3 overflow-hidden rounded-lg px-[13px] py-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
+          {displayName.slice(0, 1)}
+        </span>
+        <span className="sidebar-reveal leading-tight">
+          <span className="block truncate text-sm font-bold text-foreground">{displayName}</span>
+          <span className="block truncate text-xs font-semibold text-muted-foreground">
+            {role ? roleLabels[role] : "Kullanıcı"}
+          </span>
+        </span>
       </div>
       <button
         type="button"
         onClick={handleSignOut}
-        className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        className="flex h-10 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
       >
-        <LogOut className="h-5 w-5" /> Çıkış Yap
+        <LogOut className="h-5 w-5 shrink-0" />
+        <span className="sidebar-reveal">Çıkış Yap</span>
       </button>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-background lg:pl-64">
-      <aside className="app-sidebar-gradient fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-sidebar-border text-sidebar-foreground lg:flex">
+    <div className="min-h-screen bg-background lg:pl-14">
+      <aside className="group sidebar-transition fixed inset-y-0 left-0 z-40 hidden w-14 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground hover:w-[210px] lg:flex">
         <Link
           to="/dashboard"
-          className="flex h-20 shrink-0 items-center gap-3 border-b border-sidebar-border px-5"
+          className="flex h-16 shrink-0 items-center gap-3 overflow-hidden border-b border-sidebar-border px-[13px]"
         >
           <img
             src="/app-icon.svg"
             alt="NES Enerji"
-            className="h-11 w-11 rounded-xl bg-white object-cover shadow-sm"
+            className="h-8 w-8 shrink-0 rounded-lg bg-white object-cover shadow-sm"
           />
-          <div className="leading-tight">
-            <div className="text-base font-black tracking-wide text-foreground">NES ENERJİ</div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-highlight">
+          <span className="sidebar-reveal leading-tight">
+            <span className="block text-sm font-black tracking-wide text-foreground">NES ENERJİ</span>
+            <span className="block text-[9px] font-bold uppercase tracking-[0.2em] text-highlight">
               Saha Operasyon
-            </div>
-          </div>
+            </span>
+          </span>
         </Link>
         {navigation()}
         {accountArea()}
@@ -186,8 +240,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => setMobileOpen(false)}
             aria-label="Menüyü kapat"
           />
-          <aside className="app-sidebar-gradient relative flex h-full w-[82%] max-w-80 flex-col border-r border-sidebar-border text-sidebar-foreground shadow-2xl">
-            <div className="flex h-20 items-center gap-3 border-b border-sidebar-border px-5">
+          <aside className="relative flex h-full w-[82%] max-w-80 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
+            <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
               <img src="/app-icon.svg" alt="NES Enerji" className="h-11 w-11 rounded-xl bg-white" />
               <div className="leading-tight">
                 <div className="font-black">NES ENERJİ</div>
@@ -204,8 +258,47 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            {navigation(true)}
-            {accountArea()}
+            <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+              {nav.map((item) => {
+                const active = location.pathname.startsWith(item.to);
+                const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMobileOpen(false)}
+                    className={`relative flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-bold transition-colors ${
+                      active
+                        ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[3px] before:-translate-y-1/2 before:rounded-r before:bg-primary"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+                    }`}
+                  >
+                    <item.icon className="h-5 w-5 shrink-0" />
+                    {item.label}
+                    {badgeCount > 0 ? (
+                      <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
+                        {badgeCount}
+                      </span>
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="border-t border-sidebar-border p-3">
+              <div className="mb-3 rounded-xl bg-sidebar-accent/60 p-3">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {role ? roleLabels[role] : "Kullanıcı"}
+                </p>
+                <p className="mt-1 truncate text-sm font-bold text-foreground">{displayName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              >
+                <LogOut className="h-5 w-5" /> Çıkış Yap
+              </button>
+            </div>
           </aside>
         </div>
       ) : null}

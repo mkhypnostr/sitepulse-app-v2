@@ -836,7 +836,7 @@ function JobDetailPage() {
               <div className="rounded-md border bg-muted/40 p-3">
                 <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
                 <p
-                  className={`text-xl font-black ${estimatedGrossMargin < 0 ? "text-red-400" : "text-emerald-400"}`}
+                  className={`text-xl font-black ${estimatedGrossMargin < 0 ? "text-destructive" : "text-success"}`}
                 >
                   {formatTRY(estimatedGrossMargin)}
                 </p>
@@ -976,8 +976,8 @@ function JobDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {pendingProgress ? (
-                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                    <p className="font-black text-amber-300">
+                  <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                    <p className="font-black text-warning">
                       %{pendingProgress.pct} YÖNETİCİ ONAYI BEKLİYOR
                     </p>
                     <p className="mt-1 text-muted-foreground">
@@ -1145,9 +1145,9 @@ function JobDetailPage() {
       ) : null}
 
       {role === "admin" && pendingProgress ? (
-        <Card id="progress-approval" className="mt-6 scroll-mt-6 border-red-500/40 bg-red-500/5">
+        <Card id="progress-approval" className="mt-6 scroll-mt-6 border-destructive/40 bg-destructive/5">
           <CardHeader>
-            <CardTitle className="text-red-200">
+            <CardTitle className="text-destructive">
               İlerleme Onayı Bekliyor · %{pendingProgress.pct}
             </CardTitle>
           </CardHeader>
@@ -1271,7 +1271,7 @@ function JobDetailPage() {
               })}
             </div>
             {completionCandidatePhotos.length === 0 ? (
-              <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200">
+              <p className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
                 Önce “Fotoğraf veya Belge Ekle” alanından en az bir kanıt yükleyin.
               </p>
             ) : (
@@ -1303,9 +1303,9 @@ function JobDetailPage() {
       ) : null}
 
       {role === "admin" && isReviewPending ? (
-        <Card id="completion-approval" className="mt-6 scroll-mt-6 border-red-500/40 bg-red-500/5">
+        <Card id="completion-approval" className="mt-6 scroll-mt-6 border-destructive/40 bg-destructive/5">
           <CardHeader>
-            <CardTitle className="text-red-200">İş Bitirme Onayı Bekliyor</CardTitle>
+            <CardTitle className="text-destructive">İş Bitirme Onayı Bekliyor</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-md bg-muted/60 p-3 text-sm">
@@ -1378,7 +1378,7 @@ function JobDetailPage() {
               <Button
                 onClick={() => reviewCompletionMutation.mutate(true)}
                 disabled={reviewCompletionMutation.isPending}
-                className="bg-emerald-600 text-white hover:bg-emerald-500"
+                className="bg-success text-success-foreground hover:bg-success/85"
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Tamamlandı Olarak Onayla
               </Button>
@@ -1674,10 +1674,10 @@ function JobDetailPage() {
                       variant="outline"
                       className={
                         item.status === "pending"
-                          ? "border-amber-500/50 text-amber-300"
+                          ? "border-warning/50 text-warning"
                           : item.status === "approved"
-                            ? "border-emerald-500/50 text-emerald-300"
-                            : "border-red-500/50 text-red-300"
+                            ? "border-success/50 text-success"
+                            : "border-destructive/50 text-destructive"
                       }
                     >
                       {item.status === "pending"
@@ -1722,10 +1722,10 @@ function JobDetailPage() {
                     variant="outline"
                     className={
                       submission.status === "pending"
-                        ? "border-amber-500/50 text-amber-300"
+                        ? "border-warning/50 text-warning"
                         : submission.status === "approved"
-                          ? "border-emerald-500/50 text-emerald-300"
-                          : "border-red-500/50 text-red-300"
+                          ? "border-success/50 text-success"
+                          : "border-destructive/50 text-destructive"
                     }
                   >
                     {submission.status === "pending"

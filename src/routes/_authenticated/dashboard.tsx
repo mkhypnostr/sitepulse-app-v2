@@ -559,34 +559,43 @@ function DashboardPage() {
               Proje, görev, onay, gecikme ve stok bilgisini tek alanda takip edin.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {operationalMetrics.map((metric) => {
+              const wide = ["Projeler / Şantiyeler", "Onay Bekleyen", "Kritik Stok"].includes(
+                metric.label,
+              );
               const card = (
                 <Card
                   className={`h-full min-h-[138px] ${
                     metric.attention === "danger" && metric.value > 0
-                      ? "border-red-500/40 bg-red-500/5"
+                      ? "border-destructive/40 bg-destructive/5"
                       : metric.attention === "warning" && metric.value > 0
-                        ? "border-amber-500/40 bg-amber-500/5"
+                        ? "border-warning/40 bg-warning/5"
                         : "border-border bg-card"
                   }`}
                 >
-                  <CardContent className="flex h-full items-center gap-3 p-3 sm:gap-4 sm:p-5">
-                    <div
-                      className={
-                        metric.attention === "danger" && metric.value > 0
-                          ? "rounded-lg bg-red-500/15 p-3 text-red-300 animate-pulse"
-                          : metric.attention === "warning" && metric.value > 0
-                            ? "rounded-lg bg-amber-500/15 p-3 text-amber-300"
-                            : "rounded-lg bg-primary/15 p-3 text-highlight"
-                      }
-                    >
-                      <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
+                  <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="line-clamp-2 text-xs font-semibold leading-snug text-muted-foreground">
+                        {metric.label}
+                      </p>
+                      <div
+                        className={
+                          metric.attention === "danger" && metric.value > 0
+                            ? "shrink-0 rounded-lg bg-destructive/15 p-2 text-destructive animate-pulse"
+                            : metric.attention === "warning" && metric.value > 0
+                              ? "shrink-0 rounded-lg bg-warning/15 p-2 text-warning"
+                              : "shrink-0 rounded-lg bg-primary/15 p-2 text-highlight"
+                        }
+                      >
+                        <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="line-clamp-2 text-xs leading-snug text-muted-foreground">{metric.label}</p>
-                      <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
-                      <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">{metric.detail}</p>
+                    <div>
+                      <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
+                      <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">
+                        {metric.detail}
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -596,7 +605,7 @@ function DashboardPage() {
                   key={metric.label}
                   href={metric.href}
                   aria-label={`${metric.label}: ${metric.value}`}
-                  className="block h-full cursor-pointer transition-transform hover:-translate-y-0.5"
+                  className={`block h-full cursor-pointer transition-transform hover:-translate-y-0.5 ${wide ? "col-span-2" : ""}`}
                 >
                   {card}
                 </a>
@@ -605,12 +614,12 @@ function DashboardPage() {
                   key={metric.label}
                   type="button"
                   onClick={() => toast.info(metric.emptyMessage)}
-                  className="block h-full w-full cursor-pointer text-left transition-transform hover:-translate-y-0.5"
+                  className={`block h-full w-full cursor-pointer text-left transition-transform hover:-translate-y-0.5 ${wide ? "col-span-2" : ""}`}
                 >
                   {card}
                 </button>
               ) : (
-                <div key={metric.label}>
+                <div key={metric.label} className={wide ? "col-span-2" : ""}>
                   {card}
                 </div>
               );
@@ -618,27 +627,29 @@ function DashboardPage() {
           </div>
         </section>
       ) : (
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {personalMetrics.map((metric) => {
             const card = (
-              <Card className="border-border bg-card">
-                <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
-                  <div className="rounded-lg bg-primary/15 p-3 text-highlight">
-                    <metric.icon className="h-5 w-5 sm:h-6 sm:w-6" />
+              <Card className="h-full border-border bg-card">
+                <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xs font-semibold text-muted-foreground">{metric.label}</p>
+                    <div className="shrink-0 rounded-lg bg-primary/15 p-2 text-highlight">
+                      <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground sm:text-sm">{metric.label}</p>
-                    <p className="text-2xl font-black sm:text-3xl">{metric.value}</p>
-                  </div>
+                  <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
                 </CardContent>
               </Card>
             );
             return metric.href ? (
-              <a key={metric.label} href={metric.href} className="block">
+              <a key={metric.label} href={metric.href} className="block h-full">
                 {card}
               </a>
             ) : (
-              <div key={metric.label}>{card}</div>
+              <div key={metric.label} className="h-full">
+                {card}
+              </div>
             );
           })}
         </div>
@@ -657,15 +668,15 @@ function DashboardPage() {
               <a
                 key={item.id}
                 href={item.href}
-                className="surface-panel block border-red-500/40 bg-red-500/5 p-4 transition-colors hover:bg-red-500/10"
+                className="surface-panel block border-destructive/40 bg-destructive/5 p-4 transition-colors hover:bg-destructive/10"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="animate-pulse text-xs font-black text-red-300">{item.category.toUpperCase()} BEKLİYOR</p>
+                    <p className="animate-pulse text-xs font-black text-destructive">{item.category.toUpperCase()} BEKLİYOR</p>
                     <p className="mt-1 font-black">{item.title}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
                   </div>
-                  <AlertTriangle className="h-5 w-5 shrink-0 text-red-300" />
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
                 </div>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>{item.submittedBy}{item.submittedAt ? ` · ${formatProjectDateTime(item.submittedAt)}` : ""}</span>
@@ -686,22 +697,22 @@ function DashboardPage() {
           </div>
           <div className="grid gap-3 xl:grid-cols-2">
             {overdueOrders.map((order) => (
-              <a key={order.id} href={`/tasks?filter=overdue#work-order-${order.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
-                <p className="text-xs font-black text-amber-300">SAHA GÖREVİ GECİKTİ</p>
+              <a key={order.id} href={`/tasks?filter=overdue#work-order-${order.id}`} className="surface-panel block border-warning/40 bg-warning/5 p-4 transition-colors hover:bg-warning/10">
+                <p className="text-xs font-black text-warning">SAHA GÖREVİ GECİKTİ</p>
                 <p className="mt-1 font-black">#{order.work_order_no} · {order.title}</p>
                 <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {formatDate(order.scheduled_at)}</p>
               </a>
             ))}
             {overdueProjectTasks.map((task) => (
-              <a key={task.id} href={`/tasks?filter=overdue#project-task-${task.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
-                <p className="text-xs font-black text-amber-300">PROJE GÖREVİ GECİKTİ</p>
+              <a key={task.id} href={`/tasks?filter=overdue#project-task-${task.id}`} className="surface-panel block border-warning/40 bg-warning/5 p-4 transition-colors hover:bg-warning/10">
+                <p className="text-xs font-black text-warning">PROJE GÖREVİ GECİKTİ</p>
                 <p className="mt-1 font-black">{task.task_name}</p>
                 <p className="mt-2 text-xs text-muted-foreground">{task.phase_name} · Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
               </a>
             ))}
             {overdueIndependentTasks.map((task) => (
-              <a key={task.id} href={`/tasks?filter=overdue#operational-${task.id}`} className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10">
-                <p className="text-xs font-black text-amber-300">BAĞIMSIZ GÖREV GECİKTİ</p>
+              <a key={task.id} href={`/tasks?filter=overdue#operational-${task.id}`} className="surface-panel block border-warning/40 bg-warning/5 p-4 transition-colors hover:bg-warning/10">
+                <p className="text-xs font-black text-warning">BAĞIMSIZ GÖREV GECİKTİ</p>
                 <p className="mt-1 font-black">{task.title}</p>
                 <p className="mt-2 text-xs text-muted-foreground">Planlanan tarih: {task.planned_date ? formatDate(task.planned_date) : "—"}</p>
               </a>
@@ -723,23 +734,23 @@ function DashboardPage() {
               <a
                 key={item.id}
                 href={item.href}
-                className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 transition-colors hover:bg-emerald-500/10"
+                className="rounded-[14px] border border-success/30 bg-success/5 p-4 transition-colors hover:bg-success/10"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-black text-emerald-300">ONAYLANDI</p>
+                    <p className="text-xs font-black text-success">ONAYLANDI</p>
                     <p className="mt-1 font-black">{item.title}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
                   </div>
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
+                  <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
                 </div>
-                <p className="mt-3 text-xs text-emerald-200/80">
+                <p className="mt-3 text-xs text-success/80">
                   {item.reviewedBy} tarafından {formatProjectDateTime(item.reviewedAt)} tarihinde onaylandı
                 </p>
               </a>
             ))}
             {recentApprovalItems.length === 0 ? (
-              <div className="rounded-xl border border-border bg-muted/20 p-5 text-sm text-muted-foreground xl:col-span-2">
+              <div className="rounded-[14px] border border-border bg-muted/20 p-5 text-sm text-muted-foreground xl:col-span-2">
                 Henüz onaylanmış kayıt yok.
               </div>
             ) : null}
@@ -761,9 +772,9 @@ function DashboardPage() {
                 key={action.label}
                 to={action.to}
                 search={"search" in action ? action.search : undefined}
-                className="group rounded-xl border border-border bg-card/60 flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:bg-accent/40"
+                className="group rounded-[14px] border border-border bg-card/60 flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/70 hover:bg-accent/40"
               >
-                <span className="rounded-xl bg-primary/15 p-3 text-highlight transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                <span className="rounded-[14px] bg-primary/15 p-3 text-highlight transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
                   <action.icon className="h-6 w-6" />
                 </span>
                 <span>
@@ -796,7 +807,7 @@ function DashboardPage() {
                 to="/projects/$projectId"
                 params={{ projectId: task.project_id }}
                 hash={`task-${task.id}`}
-                className="block rounded-xl border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
+                className="block rounded-[14px] border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -813,7 +824,7 @@ function DashboardPage() {
               </Link>
             ))}
             {visibleProjectTasks.length === 0 ? (
-              <div className="rounded-xl border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-[14px] border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
                 Henüz görüntülenecek proje görevi yok.
               </div>
             ) : null}
@@ -842,7 +853,7 @@ function DashboardPage() {
               key={order.id}
               to="/jobs/$jobId"
               params={{ jobId: order.id }}
-              className="block rounded-xl border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
+              className="block rounded-[14px] border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -878,7 +889,7 @@ function DashboardPage() {
             </Link>
           ))}
           {orders.length === 0 ? (
-            <div className="rounded-xl border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+            <div className="rounded-[14px] border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
               Henüz görüntülenecek görev yok.
             </div>
           ) : null}

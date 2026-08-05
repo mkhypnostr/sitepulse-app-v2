@@ -319,11 +319,11 @@ function ProjectDetailPage() {
             ))}
           </div>
           {project.admin_notes ? (
-            <div className="mt-5 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
-              <p className="text-xs font-black uppercase tracking-wider text-amber-300">
+            <div className="mt-5 rounded-xl border border-warning/20 bg-warning/10 p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-warning">
                 Yönetici Notu
               </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-amber-100/90">
+              <p className="mt-2 whitespace-pre-wrap text-sm text-warning/90">
                 {project.admin_notes}
               </p>
             </div>

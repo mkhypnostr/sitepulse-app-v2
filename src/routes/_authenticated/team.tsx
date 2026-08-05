@@ -216,7 +216,7 @@ function TeamPage() {
         {confirming ? (
           <>
             <DialogHeader>
-              <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/15 text-amber-400">
+              <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-warning/15 text-warning">
                 <AlertTriangle className="h-6 w-6" />
               </div>
               <DialogTitle>Taşeron hesabını oluşturun mu?</DialogTitle>

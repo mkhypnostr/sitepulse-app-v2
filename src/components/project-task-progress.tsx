@@ -191,11 +191,11 @@ export function ProjectTaskProgress({
           <p className="mt-1 text-2xl font-black text-highlight">%{task.approved_progress_pct}</p>
         </div>
         {pendingSubmission ? (
-          <Badge className="border-red-400/50 bg-red-500/15 text-red-300 animate-pulse">
+          <Badge className="border-destructive/50 bg-destructive/15 text-destructive animate-pulse">
             <Clock3 className="mr-1 h-3.5 w-3.5" /> %{pendingSubmission.proposed_pct} onay bekliyor
           </Badge>
         ) : task.approved_progress_pct === 100 ? (
-          <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300">
+          <Badge className="border-success/40 bg-success/15 text-success">
             <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Tamamlandı
           </Badge>
         ) : null}
@@ -203,7 +203,7 @@ export function ProjectTaskProgress({
       <Progress value={task.approved_progress_pct} className="mt-3 h-2.5" />
 
       {pendingSubmission && canReview ? (
-        <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+        <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-black">%{pendingSubmission.proposed_pct} ilerleme talebi</p>
@@ -212,7 +212,7 @@ export function ProjectTaskProgress({
                 {formatProjectDateTime(pendingSubmission.submitted_at)}
               </p>
             </div>
-            <Badge variant="outline" className="border-red-500/40 text-red-300">
+            <Badge variant="outline" className="border-destructive/40 text-destructive">
               Onay Bekliyor
             </Badge>
           </div>
@@ -238,7 +238,7 @@ export function ProjectTaskProgress({
                 reviewProgress.mutate({ submission: pendingSubmission, approve: false })
               }
               disabled={reviewProgress.isPending}
-              className="border-orange-500/40 text-orange-300"
+              className="border-warning/40 text-warning"
             >
               <RotateCcw className="mr-2 h-4 w-4" /> Revizyon İste
             </Button>
@@ -248,7 +248,7 @@ export function ProjectTaskProgress({
                 reviewProgress.mutate({ submission: pendingSubmission, approve: true })
               }
               disabled={reviewProgress.isPending}
-              className="bg-emerald-600 text-white hover:bg-emerald-500"
+              className="bg-success text-success-foreground hover:bg-success/85"
             >
               <CheckCircle2 className="mr-2 h-4 w-4" /> Onayla ve %{pendingSubmission.proposed_pct}{" "}
               Yap
@@ -267,7 +267,7 @@ export function ProjectTaskProgress({
           <p
             className={
               readyEvidence.length
-                ? "mt-2 flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-300"
+                ? "mt-2 flex items-center gap-1.5 text-xs font-semibold text-success"
                 : "mt-2 flex items-center gap-1.5 text-xs font-semibold text-destructive"
             }
           >
@@ -350,8 +350,8 @@ export function ProjectTaskProgress({
                   <p
                     className={
                       submission.status === "approved"
-                        ? "mt-1 text-emerald-300"
-                        : "mt-1 text-orange-300"
+                        ? "mt-1 text-success"
+                        : "mt-1 text-warning"
                     }
                   >
                     {submission.status === "approved" ? "Onaylayan" : "İnceleyen"}:{" "}

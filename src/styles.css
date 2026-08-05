@@ -65,62 +65,62 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-active: var(--sidebar-active);
 }
 
 :root {
   --radius: 0.5rem;
-  /* NES Enerji — logodaki mavi, beyaz ve koyu lacivert. Hex kaynak
-     değerleri tasarım standardından (#111827/#1e293b/#334155/#f1f5f9/
-     #94a3b8/#60a5fa/#0046a4) birebir dönüştürülmüştür. */
-  --background: oklch(0.21 0.032 264.7);
+  /* NES Enerji — saha operasyon standardı (koyu zemin, tek mavi vurgu).
+     Hex kaynak değerleri: içerik zemini #0c0c14, kart #111120/#1a1a28,
+     menü zemini #0e0e1c, başlık #f1f5f9, detay #3d4a5c, vurgu #60a5fa,
+     pozitif #34d399, negatif #f87171, uyarı #fbbf24. */
+  --background: oklch(0.159 0.017 284.3);
   --foreground: oklch(0.968 0.007 247.9);
-  --card: oklch(0.279 0.037 260);
+  --card: oklch(0.186 0.03 283);
   --card-foreground: oklch(0.968 0.007 247.9);
-  --popover: oklch(0.279 0.037 260);
+  --popover: oklch(0.186 0.03 283);
   --popover-foreground: oklch(0.968 0.007 247.9);
-  /* Ana vurgu rengi #0046a4 (tam eşleşme, bkz. tasarım standardı). */
-  --primary: oklch(0.42 0.164 259);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.32 0.035 259);
+  /* Ana vurgu rengi artık tek mavi (#60a5fa) — buton/aktif durum/metin vurgusu hepsi aynı ton. */
+  --primary: oklch(0.714 0.143 254.6);
+  --primary-foreground: oklch(0.159 0.017 284.3);
+  --secondary: oklch(0.225 0.027 284);
   --secondary-foreground: oklch(0.968 0.007 247.9);
-  --muted: oklch(0.279 0.037 260);
-  --muted-foreground: oklch(0.711 0.035 256.8);
-  --accent: oklch(0.32 0.045 259);
+  --muted: oklch(0.186 0.03 283);
+  --muted-foreground: oklch(0.405 0.035 256.6);
+  --accent: oklch(0.225 0.027 284);
   --accent-foreground: oklch(0.968 0.007 247.9);
-  --destructive: oklch(0.64 0.24 27);
-  --destructive-foreground: oklch(0.98 0.005 90);
-  --success: oklch(0.696 0.149 162.5);
-  --success-foreground: oklch(0.15 0.03 162);
-  --warning: oklch(0.769 0.165 70.1);
-  --warning-foreground: oklch(0.18 0.04 70);
-  /* "Vurgu" metin rengi: koyu zeminde okunurluk için --primary'den daha
-     açık (bkz. WCAG kontrastı — #0046a4 metin olarak koyu zeminde ~2:1,
-     #60a5fa ~7:1). Buton/kart dolgusu hâlâ --primary (#0046a4). */
+  --destructive: oklch(0.711 0.166 22.2);
+  --destructive-foreground: oklch(0.16 0.03 25);
+  --success: oklch(0.773 0.153 163.2);
+  --success-foreground: oklch(0.16 0.03 163);
+  --warning: oklch(0.837 0.164 84.4);
+  --warning-foreground: oklch(0.18 0.04 84);
   --highlight: oklch(0.714 0.143 254.6);
-  --highlight-foreground: oklch(0.18 0.04 259);
-  --border: oklch(0.372 0.039 257.3);
-  --input: oklch(0.32 0.04 259);
-  --ring: oklch(0.5 0.164 259);
-  --chart-1: oklch(0.55 0.18 257);
+  --highlight-foreground: oklch(0.16 0.03 259);
+  --border: oklch(0.225 0.027 284);
+  --input: oklch(0.225 0.027 284);
+  --ring: oklch(0.714 0.143 254.6);
+  --chart-1: oklch(0.714 0.143 254.6);
   --chart-2: oklch(0.72 0.12 225);
-  --chart-3: oklch(0.68 0.1 190);
-  --chart-4: oklch(0.64 0.24 27);
-  --chart-5: oklch(0.98 0.005 90);
-  /* Sol menü zemini: gradient (bkz. .app-sidebar-gradient) #0046a4 üstten
-     #003380 alta; bu değişken gradient'in üst rengiyle aynı flat fallback. */
-  --sidebar: oklch(0.42 0.164 259);
+  --chart-3: oklch(0.773 0.153 163.2);
+  --chart-4: oklch(0.837 0.164 84.4);
+  --chart-5: oklch(0.711 0.166 22.2);
+  /* Sol menü zemini: düz #0e0e1c. */
+  --sidebar: oklch(0.172 0.029 282.9);
   --sidebar-foreground: oklch(0.968 0.007 247.9);
-  --sidebar-primary: oklch(0.42 0.164 259);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.34 0.12 259.8);
+  --sidebar-primary: oklch(0.714 0.143 254.6);
+  --sidebar-primary-foreground: oklch(0.159 0.017 284.3);
+  --sidebar-accent: oklch(0.207 0.032 282.9);
   --sidebar-accent-foreground: oklch(0.968 0.007 247.9);
-  --sidebar-border: oklch(0.36 0.15 259.5);
-  --sidebar-ring: oklch(0.5 0.164 259);
+  --sidebar-border: oklch(0.225 0.027 284);
+  --sidebar-ring: oklch(0.714 0.143 254.6);
+  /* Aktif menü öğesi zemini #0f1529. */
+  --sidebar-active: oklch(0.201 0.041 269.8);
 }
 
 .dark {
   /* Zaten koyu tema; light/dark toggle yok. */
-  --background: oklch(0.21 0.032 264.7);
+  --background: oklch(0.159 0.017 284.3);
   --foreground: oklch(0.968 0.007 247.9);
 }
 
@@ -452,26 +452,38 @@
 }
 
 @utility surface-panel {
-  /* Kart standardı: #1e293b zemin, 1px #334155 border, 10px radius,
+  /* Kart standardı: #111120 zemin, 1px #1a1a28 border, 14px radius,
      subtle gölge — her ekranda bölüm zemininden net ayrışır. */
-  background: oklch(0.279 0.037 260);
-  border: 1px solid oklch(0.372 0.039 257.3);
-  border-radius: 0.625rem;
+  background: oklch(0.186 0.03 283);
+  border: 1px solid oklch(0.225 0.027 284);
+  border-radius: 0.875rem;
   box-shadow:
-    inset 0 1px 0 oklch(0.968 0.007 247.9 / 0.05),
+    inset 0 1px 0 oklch(0.968 0.007 247.9 / 0.04),
     0 8px 20px oklch(0.03 0.02 250 / 0.28);
 }
 
 @utility surface-panel-accent {
-  /* Vurgu gerektiren kartlar için: aynı kart standardı, #0046a4 border. */
-  border-color: oklch(0.42 0.164 259 / 0.55);
+  /* Vurgu gerektiren kartlar için: aynı kart standardı, mavi vurgu border. */
+  border-color: oklch(0.714 0.143 254.6 / 0.45);
 }
 
-@utility app-sidebar-gradient {
-  /* Sol menü: #0046a4 üstten #003380 alta. */
-  background-image: linear-gradient(
-    180deg,
-    oklch(0.42 0.164 259) 0%,
-    oklch(0.346 0.14 259.8) 100%
-  );
+@utility sidebar-transition {
+  transition: width 0.22s ease;
+}
+
+@utility sidebar-reveal {
+  /* Sidebar genişleyince görünen etiket/rozet metinleri: genişlik + opaklık
+     birlikte animasyon yapar, metin taşması olmadan yumuşak açılır. */
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    max-width 0.22s ease,
+    opacity 0.18s ease;
+}
+
+.group:hover .sidebar-reveal {
+  max-width: 160px;
+  opacity: 1;
 }

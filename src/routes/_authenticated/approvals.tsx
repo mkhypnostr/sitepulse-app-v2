@@ -517,7 +517,7 @@ function ApprovalsPage() {
 
       <section className="surface-panel mt-6 p-4 sm:p-5">
         <div className="mb-4 flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-amber-500" />
+          <AlertTriangle className="h-5 w-5 text-warning" />
           <div>
             <h2 className="text-lg font-black">Geciken Kayıtlar</h2>
             <p className="text-sm text-muted-foreground">
@@ -677,10 +677,10 @@ function PendingCard({
   actions?: ReactNode;
 }) {
   return (
-    <div className="surface-panel border-red-500/40 bg-red-500/5 p-4">
+    <div className="surface-panel border-destructive/40 bg-destructive/5 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-black uppercase tracking-wide text-red-500">{category}</p>
+          <p className="text-xs font-black uppercase tracking-wide text-destructive">{category}</p>
           {href ? (
             <a href={href} className="mt-1 block font-black hover:text-highlight">
               {title}
@@ -690,7 +690,7 @@ function PendingCard({
           )}
           <p className="mt-1 text-xs text-muted-foreground">{relation}</p>
         </div>
-        <AlertTriangle className="h-5 w-5 shrink-0 text-red-500" />
+        <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
       </div>
       {note ? <p className="mt-2 rounded-lg bg-background/40 p-2 text-xs text-muted-foreground">{note}</p> : null}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -730,9 +730,9 @@ function OverdueCard({
   return (
     <a
       href={href}
-      className="surface-panel block border-amber-500/40 bg-amber-500/5 p-4 transition-colors hover:bg-amber-500/10"
+      className="surface-panel block border-warning/40 bg-warning/5 p-4 transition-colors hover:bg-warning/10"
     >
-      <p className="text-xs font-black uppercase tracking-wide text-amber-600 dark:text-amber-300">
+      <p className="text-xs font-black uppercase tracking-wide text-warning">
         {category} GECİKTİ
       </p>
       <p className="mt-1 font-black">{title}</p>
