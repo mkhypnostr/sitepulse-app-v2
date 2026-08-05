@@ -281,7 +281,7 @@ function ProjectsPage() {
                 return (
                   <label
                     key={option.value}
-                    className={`cursor-pointer rounded-xl border p-3 transition-colors ${
+                    className={`cursor-pointer rounded-[14px] border p-3 transition-colors ${
                       checked ? "border-primary bg-primary/10" : "border-border bg-muted/20"
                     }`}
                   >
@@ -446,7 +446,7 @@ function ProjectsPage() {
                 placeholder="Yalnızca yöneticilerin göreceği not"
               />
             </label>
-            <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 p-4">
+            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-background/30 p-4">
               <div>
                 <p className="text-sm font-bold">Müşteri panelinde göster</p>
                 <p className="text-xs text-muted-foreground">
@@ -493,7 +493,7 @@ function ProjectsPage() {
             <h2 className="font-black">Proje Portföyü</h2>
             <p className="mt-1 text-sm text-muted-foreground">Taslak, aktif ve tamamlanan proje/şantiye kayıtlarını filtreleyin.</p>
           </div>
-          <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <div className="flex items-center gap-3 rounded-[14px] border border-border bg-card px-4 py-3">
             <Search className="h-5 w-5 text-muted-foreground" />
             <Input
               value={searchText}
@@ -565,7 +565,7 @@ function ProjectsPage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-3">
-                    <div className="rounded-xl bg-primary/15 p-2.5 text-highlight">
+                    <div className="rounded-lg bg-primary/15 p-2.5 text-highlight">
                       <FolderKanban className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
@@ -612,7 +612,7 @@ function ProjectsPage() {
                   {processProgresses.map((process) => (
                     <div
                       key={process.id}
-                      className="rounded-lg border border-border bg-muted/20 p-3"
+                      className="rounded-lg border border-border/60 bg-background/30 p-3"
                     >
                       <div className="flex items-start justify-between gap-2 text-xs">
                         <span className="font-bold">{projectTypeLabel[process.process_type]}</span>
