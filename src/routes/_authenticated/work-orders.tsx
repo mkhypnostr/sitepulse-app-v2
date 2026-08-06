@@ -68,6 +68,10 @@ function WorkOrdersPage() {
     materialSource: "none",
     assigneeId: "none",
     showToCustomer: false,
+    billingTitle: "",
+    taxNo: "",
+    taxOffice: "",
+    billingAddress: "",
   });
 
   const pageQuery = useQuery({
@@ -84,7 +88,10 @@ function WorkOrdersPage() {
               "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, customer_labor_amount, customer_material_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
             )
             .order("created_at", { ascending: false }),
-          supabase.from("customers").select("id, name").order("name"),
+          supabase
+            .from("customers")
+            .select("id, name, contact, contact_user_id, billing_title, tax_office, tax_no, billing_address")
+            .order("name"),
           supabase
             .from("projects")
             .select("id, name, project_no, customer_id, location_url, show_to_customer, status")
@@ -138,12 +145,19 @@ function WorkOrdersPage() {
     if (!projectId || !pageQuery.data) return;
     const selectedProject = pageQuery.data.projects.find((project) => project.id === projectId);
     if (!selectedProject) return;
+    const projectCustomer = pageQuery.data.customers.find(
+      (customer) => customer.id === selectedProject.customer_id,
+    );
     setForm((current) => ({
       ...current,
       projectId: selectedProject.id,
       customerId: selectedProject.customer_id ?? "",
       locationUrl: selectedProject.location_url ?? "",
       showToCustomer: selectedProject.show_to_customer,
+      billingTitle: projectCustomer?.billing_title ?? "",
+      taxNo: projectCustomer?.tax_no ?? "",
+      taxOffice: projectCustomer?.tax_office ?? "",
+      billingAddress: projectCustomer?.billing_address ?? "",
     }));
   }, [pageQuery.data, projectId]);
 
@@ -154,6 +168,29 @@ function WorkOrdersPage() {
       const scheduledAt = new Date(`${form.date}T${form.time}:00`).toISOString();
       const workScopeType = form.workScopeType;
       const materialSource = form.workScopeType === "labor_only" ? "none" : form.materialSource;
+
+      if (canSeeAmounts && form.customerId) {
+        const taxNo = form.taxNo.trim();
+        if (taxNo && (taxNo.length < 4 || taxNo.length > 32)) {
+          throw new Error("Vergi numarası 4 ile 32 karakter arasında olmalıdır");
+        }
+        const selectedCustomer = pageQuery.data?.customers.find(
+          (customer) => customer.id === form.customerId,
+        );
+        if (selectedCustomer) {
+          const { error: billingError } = await supabase.rpc("save_customer_details", {
+            customer_name: selectedCustomer.name,
+            customer_contact: selectedCustomer.contact ?? "",
+            customer_billing_title: form.billingTitle.trim(),
+            customer_tax_office: form.taxOffice.trim(),
+            customer_tax_no: taxNo,
+            customer_billing_address: form.billingAddress.trim(),
+            target_contact_user_id: selectedCustomer.contact_user_id ?? undefined,
+            target_customer_id: selectedCustomer.id,
+          });
+          if (billingError) throw billingError;
+        }
+      }
 
       if (canSeeAmounts) {
         const customerLaborAmount = Number(form.customerLaborAmount.replace(",", "."));
@@ -227,6 +264,10 @@ function WorkOrdersPage() {
         materialSource: "none",
         assigneeId: "none",
         showToCustomer: false,
+        billingTitle: "",
+        taxNo: "",
+        taxOffice: "",
+        billingAddress: "",
       });
       toast.success("Görev oluşturuldu");
     },
@@ -308,17 +349,28 @@ function WorkOrdersPage() {
                     customerId: "",
                     locationUrl: "",
                     showToCustomer: false,
+                    billingTitle: "",
+                    taxNo: "",
+                    taxOffice: "",
+                    billingAddress: "",
                   });
                   return;
                 }
                 const project = data.projects.find((item) => item.id === value);
                 if (!project) return;
+                const projectCustomer = data.customers.find(
+                  (customer) => customer.id === project.customer_id,
+                );
                 setForm({
                   ...form,
                   projectId: project.id,
                   customerId: project.customer_id ?? "",
                   locationUrl: project.location_url ?? "",
                   showToCustomer: project.show_to_customer,
+                  billingTitle: projectCustomer?.billing_title ?? "",
+                  taxNo: projectCustomer?.tax_no ?? "",
+                  taxOffice: projectCustomer?.tax_office ?? "",
+                  billingAddress: projectCustomer?.billing_address ?? "",
                 });
               }}
             >
@@ -343,13 +395,18 @@ function WorkOrdersPage() {
             <Select
               value={form.customerId || "none"}
               disabled={Boolean(selectedProject)}
-              onValueChange={(customerId) =>
+              onValueChange={(customerId) => {
+                const chosenCustomer = data.customers.find((customer) => customer.id === customerId);
                 setForm({
                   ...form,
                   customerId: customerId === "none" ? "" : customerId,
                   showToCustomer: customerId === "none" ? false : form.showToCustomer,
-                })
-              }
+                  billingTitle: chosenCustomer?.billing_title ?? "",
+                  taxNo: chosenCustomer?.tax_no ?? "",
+                  taxOffice: chosenCustomer?.tax_office ?? "",
+                  billingAddress: chosenCustomer?.billing_address ?? "",
+                });
+              }}
             >
               <SelectTrigger className="h-11">
                 <SelectValue placeholder="Müşteri seçin" />
@@ -535,6 +592,51 @@ function WorkOrdersPage() {
               girilir.
             </p>
           )}
+          {canSeeAmounts ? (
+            <div className="grid gap-3 rounded-[14px] border border-border/60 bg-background/30 p-3 sm:col-span-2">
+              <div>
+                <p className="text-sm font-bold">Fatura Bilgileri (opsiyonel)</p>
+                <p className="text-xs text-muted-foreground">
+                  Seçili müşterinin fatura ünvanı, vergi bilgileri ve fatura adresini günceller.
+                  {!form.customerId ? " Önce müşteri seçin." : ""}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-sm">
+                  Fatura Ünvanı
+                  <Input
+                    value={form.billingTitle}
+                    disabled={!form.customerId}
+                    onChange={(event) => setForm({ ...form, billingTitle: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Vergi Numarası
+                  <Input
+                    value={form.taxNo}
+                    disabled={!form.customerId}
+                    onChange={(event) => setForm({ ...form, taxNo: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Vergi Dairesi
+                  <Input
+                    value={form.taxOffice}
+                    disabled={!form.customerId}
+                    onChange={(event) => setForm({ ...form, taxOffice: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm sm:col-span-2">
+                  Fatura Adresi
+                  <Textarea
+                    value={form.billingAddress}
+                    disabled={!form.customerId}
+                    onChange={(event) => setForm({ ...form, billingAddress: event.target.value })}
+                  />
+                </label>
+              </div>
+            </div>
+          ) : null}
           <label className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-3 text-sm">
             Müşteriye Göster
             <Switch
