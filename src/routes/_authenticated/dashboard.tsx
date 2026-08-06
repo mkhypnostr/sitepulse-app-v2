@@ -39,13 +39,9 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
 });
 
-const TERMINAL_ORDER_STATUSES = [
-  "completed",
-  "cancelled",
-  "not_applicable",
-  "external_approval",
-  "review_pending",
-];
+// work_status enum'unda "not_applicable" ve "external_approval" yok
+// (bunlar project_task_status'a ait); yalnızca geçerli değerler tutulur.
+const TERMINAL_ORDER_STATUSES = ["completed", "cancelled", "review_pending"];
 
 type ProjectSubmission = Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
 type WorkSubmission = Database["public"]["Tables"]["progress_updates"]["Row"];

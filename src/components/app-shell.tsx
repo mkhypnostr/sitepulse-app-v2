@@ -23,7 +23,10 @@ import { roleLabels } from "@/lib/domain";
 import { isOperationalManager } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 
-const TERMINAL_STATUSES = ["completed", "cancelled", "not_applicable", "external_approval", "review_pending"];
+// Bu liste yalnızca work_orders.status (work_status enum) için kullanılır;
+// "not_applicable" ve "external_approval" bu enum'da yok ve sorguya
+// eklenirse "invalid input value for enum work_status" hatası verir.
+const TERMINAL_STATUSES = ["completed", "cancelled", "review_pending"];
 
 interface NavItem {
   to: string;

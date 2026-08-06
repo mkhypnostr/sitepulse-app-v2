@@ -16,7 +16,10 @@ export const Route = createFileRoute("/_authenticated/approvals")({
   component: ApprovalsPage,
 });
 
-const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled","not_applicable")';
+// work_status enum'unda "not_applicable" yok (bu değer yalnızca
+// project_task_status için geçerli); work_orders sorgusuna eklenirse
+// "invalid input value for enum work_status" hatası fırlatır.
+const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled")';
 const TERMINAL_TASK_STATUSES = ["completed", "cancelled", "not_applicable"];
 
 type WorkOrderRef = {
