@@ -297,7 +297,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <button
                   type="button"
                   onClick={() => setMobileOpen(false)}
-                  className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-xl border border-sidebar-border"
+                  className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sidebar-border"
                   aria-label="Menüyü kapat"
                 >
                   <X className="h-5 w-5" />
