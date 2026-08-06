@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Download } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { downloadCsv, errorMessage } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
+import { formatProjectDate, projectApprovedProgress, projectStatusLabel } from "@/lib/projects";
 import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -140,40 +142,54 @@ function ReportsPage() {
   return (
     <>
       <PageHeader
-        title="Kullanım ve Hakediş Raporu"
-        description="NES stoğu, taşeron malzemeleri ve onaylanan hakedişler tek çıktıda."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Select value={year} onValueChange={setYear}>
-              <SelectTrigger className="h-12 w-28" aria-label="Rapor yılı">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {yearOptions.map((option) => (
-                  <SelectItem key={option} value={String(option)}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={month} onValueChange={setMonth}>
-              <SelectTrigger className="h-12 w-36" aria-label="Rapor ayı">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {monthOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button className="h-12" onClick={exportReport}>
-              <Download className="mr-2 h-4 w-4" /> CSV / Excel Çıktısı
-            </Button>
-          </div>
-        }
+        title="Raporlar"
+        description="İş emri bazlı dönemsel rapor ve proje bazlı rapor tek ekranda."
       />
+
+      <Tabs defaultValue="work-orders" className="mt-2">
+        <TabsList>
+          <TabsTrigger value="work-orders">İş Emri Raporu</TabsTrigger>
+          <TabsTrigger value="project">Proje Raporu</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="work-orders" className="mt-6">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black">Kullanım ve Hakediş Raporu</h2>
+              <p className="text-sm text-muted-foreground">
+                NES stoğu, taşeron malzemeleri ve onaylanan hakedişler tek çıktıda.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Select value={year} onValueChange={setYear}>
+                <SelectTrigger className="h-12 w-28" aria-label="Rapor yılı">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((option) => (
+                    <SelectItem key={option} value={String(option)}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={month} onValueChange={setMonth}>
+                <SelectTrigger className="h-12 w-36" aria-label="Rapor ayı">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button className="h-12" onClick={exportReport}>
+                <Download className="mr-2 h-4 w-4" /> CSV / Excel Çıktısı
+              </Button>
+            </div>
+          </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Card>
@@ -267,6 +283,159 @@ function ReportsPage() {
           </Table>
         </div>
       )}
+        </TabsContent>
+
+        <TabsContent value="project" className="mt-6">
+          <ProjectReportTab />
+        </TabsContent>
+      </Tabs>
     </>
+  );
+}
+
+type ReportProjectSummary = {
+  workOrderCount: number;
+  completedWorkOrderCount: number;
+  taskCount: number;
+  completedTaskCount: number;
+  taskProgressPct: number;
+};
+
+function ProjectReportTab() {
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+
+  const projectsQuery = useQuery({
+    queryKey: ["report-projects"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id, project_no, name, status, start_date, target_end_date, customers(name)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const summaryQuery = useQuery({
+    queryKey: ["report-project-summary", selectedProjectId],
+    enabled: Boolean(selectedProjectId),
+    queryFn: async (): Promise<ReportProjectSummary> => {
+      const [workOrdersResult, tasksResult] = await Promise.all([
+        supabase
+          .from("work_orders")
+          .select("status", { count: "exact" })
+          .eq("project_id", selectedProjectId),
+        supabase
+          .from("project_tasks")
+          .select("status, responsible_id, approved_progress_pct")
+          .eq("project_id", selectedProjectId),
+      ]);
+      if (workOrdersResult.error) throw workOrdersResult.error;
+      if (tasksResult.error) throw tasksResult.error;
+      const workOrders = workOrdersResult.data ?? [];
+      const tasks = tasksResult.data ?? [];
+      const progress = projectApprovedProgress(
+        tasks.map((task) => ({
+          approved_progress_pct: task.approved_progress_pct,
+          status: task.status,
+        })),
+      );
+      return {
+        workOrderCount: workOrders.length,
+        completedWorkOrderCount: workOrders.filter((order) => order.status === "completed").length,
+        taskCount: progress.total,
+        completedTaskCount: progress.completed,
+        taskProgressPct: progress.percentage,
+      };
+    },
+  });
+
+  if (projectsQuery.isLoading) return <LoadingState />;
+  const projects = projectsQuery.data ?? [];
+  const selectedProject = projects.find((project) => project.id === selectedProjectId);
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h2 className="text-lg font-black">Proje Bazlı Rapor</h2>
+        <p className="text-sm text-muted-foreground">
+          Bir proje seçin; proje bilgileri, bağlı iş emirleri, görev ilerlemesi, malzeme ve mali
+          özet içeren tam rapor PDF veya Word olarak indirilebilir.
+        </p>
+      </div>
+
+      {projects.length === 0 ? (
+        <EmptyState title="Henüz proje yok" description="Rapor için önce bir proje oluşturun." />
+      ) : (
+        <>
+          <label className="grid max-w-md gap-1 text-sm">
+            Proje
+            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Proje seçin" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.project_no} · {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          {selectedProject ? (
+            <Card className="mt-5">
+              <CardContent className="p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      {selectedProject.project_no}
+                    </p>
+                    <h3 className="text-xl font-black">{selectedProject.name}</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {selectedProject.customers?.name || "Müşteri yok"} ·{" "}
+                      {projectStatusLabel[selectedProject.status]} ·{" "}
+                      {formatProjectDate(selectedProject.start_date)} →{" "}
+                      {formatProjectDate(selectedProject.target_end_date)}
+                    </p>
+                  </div>
+                  <Button asChild className="h-12">
+                    <Link to="/project-report/$projectId" params={{ projectId: selectedProject.id }}>
+                      <FileText className="mr-2 h-4 w-4" /> Tam Raporu Aç (PDF / Word)
+                    </Link>
+                  </Button>
+                </div>
+
+                {summaryQuery.data ? (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[14px] border border-border/60 bg-background/30 p-3">
+                      <p className="text-xs text-muted-foreground">Bağlı İş Emri</p>
+                      <p className="mt-1 text-2xl font-black">
+                        {summaryQuery.data.completedWorkOrderCount}/{summaryQuery.data.workOrderCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">tamamlandı</p>
+                    </div>
+                    <div className="rounded-[14px] border border-border/60 bg-background/30 p-3">
+                      <p className="text-xs text-muted-foreground">Proje Görevi</p>
+                      <p className="mt-1 text-2xl font-black">
+                        {summaryQuery.data.completedTaskCount}/{summaryQuery.data.taskCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">tamamlandı</p>
+                    </div>
+                    <div className="rounded-[14px] border border-border/60 bg-background/30 p-3">
+                      <p className="text-xs text-muted-foreground">Onaylı İlerleme</p>
+                      <p className="mt-1 text-2xl font-black text-highlight">
+                        %{summaryQuery.data.taskProgressPct}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }

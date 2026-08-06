@@ -39,6 +39,19 @@ export function csvCell(value: unknown) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
+// Word gerçek bir kütüphane gerektirmeden, MS Office'in Word/HTML XML
+// ad alanlarıyla işaretlenmiş bir HTML dokümanını .doc olarak açabilmesinden
+// yararlanır — herhangi bir docx bağımlılığı eklemeden çalışır.
+export function downloadWordDocument(filename: string, title: string, bodyHtml: string) {
+  const html = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8" /><title>${title}</title></head><body>${bodyHtml}</body></html>`;
+  const url = URL.createObjectURL(new Blob(["﻿", html], { type: "application/msword" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function downloadCsv(filename: string, rows: unknown[][]) {
   const content = `\uFEFF${rows.map((row) => row.map(csvCell).join(";")).join("\n")}`;
   const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
