@@ -664,7 +664,7 @@ function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
         {statCards.map((metric) => (
           <a
             key={metric.label}
