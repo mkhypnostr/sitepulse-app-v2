@@ -5,6 +5,7 @@ import {
   extractMapCoordinates,
   googleMapsCoordinateEmbedUrl,
   googleMapsEmbedUrl,
+  isShortGoogleMapsUrl,
   safeMapUrl,
   type MapCoordinates,
 } from "@/lib/map-location";
@@ -28,9 +29,10 @@ export function MapPreview({
 }) {
   const safeUrl = safeMapUrl(mapUrl);
   const directCoordinates = extractMapCoordinates(safeUrl);
+  const isShortLink = isShortGoogleMapsUrl(safeUrl);
   const resolvedLocation = useQuery({
     queryKey: ["resolved-map-location", safeUrl],
-    enabled: Boolean(safeUrl && !directCoordinates),
+    enabled: Boolean(safeUrl && !directCoordinates && !isShortLink),
     retry: false,
     staleTime: 24 * 60 * 60 * 1000,
     queryFn: async () => {
@@ -52,6 +54,25 @@ export function MapPreview({
   });
 
   if (!safeUrl) return null;
+
+  if (isShortLink) {
+    return (
+      <a
+        href={safeUrl}
+        target="_blank"
+        rel="noreferrer"
+        className={cn(
+          "flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm font-bold text-highlight transition-colors hover:bg-primary/5",
+          className,
+        )}
+      >
+        <span className="flex items-center gap-2">
+          <MapPinned className="h-4 w-4" /> Haritada Aç
+        </span>
+        <ExternalLink className="h-4 w-4" />
+      </a>
+    );
+  }
 
   const mapCoordinates = directCoordinates ?? resolvedLocation.data;
   const embedUrl = mapCoordinates

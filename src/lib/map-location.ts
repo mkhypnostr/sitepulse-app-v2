@@ -77,3 +77,18 @@ export function googleMapsEmbedUrl(query: string | null | undefined) {
     ? `https://www.google.com/maps?q=${encodeURIComponent(normalized)}&z=15&output=embed`
     : null;
 }
+
+// Kısa paylaşım linkleri (maps.app.goo.gl, goo.gl/maps) sunucu taraflı
+// yönlendirme takibi olmadan koordinat içermez ve embed URL'ine
+// çevrilemez; bu linkler için iframe denemek yerine doğrudan bağlantı
+// gösterilmelidir.
+export function isShortGoogleMapsUrl(value: string | null | undefined) {
+  const url = safeMapUrl(value);
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "goo.gl" || host === "maps.app.goo.gl";
+  } catch {
+    return false;
+  }
+}
