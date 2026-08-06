@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Clock3, FileText, History, Paperclip, XCircle } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
@@ -367,7 +368,7 @@ function ApprovalsPage() {
       if (error) throw error;
     },
     onSuccess: invalidateEverything,
-    onError: (error) => alert(errorMessage(error)),
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const reviewCompletion = useMutation({
@@ -380,7 +381,7 @@ function ApprovalsPage() {
       if (error) throw error;
     },
     onSuccess: invalidateEverything,
-    onError: (error) => alert(errorMessage(error)),
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const reviewProjectTaskSubmission = useMutation({
@@ -393,7 +394,7 @@ function ApprovalsPage() {
       if (error) throw error;
     },
     onSuccess: invalidateEverything,
-    onError: (error) => alert(errorMessage(error)),
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   if (!canAccess) return <AccessDenied />;
