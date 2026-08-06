@@ -204,6 +204,7 @@ function ApprovalsPage() {
         progressResult,
         projectTaskSubmissionsResult,
         activityResult,
+        myWorkOrderAssignmentsResult,
       ] = await Promise.all([
         overdueOrdersQuery,
         projectTasksQuery,
@@ -214,6 +215,9 @@ function ApprovalsPage() {
         isAdmin
           ? supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(30)
           : Promise.resolve({ data: [], error: null }),
+        isContractor && user
+          ? supabase.from("work_order_assignments").select("work_order_id").eq("contractor_id", user.id)
+          : Promise.resolve({ data: [], error: null }),
       ]);
       if (overdueOrdersResult.error) throw overdueOrdersResult.error;
       if (overdueProjectTasksResult.error) throw overdueProjectTasksResult.error;
@@ -222,12 +226,21 @@ function ApprovalsPage() {
       if (progressResult.error) throw progressResult.error;
       if (projectTaskSubmissionsResult.error) throw projectTaskSubmissionsResult.error;
       if (activityResult.error) throw activityResult.error;
+      if (myWorkOrderAssignmentsResult.error) throw myWorkOrderAssignmentsResult.error;
 
       const completions = (completionsResult.data ?? []) as unknown as PendingCompletion[];
       const progressItems = (progressResult.data ?? []) as unknown as PendingProgress[];
       const projectTaskSubmissions =
         (projectTaskSubmissionsResult.data ?? []) as unknown as PendingProjectTaskSubmission[];
-      const overdueOrders = (overdueOrdersResult.data ?? []) as unknown as OverdueWorkOrder[];
+      const overdueOrdersRaw = (overdueOrdersResult.data ?? []) as unknown as OverdueWorkOrder[];
+      const myAssignedWorkOrderIds = new Set(
+        ((myWorkOrderAssignmentsResult.data ?? []) as Array<{ work_order_id: string }>).map(
+          (row) => row.work_order_id,
+        ),
+      );
+      const overdueOrders = isContractor
+        ? overdueOrdersRaw.filter((order) => myAssignedWorkOrderIds.has(order.id))
+        : overdueOrdersRaw;
       const overdueProjectTasksRaw = (overdueProjectTasksResult.data ?? []) as unknown as OverdueProjectTask[];
       const overdueIndependentRaw = (overdueIndependentResult.data ?? []) as unknown as OverdueIndependentTask[];
       const activityLogs = (activityResult.data ?? []) as ActivityLogRow[];

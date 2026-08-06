@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   Boxes,
   BriefcaseBusiness,
   CheckCircle2,
@@ -24,6 +25,7 @@ import {
   formatProjectDateTime,
   projectApprovedProgress,
   projectStatusLabel,
+  projectTaskStatusLabel,
   type ProjectStatus,
   type ProjectTaskStatus,
 } from "@/lib/projects";
@@ -75,6 +77,26 @@ type OperationalTaskSummary = Pick<
   Database["public"]["Tables"]["operational_tasks"]["Row"],
   "id" | "title" | "project_id" | "planned_date" | "status" | "assigned_to"
 >;
+type ContractorTask = OperationalTaskSummary & {
+  projects: { name: string; project_no: string } | null;
+};
+
+const TERMINAL_TASK_STATUSES = ["completed", "cancelled", "not_applicable"];
+
+type TaskDueBucket = "overdue" | "today" | "tomorrow" | "future" | "none";
+
+function taskDueBucket(plannedDate: string | null, referenceNow: Date): TaskDueBucket {
+  if (!plannedDate) return "none";
+  const date = new Date(`${plannedDate.slice(0, 10)}T00:00:00`);
+  const startOfToday = new Date(referenceNow.getFullYear(), referenceNow.getMonth(), referenceNow.getDate());
+  const startOfTomorrow = new Date(startOfToday.getTime() + 86_400_000);
+  const startOfDayAfter = new Date(startOfToday.getTime() + 2 * 86_400_000);
+  if (date < startOfToday) return "overdue";
+  if (date < startOfTomorrow) return "today";
+  if (date < startOfDayAfter) return "tomorrow";
+  return "future";
+}
+
 type StockItemSummary = Pick<
   Database["public"]["Tables"]["stock_items"]["Row"],
   "id" | "name" | "quantity" | "min_quantity" | "unit"
@@ -103,7 +125,7 @@ const projectStatusVariant: Record<ProjectStatus, NonNullable<BadgeProps["varian
 };
 
 function DashboardPage() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const operationalManager = isOperationalManager(role);
   const canFinance = canSeeFinancials(role);
 
@@ -114,7 +136,7 @@ function DashboardPage() {
   }, []);
 
   const query = useQuery({
-    queryKey: ["dashboard", role],
+    queryKey: ["dashboard", role, user?.id],
     enabled: Boolean(role),
     queryFn: async () => {
       // Technical office sees project/customer names for its assigned saha
@@ -152,6 +174,7 @@ function DashboardPage() {
       let allProjects: ProjectDashboardSummary[] = [];
       let visibleProjectTasks: VisibleProjectTask[] = [];
       let independentTasks: OperationalTaskSummary[] = [];
+      let myOperationalTasks: ContractorTask[] = [];
 
       if (operationalManager || role === "contractor") {
         const { data, error } = await supabase
@@ -159,6 +182,16 @@ function DashboardPage() {
           .select("id, name, quantity, min_quantity, unit");
         if (error) throw error;
         stock = data;
+      }
+
+      if (role === "contractor" && user) {
+        const { data, error } = await supabase
+          .from("operational_tasks")
+          .select("id, title, project_id, planned_date, status, assigned_to, projects(name, project_no)")
+          .eq("assigned_to", user.id)
+          .order("planned_date", { ascending: true, nullsFirst: false });
+        if (error) throw error;
+        myOperationalTasks = (data ?? []) as unknown as ContractorTask[];
       }
 
       if (operationalManager) {
@@ -238,6 +271,7 @@ function DashboardPage() {
         allProjects,
         visibleProjectTasks,
         independentTasks,
+        myOperationalTasks,
       };
     },
   });
@@ -269,10 +303,22 @@ function DashboardPage() {
 
   // ── Kişisel panel: taşeron / müşteri ──────────────────────────────────
   if (!operationalManager) {
+    const myOperationalTasks = query.data?.myOperationalTasks ?? [];
+    const activeMyOperationalTasks = myOperationalTasks.filter(
+      (task) => !TERMINAL_TASK_STATUSES.includes(task.status),
+    );
+    const recentItems: Array<
+      | { kind: "order"; date: string | null; order: DashboardWorkOrder }
+      | { kind: "task"; date: string | null; task: ContractorTask }
+    > = [
+      ...orders.map((order) => ({ kind: "order" as const, date: order.scheduled_at, order })),
+      ...myOperationalTasks.map((task) => ({ kind: "task" as const, date: task.planned_date, task })),
+    ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
+
     const personalMetrics = [
       {
         label: "Aktif İş",
-        value: active,
+        value: active + activeMyOperationalTasks.length,
         icon: BriefcaseBusiness,
         href: role === "customer" ? "/my-projects" : "/my-jobs",
       },
@@ -322,42 +368,68 @@ function DashboardPage() {
             </Link>
           </div>
           <div className="grid gap-3">
-            {orders.slice(0, 6).map((order) => (
-              <Link
-                key={order.id}
-                to="/jobs/$jobId"
-                params={{ jobId: order.id }}
-                className="block rounded-[14px] border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        #{order.work_order_no}
-                      </span>
-                      <Badge variant="outline">{statusLabels[order.status]}</Badge>
-                    </div>
-                    <h3 className="mt-2 truncate font-bold">{order.title}</h3>
-                    {order.projects ? (
-                      <p className="text-xs font-semibold text-highlight">
-                        {order.projects.project_no} · {order.projects.name}
+            {recentItems.slice(0, 6).map((item) =>
+              item.kind === "order" ? (
+                <Link
+                  key={`order-${item.order.id}`}
+                  to="/jobs/$jobId"
+                  params={{ jobId: item.order.id }}
+                  className="block rounded-[14px] border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          #{item.order.work_order_no}
+                        </span>
+                        <Badge variant="outline">{statusLabels[item.order.status]}</Badge>
+                      </div>
+                      <h3 className="mt-2 truncate font-bold">{item.order.title}</h3>
+                      {item.order.projects ? (
+                        <p className="text-xs font-semibold text-highlight">
+                          {item.order.projects.project_no} · {item.order.projects.name}
+                        </p>
+                      ) : null}
+                      <p className="text-sm text-muted-foreground">
+                        {item.order.customers?.name} · {formatDate(item.order.scheduled_at)}
                       </p>
-                    ) : null}
-                    <p className="text-sm text-muted-foreground">
-                      {order.customers?.name} · {formatDate(order.scheduled_at)}
-                    </p>
-                  </div>
-                  <div className="w-full shrink-0 sm:w-56">
-                    <div className="mb-1 flex justify-between text-xs">
-                      <span>İlerleme</span>
-                      <span className="font-bold">%{order.progress_pct}</span>
                     </div>
-                    <Progress value={order.progress_pct} />
+                    <div className="w-full shrink-0 sm:w-56">
+                      <div className="mb-1 flex justify-between text-xs">
+                        <span>İlerleme</span>
+                        <span className="font-bold">%{item.order.progress_pct}</span>
+                      </div>
+                      <Progress value={item.order.progress_pct} />
+                    </div>
                   </div>
-                </div>
-              </Link>
-            ))}
-            {orders.length === 0 ? (
+                </Link>
+              ) : (
+                <a
+                  key={`task-${item.task.id}`}
+                  href={`/my-jobs#operational-${item.task.id}`}
+                  className="block rounded-[14px] border border-border bg-card/60 p-4 transition-colors hover:border-primary/60"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{projectTaskStatusLabel[item.task.status]}</Badge>
+                        <Badge variant="secondary">Bağımsız Görev</Badge>
+                      </div>
+                      <h3 className="mt-2 truncate font-bold">{item.task.title}</h3>
+                      {item.task.projects ? (
+                        <p className="text-xs font-semibold text-highlight">
+                          {item.task.projects.project_no} · {item.task.projects.name}
+                        </p>
+                      ) : null}
+                      <p className="text-sm text-muted-foreground">
+                        {item.task.planned_date ? formatDate(item.task.planned_date) : "Tarih belirlenmedi"}
+                      </p>
+                    </div>
+                  </div>
+                </a>
+              ),
+            )}
+            {recentItems.length === 0 ? (
               <div className="rounded-[14px] border border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
                 Henüz görüntülenecek görev yok.
               </div>
@@ -371,8 +443,54 @@ function DashboardPage() {
   // ── Operasyon paneli: yönetici / teknik ofis ──────────────────────────
   const allProjects = query.data?.allProjects ?? [];
   const visibleProjectTasks = query.data?.visibleProjectTasks ?? [];
+  const independentTasks = query.data?.independentTasks ?? [];
   const stock = query.data?.stock ?? [];
   const lowStock = stock.filter((item) => item.quantity <= item.min_quantity);
+
+  const projectNameById = new Map(
+    allProjects.map((project) => [project.id, `${project.project_no} · ${project.name}`]),
+  );
+  type ActiveTaskItem = {
+    id: string;
+    kind: "project" | "independent";
+    title: string;
+    status: ProjectTaskStatus;
+    plannedDate: string | null;
+    relation: string;
+    href: string;
+  };
+  const activeTaskItems: ActiveTaskItem[] = [
+    ...visibleProjectTasks
+      .filter((task) => !TERMINAL_TASK_STATUSES.includes(task.status))
+      .map((task) => ({
+        id: `project-${task.id}`,
+        kind: "project" as const,
+        title: task.task_name,
+        status: task.status,
+        plannedDate: task.planned_date,
+        relation: projectNameById.get(task.project_id) ?? "Proje",
+        href: `/projects/${task.project_id}#task-${task.id}`,
+      })),
+    ...independentTasks
+      .filter((task) => !TERMINAL_TASK_STATUSES.includes(task.status))
+      .map((task) => ({
+        id: `independent-${task.id}`,
+        kind: "independent" as const,
+        title: task.title,
+        status: task.status,
+        plannedDate: task.planned_date,
+        relation: task.project_id ? (projectNameById.get(task.project_id) ?? "Proje") : "Bağımsız görev",
+        href: task.project_id ? `/projects/${task.project_id}` : `/tasks#operational-${task.id}`,
+      })),
+  ].sort((a, b) => {
+    if (!a.plannedDate && !b.plannedDate) return 0;
+    if (!a.plannedDate) return 1;
+    if (!b.plannedDate) return -1;
+    return a.plannedDate.localeCompare(b.plannedDate);
+  });
+  const overdueTaskCount = activeTaskItems.filter(
+    (item) => taskDueBucket(item.plannedDate, now) === "overdue",
+  ).length;
 
   const pendingProjectSubmissions = query.data?.projectSubmissions ?? [];
   const pendingWorkSubmissions = query.data?.workSubmissions ?? [];
@@ -491,6 +609,14 @@ function DashboardPage() {
       icon: ShieldAlert,
       href: "/approvals",
       attention: pendingApprovalCount > 0 ? ("danger" as const) : undefined,
+    },
+    {
+      label: "Geciken Görevler",
+      value: overdueTaskCount,
+      detail: overdueTaskCount ? "Planlanan tarihi geçen görev var" : "Geciken görev yok",
+      icon: AlertTriangle,
+      href: "/tasks?filter=overdue",
+      attention: overdueTaskCount > 0 ? ("danger" as const) : undefined,
     },
     {
       label: "Tamamlanan (Ay)",
@@ -732,6 +858,77 @@ function DashboardPage() {
           </div>
         </section>
       </div>
+
+      <section className="surface-panel mt-4 p-4 sm:p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <p className={EYEBROW}>Aktif Görevler</p>
+          <a href="/tasks" className="text-xs font-semibold text-highlight">
+            Tümünü gör
+          </a>
+        </div>
+        <div className="space-y-2">
+          {activeTaskItems.slice(0, 8).map((item) => {
+            const bucket = taskDueBucket(item.plannedDate, now);
+            const Icon = item.kind === "project" ? FolderKanban : ListChecks;
+            return (
+              <a
+                key={item.id}
+                href={item.href}
+                className={`flex items-center gap-3 rounded-lg border border-l-4 border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50 ${
+                  bucket === "overdue"
+                    ? "border-l-destructive"
+                    : bucket === "today" || bucket === "tomorrow"
+                      ? "border-l-warning"
+                      : "border-l-transparent"
+                }`}
+              >
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                    bucket === "overdue"
+                      ? "bg-destructive/15 text-destructive"
+                      : bucket === "today" || bucket === "tomorrow"
+                        ? "bg-warning/15 text-warning"
+                        : "bg-primary/15 text-highlight"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-foreground">{item.title}</p>
+                  <p className="truncate text-xs text-muted-foreground">{item.relation}</p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p
+                    className={`text-xs font-bold ${
+                      bucket === "overdue"
+                        ? "text-destructive"
+                        : bucket === "today" || bucket === "tomorrow"
+                          ? "text-warning"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    {bucket === "overdue"
+                      ? "Gecikti"
+                      : bucket === "today"
+                        ? "Bugün"
+                        : bucket === "tomorrow"
+                          ? "Yarın"
+                          : item.plannedDate
+                            ? formatDate(item.plannedDate)
+                            : "Tarih yok"}
+                  </p>
+                  {(bucket === "overdue" || bucket === "today" || bucket === "tomorrow") && item.plannedDate ? (
+                    <p className="text-[10px] text-muted-foreground">{formatDate(item.plannedDate)}</p>
+                  ) : null}
+                </div>
+              </a>
+            );
+          })}
+          {activeTaskItems.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Aktif görev yok.</p>
+          ) : null}
+        </div>
+      </section>
     </>
   );
 }

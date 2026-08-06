@@ -192,7 +192,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const navigation = (closeAfterClick = false) => (
-    <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-4">
+    <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-4">
       {nav.map((item, index) =>
         "separator" in item ? (
           <div key={`sep-${index}`} className="my-2 border-t border-sidebar-border" />
@@ -205,7 +205,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const accountArea = () => (
     <div className="border-t border-sidebar-border p-2">
-      <div className="mb-1 flex items-center gap-3 overflow-hidden rounded-lg px-[13px] py-2">
+      <div className="mb-1 flex items-center gap-3 rounded-lg px-[13px] py-2">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
           {displayName.slice(0, 1)}
         </span>
@@ -300,7 +300,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+              <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
                 {nav.map((item, index) =>
                   "separator" in item ? (
                     <div key={`sep-mobile-${index}`} className="my-2 border-t border-sidebar-border" />
