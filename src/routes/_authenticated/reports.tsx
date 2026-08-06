@@ -2,9 +2,10 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Download, FileText } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { downloadCsv, errorMessage } from "@/lib/domain";
+import { errorMessage } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
 import { formatProjectDate, projectApprovedProgress, projectStatusLabel } from "@/lib/projects";
 import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
@@ -31,6 +32,8 @@ import {
 export const Route = createFileRoute("/_authenticated/reports")({
   component: ReportsPage,
 });
+
+const NES_LOGO_URL = "/nes-enerji-logo.png";
 
 const monthOptions = [
   { value: "all", label: "Tüm Aylar" },
@@ -72,28 +75,53 @@ function ReportsPage() {
     month === "all"
       ? `${year} Yılı`
       : `${monthOptions.find((item) => item.value === month)?.label ?? month} ${year}`;
+  const [exporting, setExporting] = useState(false);
   const reportQuery = useQuery({
     queryKey: ["period-report", year, month],
     enabled: role === "admin" && Boolean(year) && Boolean(month),
     queryFn: async () => {
       const { start, end } = periodBoundaries(year, month);
-      const [materialsResult, approvalsResult] = await Promise.all([
+      const [materialsResult, completionsResult] = await Promise.all([
         supabase
           .from("work_order_materials")
           .select("*, stock_items(code, name), work_orders(work_order_no, title, customers(name))")
           .gte("created_at", start)
           .lt("created_at", end)
           .order("created_at"),
+        // Hakediş; iş bitirme onaylandığında (work_completion_submissions)
+        // taşerona ödenecek nihai tutar work_order_financials.contractor_labor_amount
+        // üzerinden okunur — progress_approvals sadece kısmi % onaylarını tutar.
         supabase
-          .from("progress_approvals")
-          .select("*, work_orders(work_order_no, title, customers(name))")
-          .gte("approved_at", start)
-          .lt("approved_at", end)
-          .order("approved_at"),
+          .from("work_completion_submissions")
+          .select(
+            "id, submitted_by, submitted_at, reviewed_at, work_orders(work_order_no, title, customers(name), work_order_financials(contractor_labor_amount))",
+          )
+          .eq("status", "approved")
+          .gte("reviewed_at", start)
+          .lt("reviewed_at", end)
+          .order("reviewed_at"),
       ]);
       if (materialsResult.error) throw materialsResult.error;
-      if (approvalsResult.error) throw approvalsResult.error;
-      return { materials: materialsResult.data, approvals: approvalsResult.data };
+      if (completionsResult.error) throw completionsResult.error;
+
+      const completions = completionsResult.data ?? [];
+      const contractorIds = [...new Set(completions.map((item) => item.submitted_by))];
+      const profilesResult = contractorIds.length
+        ? await supabase.from("profiles").select("id, full_name").in("id", contractorIds)
+        : { data: [], error: null };
+      if (profilesResult.error) throw profilesResult.error;
+      const contractorNameById = new Map(profilesResult.data.map((item) => [item.id, item.full_name]));
+
+      return {
+        materials: materialsResult.data,
+        approvals: completions.map((item) => ({
+          id: item.id,
+          approved_at: item.reviewed_at ?? item.submitted_at,
+          work_orders: item.work_orders,
+          contractor_name: contractorNameById.get(item.submitted_by) || "Taşeron",
+          approved_amount: item.work_orders?.work_order_financials?.contractor_labor_amount ?? 0,
+        })),
+      };
     },
   });
 
@@ -106,37 +134,116 @@ function ReportsPage() {
   const approvals = reportQuery.data?.approvals ?? [];
   const nesUsage = materials.filter((item) => item.is_nes_stock).length;
   const contractorUsage = materials.length - nesUsage;
+  const totalMaterialQuantity = materials.reduce((sum, item) => sum + item.quantity, 0);
   const approvedTotal = approvals.reduce((sum, item) => sum + item.approved_amount, 0);
 
-  function exportReport() {
-    downloadCsv(`nes-kullanim-hakedis-raporu-${year}-${month}.csv`, [
-      ["NES ENERJİ MALZEME VE HAKEDİŞ RAPORU", periodLabel],
-      [],
-      ["MALZEME KULLANIMLARI"],
-      ["Tarih", "Görev No", "Görev", "Müşteri", "Kaynak", "Kod", "Malzeme", "Miktar", "Birim"],
-      ...materials.map((item) => [
-        formatDate(item.created_at),
-        item.work_orders?.work_order_no,
-        item.work_orders?.title,
-        item.work_orders?.customers?.name,
-        item.is_nes_stock ? "NES Stoğu" : "Taşeron",
-        item.stock_items?.code,
-        item.is_nes_stock ? item.stock_items?.name : item.custom_material_name,
-        item.quantity,
-        item.unit,
-      ]),
-      [],
-      ["HAKEDİŞ ONAYLARI"],
-      ["Tarih", "Görev No", "Görev", "Müşteri", "Onaylanan %", "Onaylanan Tutar"],
-      ...approvals.map((item) => [
-        formatDate(item.approved_at),
-        item.work_orders?.work_order_no,
-        item.work_orders?.title,
-        item.work_orders?.customers?.name,
-        item.approved_pct,
-        item.approved_amount,
-      ]),
-    ]);
+  async function exportReport() {
+    // exceljs (ve zip/stream bağımlılıkları) tarayıcı dışı kod yoluna hiç
+    // girmemeli; SSR derlemesinde bu dal build-time'da elenir, sunucu
+    // paketine gereksiz ~2 MB eklenmesin diye.
+    if (import.meta.env.SSR) return;
+    setExporting(true);
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "NES Enerji";
+
+      const logoResponse = await fetch(NES_LOGO_URL);
+      const logoBuffer = await logoResponse.arrayBuffer();
+      const logoImageId = workbook.addImage({ buffer: logoBuffer, extension: "png" });
+
+      const boldFont = { bold: true };
+      const titleFont = { bold: true, size: 13 };
+      const headerFill = {
+        type: "pattern" as const,
+        pattern: "solid" as const,
+        fgColor: { argb: "FF1D4ED8" },
+      };
+      const headerFont = { bold: true, color: { argb: "FFFFFFFF" } };
+      const totalFill = {
+        type: "pattern" as const,
+        pattern: "solid" as const,
+        fgColor: { argb: "FFEFF6FF" },
+      };
+
+      function addSheet(
+        name: string,
+        headers: string[],
+        rows: (string | number)[][],
+        totalRow: (string | number)[],
+      ) {
+        const sheet = workbook.addWorksheet(name);
+        sheet.addImage(logoImageId, { tl: { col: 0, row: 0 }, ext: { width: 160, height: 49 } });
+        sheet.getRow(1).height = 26;
+        sheet.getRow(2).height = 26;
+        sheet.mergeCells(1, headers.length + 1, 2, headers.length + 3);
+        sheet.getCell(1, headers.length + 1).value = "NES Enerji";
+        sheet.getCell(1, headers.length + 1).font = titleFont;
+        sheet.getCell(3, 1).value = `${name} · ${periodLabel}`;
+        sheet.getCell(3, 1).font = boldFont;
+        const headerRow = sheet.getRow(4);
+        headers.forEach((header, index) => {
+          const cell = headerRow.getCell(index + 1);
+          cell.value = header;
+          cell.font = headerFont;
+          cell.fill = headerFill;
+        });
+        rows.forEach((row) => sheet.addRow(row));
+        const totalExcelRow = sheet.addRow(totalRow);
+        totalExcelRow.eachCell((cell) => {
+          cell.font = boldFont;
+          cell.fill = totalFill;
+        });
+        sheet.columns.forEach((column) => {
+          column.width = 22;
+        });
+      }
+
+      addSheet(
+        "Malzeme Kullanımları",
+        ["Tarih", "Görev No", "Görev", "Müşteri", "Kaynak", "Kod", "Malzeme", "Miktar", "Birim"],
+        materials.map((item) => [
+          formatDate(item.created_at),
+          item.work_orders?.work_order_no ?? "",
+          item.work_orders?.title ?? "",
+          item.work_orders?.customers?.name ?? "",
+          item.is_nes_stock ? "NES Stoğu" : "Taşeron",
+          item.stock_items?.code ?? "",
+          (item.is_nes_stock ? item.stock_items?.name : item.custom_material_name) ?? "",
+          item.quantity,
+          item.unit,
+        ]),
+        ["", "", "", "", "", "", "TOPLAM", totalMaterialQuantity, ""],
+      );
+
+      addSheet(
+        "Hakediş Onayları",
+        ["Tarih", "Görev No", "Görev", "Müşteri", "Taşeron", "Onaylanan Tutar"],
+        approvals.map((item) => [
+          formatDate(item.approved_at),
+          item.work_orders?.work_order_no ?? "",
+          item.work_orders?.title ?? "",
+          item.work_orders?.customers?.name ?? "",
+          item.contractor_name,
+          item.approved_amount,
+        ]),
+        ["", "", "", "", "TOPLAM", approvedTotal],
+      );
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const url = URL.createObjectURL(
+        new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `nes-kullanim-hakedis-raporu-${year}-${month}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -185,8 +292,8 @@ function ReportsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button className="h-12" onClick={exportReport}>
-                <Download className="mr-2 h-4 w-4" /> CSV / Excel Çıktısı
+              <Button className="h-12" onClick={exportReport} disabled={exporting}>
+                <Download className="mr-2 h-4 w-4" /> {exporting ? "Hazırlanıyor..." : "Excel Çıktısı"}
               </Button>
             </div>
           </div>
@@ -262,8 +369,9 @@ function ReportsPage() {
               <TableRow>
                 <TableHead>Tarih</TableHead>
                 <TableHead>Görev</TableHead>
-                <TableHead>Onay</TableHead>
-                <TableHead className="text-right">Tutar</TableHead>
+                <TableHead>Müşteri</TableHead>
+                <TableHead>Taşeron</TableHead>
+                <TableHead className="text-right">Onaylanan Tutar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -273,7 +381,8 @@ function ReportsPage() {
                   <TableCell>
                     #{item.work_orders?.work_order_no} · {item.work_orders?.title}
                   </TableCell>
-                  <TableCell>%{item.approved_pct}</TableCell>
+                  <TableCell>{item.work_orders?.customers?.name || "—"}</TableCell>
+                  <TableCell>{item.contractor_name}</TableCell>
                   <TableCell className="text-right font-black">
                     {formatTRY(item.approved_amount)}
                   </TableCell>
