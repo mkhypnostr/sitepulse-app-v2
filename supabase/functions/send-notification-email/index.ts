@@ -210,12 +210,16 @@ Deno.serve(async (req: Request) => {
     }),
   );
 
-  const failures = results.filter((result) => result.status === "rejected");
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
   if (failures.length > 0) {
     for (const failure of failures) {
-      console.error("Bildirim e-postası gönderilemedi:", (failure as PromiseRejectedResult).reason);
+      console.error("Bildirim e-postası gönderilemedi:", failure.reason);
     }
   }
 
-  return json({ sent: validRecipients.length - failures.length, failed: failures.length });
+  return json({
+    sent: validRecipients.length - failures.length,
+    failed: failures.length,
+    errors: failures.map((failure) => String(failure.reason)),
+  });
 });
