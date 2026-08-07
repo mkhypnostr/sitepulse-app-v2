@@ -6,6 +6,7 @@ import {
   BarChart3,
   Boxes,
   BriefcaseBusiness,
+  CalendarDays,
   ClipboardList,
   FolderKanban,
   LayoutDashboard,
@@ -130,6 +131,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: "/work-orders", label: "İş Emirleri", icon: ListChecks, badgeKey: "workOrders" },
           { to: "/projects", label: "Projeler", icon: FolderKanban },
           { to: "/tasks", label: "Görevler", icon: ClipboardList, badgeKey: "tasks" },
+          { to: "/calendar", label: "Takvim", icon: CalendarDays },
           { separator: true },
           { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
           { to: "/dashboard", label: "Finans", icon: Wallet, hash: "finance" },
@@ -144,6 +146,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             { to: "/work-orders", label: "İş Emirleri", icon: ListChecks, badgeKey: "workOrders" },
             { to: "/projects", label: "Projeler", icon: FolderKanban },
             { to: "/tasks", label: "Görevler", icon: ClipboardList, badgeKey: "tasks" },
+            { to: "/calendar", label: "Takvim", icon: CalendarDays },
             { separator: true },
             { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
             { to: "/customers", label: "Müşteriler", icon: UsersRound },
@@ -156,6 +159,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
             { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
             { to: "/my-project-tasks", label: "Proje Görevlerim", icon: ClipboardList },
+            { to: "/calendar", label: "Takvim", icon: CalendarDays },
           ]
         : [
             { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
