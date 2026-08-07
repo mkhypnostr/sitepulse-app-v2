@@ -124,6 +124,7 @@ export type Database = {
           customer_id: string | null
           description: string | null
           id: string
+          overdue_notified_at: string | null
           planned_date: string | null
           project_id: string | null
           status: Database["public"]["Enums"]["project_task_status"]
@@ -139,6 +140,7 @@ export type Database = {
           customer_id?: string | null
           description?: string | null
           id?: string
+          overdue_notified_at?: string | null
           planned_date?: string | null
           project_id?: string | null
           status?: Database["public"]["Enums"]["project_task_status"]
@@ -154,6 +156,7 @@ export type Database = {
           customer_id?: string | null
           description?: string | null
           id?: string
+          overdue_notified_at?: string | null
           planned_date?: string | null
           project_id?: string | null
           status?: Database["public"]["Enums"]["project_task_status"]
@@ -588,6 +591,7 @@ export type Database = {
           external_system: string | null
           id: string
           note: string | null
+          overdue_notified_at: string | null
           phase_name: string
           phase_order: number
           planned_date: string | null
@@ -611,6 +615,7 @@ export type Database = {
           external_system?: string | null
           id?: string
           note?: string | null
+          overdue_notified_at?: string | null
           phase_name: string
           phase_order: number
           planned_date?: string | null
@@ -634,6 +639,7 @@ export type Database = {
           external_system?: string | null
           id?: string
           note?: string | null
+          overdue_notified_at?: string | null
           phase_name?: string
           phase_order?: number
           planned_date?: string | null
@@ -1182,6 +1188,7 @@ export type Database = {
           id: string
           location: string | null
           location_url: string | null
+          overdue_notified_at: string | null
           progress_pct: number
           project_id: string | null
           review_note: string | null
@@ -1207,6 +1214,7 @@ export type Database = {
           id?: string
           location?: string | null
           location_url?: string | null
+          overdue_notified_at?: string | null
           progress_pct?: number
           project_id?: string | null
           review_note?: string | null
@@ -1232,6 +1240,7 @@ export type Database = {
           id?: string
           location?: string | null
           location_url?: string | null
+          overdue_notified_at?: string | null
           progress_pct?: number
           project_id?: string | null
           review_note?: string | null
@@ -1502,6 +1511,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      notification_email_for_user: {
+        Args: { target_user_id: string }
+        Returns: Json
+      }
+      notification_emails_for_roles: {
+        Args: { target_roles: Database["public"]["Enums"]["app_role"][] }
+        Returns: Json
+      }
+      notify_overdue_tasks: { Args: never; Returns: undefined }
       remove_project_task_from_task_center: {
         Args: { target_task_id: string }
         Returns: undefined
@@ -1542,6 +1560,10 @@ export type Database = {
           target_customer_id?: string
         }
         Returns: string
+      }
+      send_notification_email: {
+        Args: { event_type: string; notification_data: Json; recipients: Json }
+        Returns: undefined
       }
       set_user_role: {
         Args: {
