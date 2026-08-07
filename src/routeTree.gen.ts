@@ -19,6 +19,7 @@ import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedStockRouteImport } from './routes/_authenticated/stock'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
+import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedMyProjectsRouteImport } from './routes/_authenticated/my-projects'
 import { Route as AuthenticatedMyProjectTasksRouteImport } from './routes/_authenticated/my-project-tasks'
 import { Route as AuthenticatedMyJobsRouteImport } from './routes/_authenticated/my-jobs'
@@ -78,6 +79,11 @@ const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
 const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
   id: '/projects',
   path: '/projects',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedMyProjectsRoute = AuthenticatedMyProjectsRouteImport.update({
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/my-jobs': typeof AuthenticatedMyJobsRoute
   '/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
   '/my-projects': typeof AuthenticatedMyProjectsRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
   '/stock': typeof AuthenticatedStockRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByTo {
   '/my-jobs': typeof AuthenticatedMyJobsRoute
   '/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
   '/my-projects': typeof AuthenticatedMyProjectsRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
   '/stock': typeof AuthenticatedStockRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/_authenticated/my-jobs': typeof AuthenticatedMyJobsRoute
   '/_authenticated/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
   '/_authenticated/my-projects': typeof AuthenticatedMyProjectsRoute
+  '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/stock': typeof AuthenticatedStockRoute
@@ -220,6 +229,7 @@ export interface FileRouteTypes {
     | '/my-jobs'
     | '/my-project-tasks'
     | '/my-projects'
+    | '/profile'
     | '/projects'
     | '/reports'
     | '/stock'
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/my-jobs'
     | '/my-project-tasks'
     | '/my-projects'
+    | '/profile'
     | '/projects'
     | '/reports'
     | '/stock'
@@ -265,6 +276,7 @@ export interface FileRouteTypes {
     | '/_authenticated/my-jobs'
     | '/_authenticated/my-project-tasks'
     | '/_authenticated/my-projects'
+    | '/_authenticated/profile'
     | '/_authenticated/projects'
     | '/_authenticated/reports'
     | '/_authenticated/stock'
@@ -355,6 +367,13 @@ declare module '@tanstack/react-router' {
       path: '/projects'
       fullPath: '/projects'
       preLoaderRoute: typeof AuthenticatedProjectsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/profile': {
+      id: '/_authenticated/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthenticatedProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/my-projects': {
@@ -458,6 +477,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedMyJobsRoute: typeof AuthenticatedMyJobsRoute
   AuthenticatedMyProjectTasksRoute: typeof AuthenticatedMyProjectTasksRoute
   AuthenticatedMyProjectsRoute: typeof AuthenticatedMyProjectsRoute
+  AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRouteWithChildren
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedStockRoute: typeof AuthenticatedStockRoute
@@ -477,6 +497,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMyJobsRoute: AuthenticatedMyJobsRoute,
   AuthenticatedMyProjectTasksRoute: AuthenticatedMyProjectTasksRoute,
   AuthenticatedMyProjectsRoute: AuthenticatedMyProjectsRoute,
+  AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRouteWithChildren,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedStockRoute: AuthenticatedStockRoute,

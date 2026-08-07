@@ -212,7 +212,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const accountArea = () => (
     <div className="border-t border-sidebar-border p-2">
-      <div className="mb-1 flex items-center gap-3 rounded-lg px-[13px] py-2">
+      <Link
+        to="/profile"
+        className="mb-1 flex items-center gap-3 overflow-hidden rounded-lg px-[13px] py-2 transition-colors hover:bg-sidebar-accent"
+      >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
           {displayName.slice(0, 1)}
         </span>
@@ -222,7 +225,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             {role ? roleLabels[role] : "Kullanıcı"}
           </span>
         </span>
-      </div>
+      </Link>
+      <Link
+        to="/profile"
+        className="flex h-10 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+      >
+        <UserCog className="h-5 w-5 shrink-0" />
+        <span className="sidebar-reveal">Profilim</span>
+      </Link>
       <button
         type="button"
         onClick={handleSignOut}
@@ -341,12 +351,23 @@ export function AppShell({ children }: { children: ReactNode }) {
                 )}
               </nav>
               <div className="border-t border-sidebar-border p-3">
-                <div className="mb-3 rounded-xl bg-sidebar-accent/60 p-3">
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileOpen(false)}
+                  className="mb-3 block rounded-xl bg-sidebar-accent/60 p-3 transition-colors hover:bg-sidebar-accent"
+                >
                   <p className="text-xs font-semibold text-muted-foreground">
                     {role ? roleLabels[role] : "Kullanıcı"}
                   </p>
                   <p className="mt-1 truncate text-sm font-bold text-foreground">{displayName}</p>
-                </div>
+                </Link>
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                >
+                  <UserCog className="h-5 w-5" /> Profilim
+                </Link>
                 <button
                   type="button"
                   onClick={handleSignOut}
