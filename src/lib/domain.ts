@@ -12,6 +12,7 @@ export const roleLabels: Record<AppRole, string> = {
 };
 
 export const statusLabels: Record<WorkStatus, string> = {
+  draft: "Taslak",
   planned: "Planlandı",
   in_progress: "Devam Ediyor",
   review_pending: "Yönetici Kontrolünde",

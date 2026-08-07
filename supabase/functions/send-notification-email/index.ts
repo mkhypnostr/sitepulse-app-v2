@@ -7,10 +7,21 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // bu yüzden verify_jwt kapalı ve yetkilendirme bu paylaşılan anahtarla yapılır.
 const WEBHOOK_SECRET = Deno.env.get("NOTIFICATION_WEBHOOK_SECRET");
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "NES Enerji <onboarding@resend.dev>";
-// Ayarlanırsa e-postalarda gerçek NES Enerji logosu (PNG) gösterilir; aksi halde
-// marka renkleriyle metin tabanlı bir başlık kullanılır (dış görsele bağımlı değildir).
-const PUBLIC_APP_URL = Deno.env.get("PUBLIC_APP_URL");
+// nesgrup.com domaini Resend'de doğrulandıktan sonra bu varsayılan gönderici
+// gerçek teslimat yapabilir hale gelir; doğrulama tamamlanana kadar Resend
+// istekleri reddedebilir — bu, kod tarafında değil Resend hesap ayarında
+// tamamlanması gereken ayrı bir adımdır.
+const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "NES Enerji <bildirim@nesgrup.com>";
+const RESEND_REPLY_TO = Deno.env.get("RESEND_REPLY_TO") || "info@nesgrup.com";
+// Kalıcı, herkese açık HTTPS logo URL'i — projenin kendi Supabase Storage
+// public bucket'ında barındırılıyor (bkz.
+// supabase/migrations/20260809110000_brand_assets_public_bucket.sql).
+// LOGO_URL secret'ı ayarlanırsa (ör. kendi domaininize taşındığınızda) onu kullanır.
+const LOGO_URL =
+  Deno.env.get("LOGO_URL") ||
+  "https://nyfocdnlbknxpxbeeapj.supabase.co/storage/v1/object/public/brand-assets/nes-enerji-logo.svg";
+
+const TIME_ZONE = "Europe/Istanbul";
 
 const BRAND = {
   darkBg: "#0c0c14",
@@ -24,7 +35,12 @@ const BRAND = {
 type Recipient = { email: string; name?: string | null };
 
 type NotificationPayload = {
-  event_type: "task_assigned" | "task_overdue" | "approval_pending" | "approval_decision";
+  event_type:
+    | "task_assigned"
+    | "task_overdue"
+    | "approval_pending"
+    | "approval_decision"
+    | "work_order_closed_customer";
   recipients: Recipient[];
   data: Record<string, unknown>;
 };
@@ -44,11 +60,25 @@ function escapeHtml(value: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
+// Postgres tarafı artık önceden biçimlendirilmiş metin yerine ham ISO 8601
+// zaman damgası gönderiyor; biçimlendirme burada, Europe/Istanbul saat
+// diliminde yapılıyor (veritabanı/oturum saat dilimine bağımlı olmadan).
+function formatIstanbul(iso: unknown): string | null {
+  if (typeof iso !== "string" || !iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("tr-TR", {
+    timeZone: TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function renderLogoHeader(): string {
-  if (PUBLIC_APP_URL) {
-    return `<img src="${escapeHtml(PUBLIC_APP_URL)}/nes-enerji-logo.png" alt="NES Enerji" height="32" style="display:block;height:32px;width:auto;" />`;
-  }
-  return `<span style="font-size:20px;font-weight:900;color:#ffffff;letter-spacing:-0.01em;">NES ENERJİ</span>`;
+  return `<img src="${escapeHtml(LOGO_URL)}" alt="NES Enerji" height="32" style="display:block;height:32px;width:auto;" />`;
 }
 
 function renderShell(title: string, bodyHtml: string): string {
@@ -109,15 +139,21 @@ function buildEmail(
 
   switch (eventType) {
     case "task_assigned": {
-      const date = data.date ? String(data.date) : null;
+      // Atama zamanı (bildirimin tetiklendiği an) ile planlanan başlangıç/
+      // bitiş ayrı alanlar olarak gösterilir — birbirine karıştırılmaz.
+      const assignedAt = formatIstanbul(data.assignedAt);
+      const plannedStart = formatIstanbul(data.plannedStart);
+      const plannedEnd = formatIstanbul(data.plannedEnd);
       const subject = `Size yeni bir görev atandı: ${taskName}`;
       const html = renderShell(
         "Yeni görev atandı",
         `${paragraph(greeting)}${paragraph(
-          `Size yeni bir görev atandı: <strong>${escapeHtml(taskName)}</strong>${
-            date ? `, tarih: <strong>${escapeHtml(date)}</strong>` : ""
-          }.`,
-        )}`,
+          `Size yeni bir görev atandı: <strong>${escapeHtml(taskName)}</strong>.`,
+        )}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          ${assignedAt ? infoRow("Atama Zamanı", assignedAt) : ""}
+          ${plannedStart ? infoRow("Planlanan Başlangıç", plannedStart) : ""}
+          ${plannedEnd ? infoRow("Planlanan Bitiş", plannedEnd) : ""}
+        </table>`,
       );
       return { subject, html };
     }
@@ -159,6 +195,16 @@ function buildEmail(
       );
       return { subject, html };
     }
+    case "work_order_closed_customer": {
+      const subject = `İşiniz tamamlandı: ${taskName}`;
+      const html = renderShell(
+        "İşiniz tamamlandı",
+        `${paragraph(greeting)}${paragraph(
+          `<strong>${escapeHtml(taskName)}</strong> işiniz tamamlandı ve kapatıldı. İlginiz için teşekkür ederiz.`,
+        )}`,
+      );
+      return { subject, html };
+    }
     default:
       return { subject: taskName, html: renderShell(taskName, paragraph(greeting)) };
   }
@@ -171,7 +217,7 @@ async function sendViaResend(to: string, subject: string, html: string) {
       Authorization: `Bearer ${RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: RESEND_FROM_EMAIL, to, subject, html }),
+    body: JSON.stringify({ from: RESEND_FROM_EMAIL, to, subject, html, reply_to: RESEND_REPLY_TO }),
   });
   if (!response.ok) {
     const body = await response.text();
@@ -198,9 +244,17 @@ Deno.serve(async (req: Request) => {
   }
 
   const recipients = Array.isArray(payload.recipients) ? payload.recipients : [];
-  const validRecipients = recipients.filter(
-    (item): item is Recipient => typeof item?.email === "string" && item.email.includes("@"),
-  );
+  // Aynı kullanıcıya (aynı e-posta) çift bildirim gitmemesi için, çağıran
+  // taraf farklı roller nedeniyle aynı adresi birden fazla kez eklemiş olsa
+  // bile burada büyük/küçük harf duyarsız şekilde tekilleştirilir.
+  const seenEmails = new Set<string>();
+  const validRecipients = recipients.filter((item): item is Recipient => {
+    if (typeof item?.email !== "string" || !item.email.includes("@")) return false;
+    const key = item.email.trim().toLowerCase();
+    if (seenEmails.has(key)) return false;
+    seenEmails.add(key);
+    return true;
+  });
   if (validRecipients.length === 0) return json({ sent: 0 });
 
   const results = await Promise.allSettled(
