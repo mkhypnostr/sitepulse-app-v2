@@ -288,7 +288,6 @@ DECLARE
   current_user_id UUID := (SELECT auth.uid());
   current_row public.work_orders%ROWTYPE;
   normalized_location_url TEXT := NULLIF(trim(order_location_url), '');
-  resolved_planned_end_at TIMESTAMPTZ;
   resolved_status public.work_status;
 BEGIN
   IF current_user_id IS NULL OR NOT public.can_manage_projects(current_user_id) THEN
@@ -309,21 +308,17 @@ BEGIN
     RAISE EXCEPTION 'Saha görevi bulunamadı';
   END IF;
 
-  -- location_url ve planned_end_at gönderilmezse mevcut değerleri korunur
-  -- (bu RPC bu parametreleri opsiyonel bırakır — yalnızca değiştirmek
-  -- isteyen çağıran gönderir). tasks.tsx'teki görev düzenleme ekranı bu
-  -- alanları hiç göndermiyor; gönderilmediğinde NULL'a çekmek mevcut
-  -- planlanan bitiş tarihini/konumu her düzenlemede sessizce siler.
+  -- location_url gönderilmezse mevcut değeri korunur (bu RPC parametreyi
+  -- opsiyonel bırakır — yalnızca değiştirmek isteyen çağıran gönderir).
   IF order_location_url IS NULL THEN
     normalized_location_url := current_row.location_url;
   END IF;
-  resolved_planned_end_at := COALESCE(order_planned_end_at, current_row.planned_end_at);
   IF normalized_location_url IS NOT NULL AND normalized_location_url !~* '^https://' THEN
     RAISE EXCEPTION 'Harita bağlantısı https:// ile başlamalıdır';
   END IF;
 
-  IF planned_at IS NOT NULL AND resolved_planned_end_at IS NOT NULL
-     AND resolved_planned_end_at <= planned_at THEN
+  IF planned_at IS NOT NULL AND order_planned_end_at IS NOT NULL
+     AND order_planned_end_at <= planned_at THEN
     RAISE EXCEPTION 'Planlanan bitiş, başlangıçtan sonra olmalıdır';
   END IF;
 
@@ -338,7 +333,7 @@ BEGIN
       IF assigned_user_id IS NULL THEN
         RAISE EXCEPTION 'İş emri aktif hale gelmeden önce sorumlu bir taşeron atanmalıdır (taslak olarak kaydedebilirsiniz)';
       END IF;
-      IF planned_at IS NULL OR resolved_planned_end_at IS NULL THEN
+      IF planned_at IS NULL OR order_planned_end_at IS NULL THEN
         RAISE EXCEPTION 'İş emri aktif hale gelmeden önce planlanan başlangıç ve bitiş tarih-saati girilmelidir (taslak olarak kaydedebilirsiniz)';
       END IF;
       IF normalized_location_url IS NULL THEN
@@ -350,7 +345,7 @@ BEGIN
     -- İş zaten başlamış: alanlar boşaltılamaz (sorumlu hariç — reassignment
     -- ayrıca korunuyor), statüye dokunulmaz.
     resolved_status := current_row.status;
-    IF planned_at IS NULL OR resolved_planned_end_at IS NULL OR normalized_location_url IS NULL THEN
+    IF planned_at IS NULL OR order_planned_end_at IS NULL OR normalized_location_url IS NULL THEN
       RAISE EXCEPTION 'Devam eden bir iş emrinde planlanan tarihler ve konum boş bırakılamaz';
     END IF;
   END IF;
@@ -359,7 +354,7 @@ BEGIN
   SET title = trim(task_title),
       description = NULLIF(trim(task_description), ''),
       scheduled_at = planned_at,
-      planned_end_at = resolved_planned_end_at,
+      planned_end_at = order_planned_end_at,
       location_url = normalized_location_url,
       status = resolved_status,
       updated_at = now()
@@ -449,51 +444,3 @@ ALTER TABLE public.work_orders
       AND EXTRACT(second FROM planned_end_at) = 0::numeric
     )
   );
-
--- Bu migration'daki DROP FUNCTION + CREATE OR REPLACE FUNCTION adımları
--- (yukarıda) her üç fonksiyon için de PostgreSQL'in varsayılan ACL'sini
--- (PUBLIC dahil EXECUTE) sıfırlamıştı; bu da anon rolünün admin/teknik-ofis
--- yetkisi gerektiren bu RPC'leri çağırabilmesine (fonksiyon içindeki
--- has_role/can_manage_projects kontrolüyle reddedilse de) yol açıyordu.
--- Bu üç fonksiyon her zaman yalnızca authenticated tarafından çağrılmalıdır
--- (bkz. önceki migration'lardaki aynı REVOKE/GRANT deseni).
-REVOKE ALL ON FUNCTION public.create_work_order(
-  target_customer_id uuid, order_title text, order_description text, order_location text,
-  order_scheduled_at timestamp with time zone, order_customer_labor_amount numeric,
-  order_customer_material_amount numeric, order_contractor_labor_amount numeric,
-  order_estimated_material_cost numeric, visible_to_customer boolean, assigned_contractor_id uuid,
-  order_location_url text, order_work_scope_type text, order_default_material_source text,
-  target_project_id uuid, order_planned_end_at timestamp with time zone, save_as_draft boolean
-) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.create_work_order(
-  target_customer_id uuid, order_title text, order_description text, order_location text,
-  order_scheduled_at timestamp with time zone, order_customer_labor_amount numeric,
-  order_customer_material_amount numeric, order_contractor_labor_amount numeric,
-  order_estimated_material_cost numeric, visible_to_customer boolean, assigned_contractor_id uuid,
-  order_location_url text, order_work_scope_type text, order_default_material_source text,
-  target_project_id uuid, order_planned_end_at timestamp with time zone, save_as_draft boolean
-) TO authenticated;
-
-REVOKE ALL ON FUNCTION public.create_work_order_technical(
-  target_customer_id uuid, order_title text, order_description text, order_location text,
-  order_scheduled_at timestamp with time zone, visible_to_customer boolean, assigned_contractor_id uuid,
-  order_location_url text, order_work_scope_type text, order_default_material_source text,
-  target_project_id uuid, order_planned_end_at timestamp with time zone, save_as_draft boolean
-) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.create_work_order_technical(
-  target_customer_id uuid, order_title text, order_description text, order_location text,
-  order_scheduled_at timestamp with time zone, visible_to_customer boolean, assigned_contractor_id uuid,
-  order_location_url text, order_work_scope_type text, order_default_material_source text,
-  target_project_id uuid, order_planned_end_at timestamp with time zone, save_as_draft boolean
-) TO authenticated;
-
-REVOKE ALL ON FUNCTION public.update_work_order_task(
-  target_work_order_id uuid, task_title text, task_description text, planned_at timestamp with time zone,
-  assigned_user_id uuid, order_planned_end_at timestamp with time zone, order_location_url text,
-  save_as_draft boolean
-) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.update_work_order_task(
-  target_work_order_id uuid, task_title text, task_description text, planned_at timestamp with time zone,
-  assigned_user_id uuid, order_planned_end_at timestamp with time zone, order_location_url text,
-  save_as_draft boolean
-) TO authenticated;

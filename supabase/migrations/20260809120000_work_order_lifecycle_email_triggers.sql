@@ -3,14 +3,9 @@
 --   2) taşeron tamamladı   -> tüm adminler
 --   3) revizyon istendi    -> taşeron + diğer adminler (kararı veren admin hariç)
 --   4) onaylandı/kapandı   -> taşeron + tüm adminler
+--   5) nihai kapanış       -> müşteriye bildirim tercihi (work_orders.show_to_customer) açıksa
+--      ve müşterinin bir portal kullanıcı hesabı (customers.contact_user_id) varsa e-posta
 -- WhatsApp bildirim sistemine (send-whatsapp-notification, trg_notify_whatsapp_*) dokunulmadı.
---
--- NOT: Müşteriye nihai kapanış e-postası bu pakete DAHİL DEĞİLDİR. İlk
--- sürümde work_orders.show_to_customer (müşteri portalında bu işi göster/
--- gösterme alanı) yanlışlıkla bir "e-posta bildirim izni" gibi kullanılmıştı
--- — bu ikisi farklı kavramlar. Ayrı, amaca uygun bir müşteri bildirim
--- tercihi alanı eklenmeden bu özellik uygulanmamalı; sonraki bir pakete
--- bırakıldı.
 
 -- 1) Görev atandı: taşeron + tüm adminler, atama zamanı/planlanan başlangıç/bitiş ayrı alanlar.
 CREATE OR REPLACE FUNCTION public.trg_notify_work_order_assigned()
@@ -80,9 +75,9 @@ BEGIN
 END;
 $function$;
 
--- 3+4) Onay kararı: revizyon istendi (taşeron + diğer adminler) veya
--- onaylandı/kapandı (taşeron + tüm adminler). Müşteri e-postası bu pakete
--- dahil değil (yukarıdaki nota bakın).
+-- 3+4+5) Onay kararı: revizyon istendi (taşeron + diğer adminler) veya
+-- onaylandı/kapandı (taşeron + tüm adminler); onaylandığında ayrıca nihai
+-- kapanış bildirimi olarak müşteriye (tercihi varsa) ayrı bir e-posta gönderilir.
 CREATE OR REPLACE FUNCTION public.trg_notify_completion_decision()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -91,10 +86,12 @@ CREATE OR REPLACE FUNCTION public.trg_notify_completion_decision()
 AS $function$
 DECLARE
   order_row public.work_orders%ROWTYPE;
+  customer_row public.customers%ROWTYPE;
   contractor_recipient JSONB;
   admins JSONB;
   recipients JSONB := '[]'::jsonb;
   reviewer_email TEXT;
+  customer_recipient JSONB;
 BEGIN
   IF OLD.status IS DISTINCT FROM 'pending' OR NEW.status = 'pending' THEN RETURN NEW; END IF;
 
@@ -127,6 +124,29 @@ BEGIN
         'note', NEW.review_note
       )
     );
+  END IF;
+
+  -- Nihai kapanış: müşteri bildirim tercihi (show_to_customer) açıksa ve
+  -- müşterinin bağlı bir portal kullanıcı hesabı varsa ayrı bir e-posta
+  -- gönderilir. Aynı adrese az önce personel listesinde e-posta gittiyse
+  -- (teorik olarak müşteri hesabı bir personel adresiyle çakışırsa) tekrar
+  -- gönderilmez.
+  IF NEW.status = 'approved' AND order_row.show_to_customer AND order_row.customer_id IS NOT NULL THEN
+    SELECT * INTO customer_row FROM public.customers WHERE id = order_row.customer_id;
+    IF FOUND AND customer_row.contact_user_id IS NOT NULL THEN
+      customer_recipient := public.notification_email_for_user(customer_row.contact_user_id);
+      IF customer_recipient IS NOT NULL AND customer_recipient->>'email' IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM jsonb_array_elements(recipients) AS entry
+           WHERE lower(entry->>'email') = lower(customer_recipient->>'email')
+         ) THEN
+        PERFORM public.send_notification_email(
+          'work_order_closed_customer',
+          jsonb_build_array(customer_recipient),
+          jsonb_build_object('taskName', COALESCE(order_row.title, 'Saha görevi'))
+        );
+      END IF;
+    END IF;
   END IF;
 
   RETURN NEW;
