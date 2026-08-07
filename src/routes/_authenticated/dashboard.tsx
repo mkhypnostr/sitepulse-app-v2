@@ -41,7 +41,8 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 // work_status enum'unda "not_applicable" ve "external_approval" yok
 // (bunlar project_task_status'a ait); yalnızca geçerli değerler tutulur.
-const TERMINAL_ORDER_STATUSES = ["completed", "cancelled", "review_pending"];
+// "draft" da hariç tutulur — taslak bir iş emri henüz gerçek/aktif iş değildir.
+const TERMINAL_ORDER_STATUSES = ["draft", "completed", "cancelled", "review_pending"];
 
 type ProjectSubmission = Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
 type WorkSubmission = Database["public"]["Tables"]["progress_updates"]["Row"];
@@ -548,6 +549,7 @@ function DashboardPage() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const monthOrders = orders.filter((order) => {
+    if (!order.scheduled_at) return false;
     const d = new Date(order.scheduled_at);
     return d >= monthStart && d < monthEnd;
   });

@@ -1189,12 +1189,13 @@ export type Database = {
           location: string | null
           location_url: string | null
           overdue_notified_at: string | null
+          planned_end_at: string | null
           progress_pct: number
           project_id: string | null
           review_note: string | null
           reviewed_at: string | null
           reviewed_by: string | null
-          scheduled_at: string
+          scheduled_at: string | null
           show_to_customer: boolean
           status: Database["public"]["Enums"]["work_status"]
           title: string
@@ -1215,12 +1216,13 @@ export type Database = {
           location?: string | null
           location_url?: string | null
           overdue_notified_at?: string | null
+          planned_end_at?: string | null
           progress_pct?: number
           project_id?: string | null
           review_note?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
-          scheduled_at: string
+          scheduled_at?: string | null
           show_to_customer?: boolean
           status?: Database["public"]["Enums"]["work_status"]
           title: string
@@ -1241,12 +1243,13 @@ export type Database = {
           location?: string | null
           location_url?: string | null
           overdue_notified_at?: string | null
+          planned_end_at?: string | null
           progress_pct?: number
           project_id?: string | null
           review_note?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
-          scheduled_at?: string
+          scheduled_at?: string | null
           show_to_customer?: boolean
           status?: Database["public"]["Enums"]["work_status"]
           title?: string
@@ -1399,20 +1402,22 @@ export type Database = {
       create_work_order: {
         Args: {
           assigned_contractor_id?: string
-          order_contractor_labor_amount: number
-          order_customer_labor_amount: number
-          order_customer_material_amount: number
+          order_contractor_labor_amount?: number
+          order_customer_labor_amount?: number
+          order_customer_material_amount?: number
           order_default_material_source?: string
           order_description: string
-          order_estimated_material_cost: number
+          order_estimated_material_cost?: number
           order_location: string
           order_location_url?: string
-          order_scheduled_at: string
+          order_planned_end_at?: string
+          order_scheduled_at?: string
           order_title: string
           order_work_scope_type?: string
+          save_as_draft?: boolean
           target_customer_id: string
           target_project_id?: string
-          visible_to_customer: boolean
+          visible_to_customer?: boolean
         }
         Returns: string
       }
@@ -1423,12 +1428,14 @@ export type Database = {
           order_description: string
           order_location: string
           order_location_url?: string
-          order_scheduled_at: string
+          order_planned_end_at?: string
+          order_scheduled_at?: string
           order_title: string
           order_work_scope_type?: string
+          save_as_draft?: boolean
           target_customer_id: string
           target_project_id?: string
-          visible_to_customer: boolean
+          visible_to_customer?: boolean
         }
         Returns: string
       }
@@ -1519,6 +1526,14 @@ export type Database = {
         Args: { target_roles: Database["public"]["Enums"]["app_role"][] }
         Returns: Json
       }
+      notification_phone_for_user: {
+        Args: { target_user_id: string }
+        Returns: Json
+      }
+      notification_phones_for_roles: {
+        Args: { target_roles: Database["public"]["Enums"]["app_role"][] }
+        Returns: Json
+      }
       notify_overdue_tasks: { Args: never; Returns: undefined }
       remove_project_task_from_task_center: {
         Args: { target_task_id: string }
@@ -1563,6 +1578,10 @@ export type Database = {
       }
       send_notification_email: {
         Args: { event_type: string; notification_data: Json; recipients: Json }
+        Returns: undefined
+      }
+      send_whatsapp_notification: {
+        Args: { message: string; recipients: Json }
         Returns: undefined
       }
       set_user_role: {
@@ -1700,7 +1719,10 @@ export type Database = {
       update_work_order_task: {
         Args: {
           assigned_user_id?: string
+          order_location_url?: string
+          order_planned_end_at?: string
           planned_at: string
+          save_as_draft?: boolean
           target_work_order_id: string
           task_description: string
           task_title: string
@@ -1727,6 +1749,7 @@ export type Database = {
       project_type: "electric_permit" | "site_project" | "connection_line"
       stock_unit: "adet" | "metre"
       work_status:
+        | "draft"
         | "planned"
         | "in_progress"
         | "completed"
@@ -1879,6 +1902,7 @@ export const Constants = {
       project_type: ["electric_permit", "site_project", "connection_line"],
       stock_unit: ["adet", "metre"],
       work_status: [
+        "draft",
         "planned",
         "in_progress",
         "completed",
