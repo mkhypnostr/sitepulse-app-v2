@@ -96,7 +96,7 @@ type OverdueIndependentTask = {
   projects: { name: string; project_no: string } | null;
 };
 
-type CompletionEvidencePhoto = {
+type EvidencePreviewItem = {
   id: string;
   signedUrl: string | null;
   isDocument: boolean;
@@ -266,20 +266,23 @@ function ApprovalsPage() {
               .in("submission_id", completionIds)
           : Promise.resolve({ data: [], error: null }),
         projectSubmissionIds.length
-          ? supabase.from("project_task_evidence").select("submission_id").in("submission_id", projectSubmissionIds)
+          ? supabase
+              .from("project_task_evidence")
+              .select("id, submission_id, storage_path, evidence_type, description, file_name")
+              .in("submission_id", projectSubmissionIds)
           : Promise.resolve({ data: [], error: null }),
       ]);
       if (completionEvidenceResult.error) throw completionEvidenceResult.error;
       if (projectEvidenceResult.error) throw projectEvidenceResult.error;
 
-      // İş bitirme kartlarında kanıt önizlemesi (fotoğraf thumbnail / PDF linki)
-      // gösterebilmek için sadece sayım değil, imzalı URL ile birlikte fotoğraf
+      // Onay kartlarında kanıt önizlemesi (fotoğraf thumbnail / PDF linki)
+      // gösterebilmek için sadece sayım değil, imzalı URL ile birlikte kanıt
       // kaydını da tutuyoruz.
       const completionEvidenceRows = (completionEvidenceResult.data ?? []) as unknown as Array<{
         submission_id: string;
         photos: { id: string; storage_path: string; is_document: boolean; caption: string | null } | null;
       }>;
-      const completionEvidenceBySubmission = new Map<string, CompletionEvidencePhoto[]>();
+      const completionEvidenceBySubmission = new Map<string, EvidencePreviewItem[]>();
       await Promise.all(
         completionEvidenceRows.map(async (row) => {
           if (!row.submission_id || !row.photos) return;
@@ -297,11 +300,31 @@ function ApprovalsPage() {
         }),
       );
 
-      const projectEvidenceCount = new Map<string, number>();
-      for (const row of projectEvidenceResult.data ?? []) {
-        if (!row.submission_id) continue;
-        projectEvidenceCount.set(row.submission_id, (projectEvidenceCount.get(row.submission_id) ?? 0) + 1);
-      }
+      const projectEvidenceRows = (projectEvidenceResult.data ?? []) as unknown as Array<{
+        id: string;
+        submission_id: string | null;
+        storage_path: string;
+        evidence_type: string;
+        description: string | null;
+        file_name: string;
+      }>;
+      const projectEvidenceBySubmission = new Map<string, EvidencePreviewItem[]>();
+      await Promise.all(
+        projectEvidenceRows.map(async (row) => {
+          if (!row.submission_id) return;
+          const { data, error } = await supabase.storage
+            .from("project-evidence")
+            .createSignedUrl(row.storage_path, 3600);
+          const list = projectEvidenceBySubmission.get(row.submission_id) ?? [];
+          list.push({
+            id: row.id,
+            signedUrl: error ? null : data.signedUrl,
+            isDocument: row.evidence_type === "document",
+            caption: row.description || row.file_name,
+          });
+          projectEvidenceBySubmission.set(row.submission_id, list);
+        }),
+      );
 
       let financialsByOrderId = new Map<
         string,
@@ -339,7 +362,7 @@ function ApprovalsPage() {
         overdueIndependentTasks,
         activityLogs,
         completionEvidenceBySubmission,
-        projectEvidenceCount,
+        projectEvidenceBySubmission,
         financialsByOrderId,
         profileNameById,
       };
@@ -412,8 +435,8 @@ function ApprovalsPage() {
     overdueProjectTasks: [],
     overdueIndependentTasks: [],
     activityLogs: [],
-    completionEvidenceBySubmission: new Map<string, CompletionEvidencePhoto[]>(),
-    projectEvidenceCount: new Map<string, number>(),
+    completionEvidenceBySubmission: new Map<string, EvidencePreviewItem[]>(),
+    projectEvidenceBySubmission: new Map<string, EvidencePreviewItem[]>(),
     financialsByOrderId: new Map<
       string,
       { customer_labor_amount: number; customer_material_amount: number; contractor_labor_amount: number }
@@ -540,7 +563,7 @@ function ApprovalsPage() {
                   note={item.note}
                   submittedBy={data.profileNameById.get(item.submitted_by) ?? "Kullanıcı"}
                   submittedAt={item.submitted_at}
-                  evidenceCount={data.projectEvidenceCount.get(item.id) ?? 0}
+                  evidence={data.projectEvidenceBySubmission.get(item.id) ?? []}
                   href={task ? `/projects/${task.project_id}#task-${task.id}` : undefined}
                   actions={
                     canManageProjectApprovals ? (
@@ -720,7 +743,7 @@ function PendingCard({
   submittedBy: string;
   submittedAt: string;
   evidenceCount?: number;
-  evidence?: CompletionEvidencePhoto[];
+  evidence?: EvidencePreviewItem[];
   href?: string;
   extra?: ReactNode;
   actions?: ReactNode;
@@ -762,7 +785,7 @@ function PendingCard({
                 href={item.signedUrl ?? undefined}
                 target="_blank"
                 rel="noreferrer"
-                className="block h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/70 bg-background/40"
+                className="block h-20 w-20 shrink-0 overflow-hidden rounded-md border border-border/70 bg-background/40"
               >
                 {item.signedUrl ? (
                   <img
