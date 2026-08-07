@@ -84,7 +84,9 @@ function ReportsPage() {
       const [materialsResult, completionsResult] = await Promise.all([
         supabase
           .from("work_order_materials")
-          .select("*, stock_items(code, name), work_orders(work_order_no, title, customers(name))")
+          .select(
+            "*, stock_items(code, name, unit_price), work_orders(work_order_no, title, customers(name))",
+          )
           .gte("created_at", start)
           .lt("created_at", end)
           .order("created_at"),
@@ -135,6 +137,12 @@ function ReportsPage() {
   const nesUsage = materials.filter((item) => item.is_nes_stock).length;
   const contractorUsage = materials.length - nesUsage;
   const totalMaterialQuantity = materials.reduce((sum, item) => sum + item.quantity, 0);
+  const materialUnitPrice = (item: (typeof materials)[number]) =>
+    item.is_nes_stock ? (item.stock_items?.unit_price ?? 0) : 0;
+  const totalMaterialAmount = materials.reduce(
+    (sum, item) => sum + item.quantity * materialUnitPrice(item),
+    0,
+  );
   const approvedTotal = approvals.reduce((sum, item) => sum + item.approved_amount, 0);
 
   async function exportReport() {
@@ -201,7 +209,19 @@ function ReportsPage() {
 
       addSheet(
         "Malzeme Kullanımları",
-        ["Tarih", "Görev No", "Görev", "Müşteri", "Kaynak", "Kod", "Malzeme", "Miktar", "Birim"],
+        [
+          "Tarih",
+          "Görev No",
+          "Görev",
+          "Müşteri",
+          "Kaynak",
+          "Kod",
+          "Malzeme",
+          "Miktar",
+          "Birim",
+          "Birim Fiyat",
+          "Toplam",
+        ],
         materials.map((item) => [
           formatDate(item.created_at),
           item.work_orders?.work_order_no ?? "",
@@ -212,8 +232,10 @@ function ReportsPage() {
           (item.is_nes_stock ? item.stock_items?.name : item.custom_material_name) ?? "",
           item.quantity,
           item.unit,
+          materialUnitPrice(item),
+          item.quantity * materialUnitPrice(item),
         ]),
-        ["", "", "", "", "", "", "TOPLAM", totalMaterialQuantity, ""],
+        ["", "", "", "", "", "", "TOPLAM", totalMaterialQuantity, "", "", totalMaterialAmount],
       );
 
       addSheet(

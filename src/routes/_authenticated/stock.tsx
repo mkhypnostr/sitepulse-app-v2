@@ -6,9 +6,11 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { downloadCsv, errorMessage, parseDelimitedText } from "@/lib/domain";
+import { formatTRY } from "@/lib/format";
 import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -53,6 +55,7 @@ function StockPage() {
     unit: "adet" as StockUnit,
     quantity: "0",
     minQuantity: "0",
+    unitPrice: "0",
     location: "",
     description: "",
   });
@@ -71,8 +74,12 @@ function StockPage() {
     mutationFn: async () => {
       const quantity = Number(form.quantity.replace(",", "."));
       const minQuantity = Number(form.minQuantity.replace(",", "."));
-      if (!Number.isFinite(quantity) || !Number.isFinite(minQuantity)) {
-        throw new Error("Miktar alanlarını kontrol edin");
+      const unitPrice = Number(form.unitPrice.replace(",", "."));
+      if (!Number.isFinite(quantity) || !Number.isFinite(minQuantity) || !Number.isFinite(unitPrice)) {
+        throw new Error("Miktar ve fiyat alanlarını kontrol edin");
+      }
+      if (unitPrice < 0) {
+        throw new Error("Birim fiyat negatif olamaz");
       }
       if (form.unit === "adet" && (!Number.isInteger(quantity) || !Number.isInteger(minQuantity))) {
         throw new Error("Adet biriminde küsurat kullanılamaz");
@@ -83,6 +90,7 @@ function StockPage() {
         unit: form.unit,
         quantity,
         min_quantity: minQuantity,
+        unit_price: unitPrice,
         location: form.location.trim() || null,
         description: form.description.trim() || null,
       });
@@ -97,6 +105,7 @@ function StockPage() {
         unit: "adet",
         quantity: "0",
         minQuantity: "0",
+        unitPrice: "0",
         location: "",
         description: "",
       });
@@ -159,6 +168,7 @@ function StockPage() {
   if (stockQuery.isLoading) return <LoadingState />;
 
   const items = stockQuery.data ?? [];
+  const totalStockValue = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
   const addButton = (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -217,6 +227,14 @@ function StockPage() {
               inputMode="decimal"
               value={form.minQuantity}
               onChange={(event) => setForm({ ...form, minQuantity: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            Birim Fiyat (₺)
+            <Input
+              inputMode="decimal"
+              value={form.unitPrice}
+              onChange={(event) => setForm({ ...form, unitPrice: event.target.value })}
             />
           </label>
           <label className="grid gap-1 text-sm">
@@ -287,6 +305,20 @@ function StockPage() {
           </div>
         }
       />
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Toplam Stok Değeri</p>
+            <p className="text-3xl font-black text-highlight">{formatTRY(totalStockValue)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Kayıtlı Malzeme Kalemi</p>
+            <p className="text-3xl font-black">{items.length}</p>
+          </CardContent>
+        </Card>
+      </div>
       {items.length === 0 ? (
         <EmptyState
           title="Stok kataloğu boş"
@@ -306,6 +338,8 @@ function StockPage() {
                 <TableHead>Malzeme</TableHead>
                 <TableHead>Lokasyon</TableHead>
                 <TableHead className="text-right">Stok</TableHead>
+                <TableHead className="text-right">Birim Fiyat</TableHead>
+                <TableHead className="text-right">Toplam Değer</TableHead>
                 <TableHead>Durum</TableHead>
               </TableRow>
             </TableHeader>
@@ -319,6 +353,10 @@ function StockPage() {
                     <TableCell>{item.location || "—"}</TableCell>
                     <TableCell className="text-right text-lg font-black">
                       {item.quantity} {item.unit}
+                    </TableCell>
+                    <TableCell className="text-right">{formatTRY(item.unit_price)}</TableCell>
+                    <TableCell className="text-right font-bold">
+                      {formatTRY(item.quantity * item.unit_price)}
                     </TableCell>
                     <TableCell>
                       {low ? (

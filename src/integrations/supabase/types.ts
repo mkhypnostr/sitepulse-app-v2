@@ -800,6 +800,7 @@ export type Database = {
           name: string
           quantity: number
           unit: Database["public"]["Enums"]["stock_unit"]
+          unit_price: number
         }
         Insert: {
           code?: string | null
@@ -811,6 +812,7 @@ export type Database = {
           name: string
           quantity?: number
           unit?: Database["public"]["Enums"]["stock_unit"]
+          unit_price?: number
         }
         Update: {
           code?: string | null
@@ -822,6 +824,7 @@ export type Database = {
           name?: string
           quantity?: number
           unit?: Database["public"]["Enums"]["stock_unit"]
+          unit_price?: number
         }
         Relationships: []
       }
