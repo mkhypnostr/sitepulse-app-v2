@@ -7,11 +7,12 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 // bu yüzden verify_jwt kapalı ve yetkilendirme bu paylaşılan anahtarla yapılır.
 const WEBHOOK_SECRET = Deno.env.get("NOTIFICATION_WEBHOOK_SECRET");
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-// nesgrup.com domaini Resend'de doğrulandıktan sonra bu varsayılan gönderici
-// gerçek teslimat yapabilir hale gelir; doğrulama tamamlanana kadar Resend
-// istekleri reddedebilir — bu, kod tarafında değil Resend hesap ayarında
-// tamamlanması gereken ayrı bir adımdır.
-const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "NES Enerji <bildirim@nesgrup.com>";
+// nesgrup.com domaini Resend'de doğrulanana kadar bildirim@nesgrup.com'dan
+// gönderim Resend tarafından reddedilir. Bu yüzden varsayılan (secret
+// ayarlanmamışken) gönderici Resend'in kendi doğrulanmış test adresidir;
+// bildirim@nesgrup.com yalnızca RESEND_FROM_EMAIL secret'ı Supabase'de
+// gerçekten ayarlandığında kullanılır (domain doğrulandıktan sonra).
+const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "NES Enerji <onboarding@resend.dev>";
 const RESEND_REPLY_TO = Deno.env.get("RESEND_REPLY_TO") || "info@nesgrup.com";
 // Kalıcı, herkese açık HTTPS logo URL'i — projenin kendi Supabase Storage
 // public bucket'ında barındırılıyor (bkz.
@@ -35,12 +36,7 @@ const BRAND = {
 type Recipient = { email: string; name?: string | null };
 
 type NotificationPayload = {
-  event_type:
-    | "task_assigned"
-    | "task_overdue"
-    | "approval_pending"
-    | "approval_decision"
-    | "work_order_closed_customer";
+  event_type: "task_assigned" | "task_overdue" | "approval_pending" | "approval_decision";
   recipients: Recipient[];
   data: Record<string, unknown>;
 };
@@ -192,16 +188,6 @@ function buildEmail(
             ? `<strong>${escapeHtml(taskName)}</strong> kaydınız onaylandı.`
             : `<strong>${escapeHtml(taskName)}</strong> kaydınız revizyon için geri gönderildi.`,
         )}${note ? paragraph(`<em>Not:</em> ${escapeHtml(note)}`) : ""}`,
-      );
-      return { subject, html };
-    }
-    case "work_order_closed_customer": {
-      const subject = `İşiniz tamamlandı: ${taskName}`;
-      const html = renderShell(
-        "İşiniz tamamlandı",
-        `${paragraph(greeting)}${paragraph(
-          `<strong>${escapeHtml(taskName)}</strong> işiniz tamamlandı ve kapatıldı. İlginiz için teşekkür ederiz.`,
-        )}`,
       );
       return { subject, html };
     }
