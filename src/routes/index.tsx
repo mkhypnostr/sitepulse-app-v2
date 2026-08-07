@@ -6,17 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import {
-  BriefcaseBusiness,
   CheckCircle2,
   Download,
   Eye,
   EyeOff,
-  FolderKanban,
+  HardHat,
   Monitor,
   MoreVertical,
   Share2,
   ShieldCheck,
   Smartphone,
+  Users,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -144,92 +144,73 @@ function IndexComponent() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 font-semibold text-[#0046a4]">
+      <div className="flex min-h-screen items-center justify-center bg-[#0c0c14] font-semibold text-foreground">
         Sistem kontrol ediliyor...
       </div>
     );
   }
 
   return (
-    <main className="login-page min-h-screen bg-slate-50 text-slate-950">
-      <div className="login-layout mx-auto grid min-h-screen max-w-7xl lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="login-intro login-energy-light flex items-center px-6 py-10 sm:px-10 lg:px-16 lg:py-16">
-          <div className="login-intro-content mx-auto w-full max-w-2xl">
-            <div className="login-brand flex items-center gap-3">
-              <img
-                src="/app-icon.svg"
-                alt="NES Enerji"
-                className="h-14 w-14 rounded-xl border border-slate-200 bg-white object-cover shadow-sm"
-              />
-              <div>
-                <p className="text-xl font-black tracking-tight text-slate-950">NES ENERJİ</p>
-                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#0046a4]">
-                  Saha Operasyon Platformu
-                </p>
-              </div>
+    <main className="min-h-screen bg-[#0c0c14] text-foreground">
+      <div className="mx-auto grid min-h-screen max-w-7xl grid-cols-1 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className="min-w-0 flex items-center px-6 py-10 sm:px-10 lg:px-16 lg:py-16">
+          <div className="mx-auto w-full max-w-2xl">
+            <div className="inline-block rounded-xl bg-white p-2.5 shadow-sm">
+              <img src="/nes-enerji-logo.png" alt="NES Enerji" className="h-8 w-auto sm:h-10" />
             </div>
 
-            <div className="login-divider mt-10 h-1 w-16 rounded-full bg-[#0046a4]" />
-            <h1 className="login-headline mt-6 max-w-xl text-4xl font-black leading-tight tracking-tight sm:text-5xl">
-              Saha ve proje süreçleriniz,
-              <span className="block text-[#0046a4]">size özel panelde.</span>
+            <h1 className="mt-8 max-w-xl text-3xl font-black leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+              Türkiye&apos;nin Enerji Sektörüne Özel Saha Operasyon Sistemi
             </h1>
-            <p className="login-description mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
+            <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground">
               NES Enerji tarafından size açılan işlere, proje ilerlemesine, fotoğraflara ve
               raporlara güvenli şekilde ulaşın.
             </p>
 
-            <div className="login-role-grid mt-8 grid gap-3 sm:grid-cols-3">
+            <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
               {[
                 {
-                  icon: BriefcaseBusiness,
-                  label: "Taşeron Paneli",
-                  description: "Atanan işleri, ilerlemeyi ve saha kayıtlarını yönetin.",
+                  icon: HardHat,
+                  label: "Şantiye Yönetimi",
+                  description: "Saha görevlerini ve iş emirlerini uçtan uca yönetin.",
                 },
                 {
-                  icon: FolderKanban,
-                  label: "Müşteri Paneli",
-                  description: "Proje durumunu, fotoğrafları ve raporları takip edin.",
+                  icon: Users,
+                  label: "Ekip Koordinasyonu",
+                  description: "Taşeron ve ekiplerle gerçek zamanlı koordinasyon kurun.",
                 },
                 {
                   icon: ShieldCheck,
                   label: "Güvenli Erişim",
-                  description: "Yalnızca size yetki verilen bilgileri görün.",
+                  description: "Yalnızca yetkiniz olan bilgilere erişin.",
                 },
               ].map((item) => (
-                <div
-                  key={item.label}
-                  className="login-role-card rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
-                >
-                  <item.icon className="h-5 w-5 text-[#0046a4]" />
-                  <p className="login-role-label mt-3 text-sm font-black text-slate-950">
-                    {item.label}
-                  </p>
-                  <p className="login-role-description mt-1 text-xs leading-5 text-slate-500">
-                    {item.description}
-                  </p>
-                </div>
+                <Card key={item.label} className="px-4 py-4">
+                  <item.icon className="h-5 w-5 text-highlight" />
+                  <p className="mt-3 text-sm font-black text-foreground">{item.label}</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
+                </Card>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="login-form-section login-energy-dark flex items-center justify-center border-t border-slate-200 px-6 py-10 lg:border-l lg:border-t-0 lg:px-12">
-          <Card className="login-card w-full max-w-md border-slate-200 bg-white shadow-xl shadow-slate-200/60">
-            <CardHeader className="login-card-header space-y-3 pb-2">
-              <div className="login-security-badge inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#0046a4]">
+        <section className="min-w-0 flex items-center justify-center border-t border-border px-6 py-10 lg:border-l lg:border-t-0 lg:px-12">
+          <Card className="w-full max-w-md">
+            <CardHeader className="space-y-3 pb-2">
+              <div className="inline-flex w-fit items-center gap-2 rounded-full bg-highlight/10 px-3 py-1 text-xs font-bold text-highlight">
                 <ShieldCheck className="h-4 w-4" /> Güvenli giriş
               </div>
-              <CardTitle className="login-card-title text-3xl font-black tracking-tight text-slate-950">
+              <CardTitle className="text-2xl font-black tracking-tight text-foreground sm:text-3xl">
                 Size tanımlanan hesabınızla giriş yapın
               </CardTitle>
-              <p className="login-card-subtitle text-sm leading-6 text-slate-500">
+              <p className="text-sm leading-6 text-muted-foreground">
                 NES Enerji tarafından iletilen kullanıcı adı veya e-posta ile geçici şifrenizi kullanın.
               </p>
             </CardHeader>
-            <CardContent className="login-card-content pt-6">
-              <form onSubmit={handleLogin} className="login-form space-y-5">
-                <label className="login-field grid gap-2 text-sm font-bold text-slate-800">
+            <CardContent className="pt-6">
+              <form onSubmit={handleLogin} className="space-y-5">
+                <label className="grid gap-2 text-sm font-bold text-foreground">
                   Kullanıcı adı veya e-posta
                   <Input
                     type="text"
@@ -238,10 +219,10 @@ function IndexComponent() {
                     required
                     autoComplete="username"
                     placeholder="ornek.kullanici veya ornek@firma.com"
-                    className="login-input h-12 border-slate-300 bg-white text-slate-950 placeholder:text-slate-400 focus-visible:ring-[#0046a4]"
+                    className="h-12 bg-input"
                   />
                 </label>
-                <label className="login-field grid gap-2 text-sm font-bold text-slate-800">
+                <label className="grid gap-2 text-sm font-bold text-foreground">
                   Şifre
                   <div className="relative">
                     <Input
@@ -251,12 +232,12 @@ function IndexComponent() {
                       required
                       autoComplete="current-password"
                       placeholder="••••••••"
-                      className="login-input h-12 border-slate-300 bg-white pr-11 text-slate-950 placeholder:text-slate-400 focus-visible:ring-[#0046a4]"
+                      className="h-12 bg-input pr-11"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-[#0046a4]"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-highlight"
                       aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
                     >
                       {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
@@ -265,36 +246,36 @@ function IndexComponent() {
                 </label>
                 <Button
                   type="submit"
-                  className="login-submit mt-2 h-12 w-full bg-[#0046a4] text-base font-bold text-white hover:bg-[#00377f]"
+                  className="mt-2 h-12 w-full text-base font-bold"
                   disabled={loginInProgress}
                 >
                   {loginInProgress ? "Giriş yapılıyor..." : "Giriş Yap"}
                 </Button>
               </form>
-              <div className="login-install mt-4 border-t border-slate-200 pt-4">
+              <div className="mt-4 border-t border-border pt-4">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={handleInstall}
                   disabled={isInstalled}
-                  className="login-install-button h-14 w-full justify-start border-[#0046a4]/30 bg-blue-50 px-4 text-left text-[#0046a4] hover:border-[#0046a4] hover:bg-blue-100 hover:text-[#00377f]"
+                  className="h-14 w-full justify-start px-4 text-left text-foreground"
                 >
                   {isInstalled ? (
-                    <CheckCircle2 className="mr-3 h-6 w-6 shrink-0" />
+                    <CheckCircle2 className="mr-3 h-6 w-6 shrink-0 text-highlight" />
                   ) : (
-                    <Download className="mr-3 h-6 w-6 shrink-0" />
+                    <Download className="mr-3 h-6 w-6 shrink-0 text-highlight" />
                   )}
                   <span>
                     <span className="block font-black">
                       {isInstalled ? "Bu cihazda kurulu" : "Cihazıma Kur"}
                     </span>
-                    <span className="block text-xs font-medium text-slate-500">
+                    <span className="block text-xs font-medium text-muted-foreground">
                       Telefon, tablet veya bilgisayara ekleyin
                     </span>
                   </span>
                 </Button>
               </div>
-              <p className="login-help mt-6 text-center text-xs leading-5 text-slate-500">
+              <p className="mt-6 text-center text-xs leading-5 text-muted-foreground">
                 Hesabınız yoksa veya giriş yapamıyorsanız NES Enerji yetkilinizle iletişime geçin.
               </p>
             </CardContent>
