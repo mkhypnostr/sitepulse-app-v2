@@ -38,6 +38,17 @@ function toWhatsAppAddress(rawPhone: string): string | null {
   return `whatsapp:${e164}`;
 }
 
+// Loglarda tam numarayı göstermemek için: ülke kodu + ilk 2, son 2 hane
+// görünür kalır, ortası yıldızlanır. Örn. whatsapp:+905061457588 -> +9050******88
+function maskAddress(address: string): string {
+  const digits = address.replace(/\D/g, "");
+  if (digits.length < 6) return "***";
+  const start = digits.slice(0, 4);
+  const end = digits.slice(-2);
+  const stars = "*".repeat(Math.max(digits.length - 6, 0));
+  return `+${start}${stars}${end}`;
+}
+
 async function sendViaTwilio(toAddress: string, body: string) {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
     throw new Error("TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN yapılandırılmamış.");
@@ -56,10 +67,33 @@ async function sendViaTwilio(toAddress: string, body: string) {
     },
     body: form,
   });
+  const responseText = await response.text();
+
   if (!response.ok) {
-    const responseBody = await response.text();
-    throw new Error(`Twilio API hatası (${response.status}): ${responseBody}`);
+    console.error("Twilio API hatası:", {
+      to: maskAddress(toAddress),
+      status: response.status,
+      body: responseText,
+    });
+    throw new Error(`Twilio API hatası (${response.status}): ${responseText}`);
   }
+
+  // Twilio 201 döndürse bile mesaj kuyruğa alınmış olabilir; sid/status ve
+  // varsa error_code/error_message'ı ayrıca logla — "200 ama aslında
+  // gitmedi" durumlarını (örn. sandbox oturumu kapanmış) görünür kılmak için.
+  let parsed: { sid?: string; status?: string; error_code?: unknown; error_message?: unknown } = {};
+  try {
+    parsed = JSON.parse(responseText);
+  } catch {
+    // Twilio her zaman JSON döner; parse edilemezse ham metni logla.
+  }
+  console.log("Twilio mesajı kabul edildi:", {
+    to: maskAddress(toAddress),
+    sid: parsed.sid ?? null,
+    status: parsed.status ?? null,
+    error_code: parsed.error_code ?? null,
+    error_message: parsed.error_message ?? null,
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -82,6 +116,7 @@ Deno.serve(async (req: Request) => {
 
   const message = typeof payload.message === "string" ? payload.message.trim() : "";
   const recipients = Array.isArray(payload.recipients) ? payload.recipients : [];
+  console.log(`WhatsApp bildirim isteği alındı: ${recipients.length} alıcı.`);
   if (!message || recipients.length === 0) return json({ sent: 0, failed: 0, errors: [] });
 
   const results = await Promise.allSettled(
