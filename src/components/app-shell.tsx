@@ -27,7 +27,8 @@ import { supabase } from "@/integrations/supabase/client";
 // Bu liste yalnızca work_orders.status (work_status enum) için kullanılır;
 // "not_applicable" ve "external_approval" bu enum'da yok ve sorguya
 // eklenirse "invalid input value for enum work_status" hatası verir.
-const TERMINAL_STATUSES = ["completed", "cancelled", "review_pending"];
+// "draft" da hariç tutulur — taslak bir iş emri henüz aktif iş sayılmaz.
+const TERMINAL_STATUSES = ["draft", "completed", "cancelled", "review_pending"];
 
 interface NavItem {
   to: string;

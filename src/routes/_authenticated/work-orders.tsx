@@ -60,6 +60,8 @@ function WorkOrdersPage() {
     locationUrl: "",
     date: new Date().toISOString().slice(0, 10),
     time: "08:00",
+    endDate: new Date().toISOString().slice(0, 10),
+    endTime: "10:00",
     customerLaborAmount: "",
     customerMaterialAmount: "",
     contractorLaborAmount: "",
@@ -162,10 +164,26 @@ function WorkOrdersPage() {
   }, [pageQuery.data, projectId]);
 
   const createOrder = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (saveAsDraft: boolean) => {
       const locationUrl = safeHttpsMapUrl(form.locationUrl);
-      if (!locationUrl) throw new Error("Google Maps'ten geçerli bir konum bağlantısı girin");
-      const scheduledAt = new Date(`${form.date}T${form.time}:00`).toISOString();
+      if (form.locationUrl.trim() && !locationUrl) {
+        throw new Error("Google Maps konum bağlantısı geçersiz görünüyor");
+      }
+      if (!saveAsDraft && !locationUrl) {
+        throw new Error("Görevi aktif olarak oluşturmak için geçerli bir konum bağlantısı girin (taslak olarak kaydedebilirsiniz)");
+      }
+      if (!saveAsDraft && form.assigneeId === "none") {
+        throw new Error("Görevi aktif olarak oluşturmak için sorumlu bir taşeron seçin (taslak olarak kaydedebilirsiniz)");
+      }
+      const scheduledAt = form.date && form.time ? new Date(`${form.date}T${form.time}:00`).toISOString() : null;
+      const plannedEndAt =
+        form.endDate && form.endTime ? new Date(`${form.endDate}T${form.endTime}:00`).toISOString() : null;
+      if (!saveAsDraft && (!scheduledAt || !plannedEndAt)) {
+        throw new Error("Görevi aktif olarak oluşturmak için planlanan başlangıç ve bitiş tarih-saatini girin (taslak olarak kaydedebilirsiniz)");
+      }
+      if (scheduledAt && plannedEndAt && plannedEndAt <= scheduledAt) {
+        throw new Error("Planlanan bitiş, başlangıçtan sonra olmalıdır");
+      }
       const workScopeType = form.workScopeType;
       const materialSource = form.workScopeType === "labor_only" ? "none" : form.materialSource;
 
@@ -211,8 +229,9 @@ function WorkOrdersPage() {
           order_title: form.title,
           order_description: form.description,
           order_location: "",
-          order_location_url: locationUrl,
-          order_scheduled_at: scheduledAt,
+          order_location_url: locationUrl ?? undefined,
+          order_scheduled_at: scheduledAt ?? undefined,
+          order_planned_end_at: plannedEndAt ?? undefined,
           order_customer_labor_amount: customerLaborAmount,
           order_customer_material_amount: customerMaterialAmount,
           order_contractor_labor_amount: contractorLaborAmount,
@@ -222,6 +241,7 @@ function WorkOrdersPage() {
           visible_to_customer: form.showToCustomer,
           assigned_contractor_id: form.assigneeId === "none" ? undefined : form.assigneeId,
           target_project_id: form.projectId || undefined,
+          save_as_draft: saveAsDraft,
         });
         if (error) throw error;
         return;
@@ -234,17 +254,19 @@ function WorkOrdersPage() {
         order_title: form.title,
         order_description: form.description,
         order_location: "",
-        order_location_url: locationUrl,
-        order_scheduled_at: scheduledAt,
+        order_location_url: locationUrl ?? undefined,
+        order_scheduled_at: scheduledAt ?? undefined,
+        order_planned_end_at: plannedEndAt ?? undefined,
         order_work_scope_type: workScopeType,
         order_default_material_source: materialSource,
         visible_to_customer: form.showToCustomer,
         assigned_contractor_id: form.assigneeId === "none" ? undefined : form.assigneeId,
         target_project_id: form.projectId || undefined,
+        save_as_draft: saveAsDraft,
       });
       if (error) throw error;
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, saveAsDraft) => {
       await queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setOpen(false);
@@ -256,6 +278,8 @@ function WorkOrdersPage() {
         locationUrl: "",
         date: new Date().toISOString().slice(0, 10),
         time: "08:00",
+        endDate: new Date().toISOString().slice(0, 10),
+        endTime: "10:00",
         customerLaborAmount: "",
         customerMaterialAmount: "",
         contractorLaborAmount: "",
@@ -269,7 +293,7 @@ function WorkOrdersPage() {
         taxOffice: "",
         billingAddress: "",
       });
-      toast.success("Görev oluşturuldu");
+      toast.success(saveAsDraft ? "Görev taslak olarak kaydedildi" : "Görev oluşturuldu");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -333,7 +357,9 @@ function WorkOrdersPage() {
         <DialogHeader>
           <DialogTitle>Yeni iş emri</DialogTitle>
           <DialogDescription>
-            Bağımsız bir görev oluşturun veya görevi mevcut bir projeye bağlayın.
+            Bağımsız bir görev oluşturun veya görevi mevcut bir projeye bağlayın. Sorumlu taşeron,
+            planlanan başlangıç-bitiş tarihi ve konum girilmeden görev yalnızca taslak olarak
+            kaydedilebilir; müşteri her zaman opsiyoneldir.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -422,7 +448,7 @@ function WorkOrdersPage() {
             </Select>
           </label>
           <label className="grid gap-1 text-sm">
-            Sorumlu Kişi
+            Sorumlu Kişi <span className="text-destructive">*</span>
             <Select
               value={form.assigneeId}
               onValueChange={(assigneeId) => setForm({ ...form, assigneeId })}
@@ -439,6 +465,9 @@ function WorkOrdersPage() {
                 ))}
               </SelectContent>
             </Select>
+            <span className="text-xs text-muted-foreground">
+              Görevi aktif olarak oluşturmak için zorunludur; taslak olarak boş bırakılabilir.
+            </span>
           </label>
           <label className="grid gap-1 text-sm sm:col-span-2">
             Başlık
@@ -463,14 +492,15 @@ function WorkOrdersPage() {
               placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
             />
             <span className="text-xs text-muted-foreground">
-              Düz adres yerine haritadaki yerin paylaşım bağlantısını yapıştırın.
+              Düz adres yerine haritadaki yerin paylaşım bağlantısını yapıştırın. Görevi aktif
+              olarak oluşturmak için zorunludur; taslak olarak boş bırakılabilir.
             </span>
           </label>
           {safeHttpsMapUrl(form.locationUrl) ? (
             <MapPreview mapUrl={form.locationUrl} compact className="sm:col-span-2" />
           ) : null}
           <label className="grid gap-1 text-sm">
-            Planlanan Tarih
+            Planlanan Başlangıç Tarihi
             <Input
               type="date"
               value={form.date}
@@ -478,8 +508,31 @@ function WorkOrdersPage() {
             />
           </label>
           <label className="grid gap-1 text-sm">
-            Saat
+            Başlangıç Saati
             <Select value={form.time} onValueChange={(time) => setForm({ ...form, time })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {halfHourOptions().map((time) => (
+                  <SelectItem key={time} value={time}>
+                    {time}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="grid gap-1 text-sm">
+            Planlanan Bitiş Tarihi
+            <Input
+              type="date"
+              value={form.endDate}
+              onChange={(event) => setForm({ ...form, endDate: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            Bitiş Saati
+            <Select value={form.endTime} onValueChange={(endTime) => setForm({ ...form, endTime })}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -648,11 +701,23 @@ function WorkOrdersPage() {
         </div>
         <DialogFooter>
           <Button
-            onClick={() => createOrder.mutate()}
+            type="button"
+            variant="outline"
+            onClick={() => createOrder.mutate(true)}
+            disabled={!form.title.trim() || createOrder.isPending}
+          >
+            {createOrder.isPending ? "Kaydediliyor..." : "Taslak Olarak Kaydet"}
+          </Button>
+          <Button
+            onClick={() => createOrder.mutate(false)}
             disabled={
               !form.title.trim() ||
               !safeHttpsMapUrl(form.locationUrl) ||
               !form.date ||
+              !form.time ||
+              !form.endDate ||
+              !form.endTime ||
+              form.assigneeId === "none" ||
               (form.workScopeType === "labor_and_material" && form.materialSource === "none") ||
               createOrder.isPending
             }
@@ -734,7 +799,8 @@ function WorkOrdersPage() {
                       </p>
                     )}
                     <p className="text-sm text-muted-foreground">
-                      {order.customers?.name || "Müşteri yok"} · {formatDate(order.scheduled_at)} ·{" "}
+                      {order.customers?.name || "Müşteri yok"} ·{" "}
+                      {order.scheduled_at ? formatDate(order.scheduled_at) : "Tarih belirlenmedi"} ·{" "}
                       {order.location ||
                         (order.location_url ? "Harita konumu eklendi" : "Konum yok")}
                     </p>
