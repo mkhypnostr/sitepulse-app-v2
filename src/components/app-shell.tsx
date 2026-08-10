@@ -215,7 +215,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="border-t border-sidebar-border p-2">
       <Link
         to="/profile"
-        className="mb-1 flex items-center gap-3 overflow-hidden rounded-lg px-[13px] py-2 transition-colors hover:bg-sidebar-accent"
+        className="mb-1 flex items-center gap-3 rounded-lg px-[13px] py-2 transition-colors hover:bg-sidebar-accent"
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
           {displayName.slice(0, 1)}
@@ -247,7 +247,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen overflow-x-hidden bg-background">
-      <aside className="group sidebar-transition sticky top-0 z-40 hidden h-screen w-16 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground hover:w-[210px] lg:flex">
+      <aside className="group sidebar-transition sticky top-0 z-40 hidden h-screen w-14 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground hover:w-[210px] lg:flex">
         <Link
           to="/dashboard"
           className="flex h-16 shrink-0 items-center gap-3 overflow-hidden border-b border-sidebar-border px-[13px]"
