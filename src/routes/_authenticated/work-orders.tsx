@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Plus, Search, SlidersHorizontal, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -48,6 +48,7 @@ function WorkOrdersPage() {
   const canSeeAmounts = canSeeFinancials(role);
   const { create, projectId } = Route.useSearch();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string; no: number | null } | null>(null);
   const [searchText, setSearchText] = useState("");
@@ -732,8 +733,8 @@ function WorkOrdersPage() {
   return (
     <>
       <PageHeader
-        title="Görevler"
-        description="Bağımsız veya projeye bağlı bütün saha görevleri."
+        title="İş Emirleri"
+        description="Bağımsız veya projeye bağlı tüm saha iş emirleri."
         actions={createButton}
       />
       {data.orders.length > 0 ? (
@@ -778,8 +779,18 @@ function WorkOrdersPage() {
         <div className="grid gap-4">
           {filteredOrders.map((order) => {
             const assignee = assigneeById.get(assignmentByOrder.get(order.id) ?? "");
+            const goToDetail = () => navigate({ to: "/jobs/$jobId", params: { jobId: order.id } });
             return (
-              <div key={order.id} className="surface-panel p-4 sm:p-5">
+              <div
+                key={order.id}
+                role="link"
+                tabIndex={0}
+                onClick={goToDetail}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") goToDetail();
+                }}
+                className="surface-panel cursor-pointer p-4 transition-colors hover:border-primary/60 sm:p-5"
+              >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -843,7 +854,10 @@ function WorkOrdersPage() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-3 lg:w-44">
+                  <div
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-3 lg:w-44"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <div>
                       <p className="text-xs text-muted-foreground">Müşteri görünümü</p>
                       <p className="text-sm font-semibold">
@@ -858,7 +872,7 @@ function WorkOrdersPage() {
                       }
                     />
                   </div>
-                  <Button asChild variant="outline" className="h-12">
+                  <Button asChild variant="outline" className="h-12" onClick={(event) => event.stopPropagation()}>
                     <Link to="/jobs/$jobId" params={{ jobId: order.id }}>
                       <Eye className="mr-2 h-4 w-4" /> Detay
                     </Link>
@@ -868,7 +882,10 @@ function WorkOrdersPage() {
                       type="button"
                       variant="outline"
                       className="h-12 border-destructive/50 text-destructive hover:text-destructive"
-                      onClick={() => setDeleteTarget({ id: order.id, title: order.title, no: order.work_order_no })}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setDeleteTarget({ id: order.id, title: order.title, no: order.work_order_no });
+                      }}
                     >
                       <Trash2 className="mr-2 h-4 w-4" /> Sil
                     </Button>
