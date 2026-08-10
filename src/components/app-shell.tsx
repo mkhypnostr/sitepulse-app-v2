@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -13,6 +13,7 @@ import {
   ListChecks,
   LogOut,
   Menu,
+  Search,
   ShieldAlert,
   UserCog,
   UsersRound,
@@ -23,6 +24,7 @@ import { useAuth } from "@/lib/auth-context";
 import { roleLabels } from "@/lib/domain";
 import { isOperationalManager } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
+import { GlobalSearch } from "@/components/global-search";
 
 // Bu liste yalnızca work_orders.status (work_status enum) için kullanılır;
 // "not_applicable" ve "external_approval" bu enum'da yok ve sorguya
@@ -44,6 +46,21 @@ export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const isMac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
   const profileQuery = useQuery({
     queryKey: ["current-profile", user?.id],
     enabled: Boolean(user?.id),
@@ -67,7 +84,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Menü rozet sayıları: yalnızca görsel bir ipucu, karar mantığı değil.
   // Sorgular RLS ile zaten role göre sınırlanır; hata durumunda sessizce 0 gösterilir.
   const operationalManager = isOperationalManager(role);
-  const canSeeApprovals = role === "admin" || role === "technical_office" || role === "contractor";
+  const canSeeApprovals =
+    role === "admin" || role === "technical_office" || role === "contractor";
   const badgeQuery = useQuery({
     queryKey: ["sidebar-badges", role],
     enabled: canSeeApprovals || operationalManager,
@@ -89,31 +107,40 @@ export function AppShell({ children }: { children: ReactNode }) {
             .eq("status", "pending"),
         ]);
         approvals =
-          (completion.count ?? 0) + (progress.count ?? 0) + (projectTasks.count ?? 0);
+          (completion.count ?? 0) +
+          (progress.count ?? 0) +
+          (projectTasks.count ?? 0);
       }
       let stock = 0;
       let workOrders = 0;
       let tasks = 0;
       if (operationalManager) {
-        const [stockResult, workOrdersResult, projectTasksResult, independentTasksResult] =
-          await Promise.all([
-            supabase.from("stock_items").select("quantity, min_quantity"),
-            supabase
-              .from("work_orders")
-              .select("id", { count: "exact", head: true })
-              .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
-            supabase
-              .from("project_tasks")
-              .select("id", { count: "exact", head: true })
-              .not("status", "in", "(completed,cancelled,not_applicable)"),
-            supabase
-              .from("operational_tasks")
-              .select("id", { count: "exact", head: true })
-              .not("status", "in", "(completed,cancelled,not_applicable)"),
-          ]);
-        stock = (stockResult.data ?? []).filter((item) => item.quantity <= item.min_quantity).length;
+        const [
+          stockResult,
+          workOrdersResult,
+          projectTasksResult,
+          independentTasksResult,
+        ] = await Promise.all([
+          supabase.from("stock_items").select("quantity, min_quantity"),
+          supabase
+            .from("work_orders")
+            .select("id", { count: "exact", head: true })
+            .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
+          supabase
+            .from("project_tasks")
+            .select("id", { count: "exact", head: true })
+            .not("status", "in", "(completed,cancelled,not_applicable)"),
+          supabase
+            .from("operational_tasks")
+            .select("id", { count: "exact", head: true })
+            .not("status", "in", "(completed,cancelled,not_applicable)"),
+        ]);
+        stock = (stockResult.data ?? []).filter(
+          (item) => item.quantity <= item.min_quantity,
+        ).length;
         workOrders = workOrdersResult.count ?? 0;
-        tasks = (projectTasksResult.count ?? 0) + (independentTasksResult.count ?? 0);
+        tasks =
+          (projectTasksResult.count ?? 0) + (independentTasksResult.count ?? 0);
       }
       return { approvals, stock, workOrders, tasks };
     },
@@ -129,44 +156,83 @@ export function AppShell({ children }: { children: ReactNode }) {
     role === "admin"
       ? [
           { to: "/dashboard", label: "Genel Bakış", icon: LayoutDashboard },
-          { to: "/work-orders", label: "İş Emirleri", icon: ListChecks, badgeKey: "workOrders" },
+          {
+            to: "/work-orders",
+            label: "İş Emirleri",
+            icon: ListChecks,
+            badgeKey: "workOrders",
+          },
           { to: "/projects", label: "Projeler", icon: FolderKanban },
-          { to: "/tasks", label: "Görevler", icon: ClipboardList, badgeKey: "tasks" },
+          {
+            to: "/tasks",
+            label: "Görevler",
+            icon: ClipboardList,
+            badgeKey: "tasks",
+          },
           { to: "/calendar", label: "Takvim", icon: CalendarDays },
           { separator: true },
           { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
           { to: "/dashboard", label: "Finans", icon: Wallet, hash: "finance" },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
           { separator: true },
-          { to: "/approvals", label: "Onay Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
+          {
+            to: "/approvals",
+            label: "Onay Merkezi",
+            icon: ShieldAlert,
+            badgeKey: "approvals",
+          },
           { to: "/reports", label: "Raporlar", icon: BarChart3 },
         ]
       : role === "technical_office"
         ? [
             { to: "/dashboard", label: "Genel Bakış", icon: LayoutDashboard },
-            { to: "/work-orders", label: "İş Emirleri", icon: ListChecks, badgeKey: "workOrders" },
+            {
+              to: "/work-orders",
+              label: "İş Emirleri",
+              icon: ListChecks,
+              badgeKey: "workOrders",
+            },
             { to: "/projects", label: "Projeler", icon: FolderKanban },
-            { to: "/tasks", label: "Görevler", icon: ClipboardList, badgeKey: "tasks" },
+            {
+              to: "/tasks",
+              label: "Görevler",
+              icon: ClipboardList,
+              badgeKey: "tasks",
+            },
             { to: "/calendar", label: "Takvim", icon: CalendarDays },
             { separator: true },
             { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
             { to: "/customers", label: "Müşteriler", icon: UsersRound },
             { separator: true },
-            { to: "/approvals", label: "Onay Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
+            {
+              to: "/approvals",
+              label: "Onay Merkezi",
+              icon: ShieldAlert,
+              badgeKey: "approvals",
+            },
           ]
-      : role === "contractor"
-        ? [
-            { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-            { to: "/approvals", label: "Onay ve Uyarı Merkezi", icon: ShieldAlert, badgeKey: "approvals" },
-            { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
-            { to: "/my-project-tasks", label: "Proje Görevlerim", icon: ClipboardList },
-            { to: "/calendar", label: "Takvim", icon: CalendarDays },
-          ]
-        : [
-            { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-            { to: "/my-projects", label: "Projelerim", icon: FolderKanban },
-            { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
-          ];
+        : role === "contractor"
+          ? [
+              { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
+              {
+                to: "/approvals",
+                label: "Onay ve Uyarı Merkezi",
+                icon: ShieldAlert,
+                badgeKey: "approvals",
+              },
+              { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
+              {
+                to: "/my-project-tasks",
+                label: "Proje Görevlerim",
+                icon: ClipboardList,
+              },
+              { to: "/calendar", label: "Takvim", icon: CalendarDays },
+            ]
+          : [
+              { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
+              { to: "/my-projects", label: "Projelerim", icon: FolderKanban },
+              { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
+            ];
 
   const handleSignOut = async () => {
     await signOut();
@@ -203,7 +269,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-4">
       {nav.map((item, index) =>
         "separator" in item ? (
-          <div key={`sep-${index}`} className="my-2 border-t border-sidebar-border" />
+          <div
+            key={`sep-${index}`}
+            className="my-2 border-t border-sidebar-border"
+          />
         ) : (
           navLink(item, closeAfterClick)
         ),
@@ -221,7 +290,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           {displayName.slice(0, 1)}
         </span>
         <span className="sidebar-reveal leading-tight">
-          <span className="block truncate text-sm font-bold text-foreground">{displayName}</span>
+          <span className="block truncate text-sm font-bold text-foreground">
+            {displayName}
+          </span>
           <span className="block truncate text-xs font-semibold text-muted-foreground">
             {role ? roleLabels[role] : "Kullanıcı"}
           </span>
@@ -258,12 +329,27 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="h-8 w-8 shrink-0 rounded-lg bg-white object-cover shadow-sm"
           />
           <span className="sidebar-reveal leading-tight">
-            <span className="block text-sm font-black tracking-wide text-foreground">NES ENERJİ</span>
+            <span className="block text-sm font-black tracking-wide text-foreground">
+              NES ENERJİ
+            </span>
             <span className="block text-[9px] font-bold uppercase tracking-[0.2em] text-highlight">
               Saha Operasyon
             </span>
           </span>
         </Link>
+        <div className="shrink-0 px-2 pt-2">
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="flex h-11 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <Search className="h-5 w-5 shrink-0" />
+            <span className="sidebar-reveal">Ara</span>
+            <span className="sidebar-reveal ml-auto shrink-0 rounded border border-sidebar-border px-1.5 py-0.5 text-[10px] font-black text-muted-foreground">
+              {isMac ? "⌘K" : "Ctrl K"}
+            </span>
+          </button>
+        </div>
         {navigation()}
         {accountArea()}
       </aside>
@@ -279,7 +365,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Menu className="h-6 w-6" />
           </button>
           <Link to="/dashboard" className="ml-3 flex items-center gap-2">
-            <img src="/app-icon.svg" alt="NES Enerji" className="h-9 w-9 rounded-lg bg-white" />
+            <img
+              src="/app-icon.svg"
+              alt="NES Enerji"
+              className="h-9 w-9 rounded-lg bg-white"
+            />
             <div className="leading-tight">
               <div className="text-sm font-black">NES ENERJİ</div>
               <div className="text-[9px] font-bold uppercase tracking-widest text-highlight">
@@ -287,9 +377,19 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             </div>
           </Link>
-          <span className="ml-auto max-w-32 truncate text-xs text-muted-foreground">
-            {displayName}
-          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="max-w-20 truncate text-xs text-muted-foreground">
+              {displayName}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sidebar-border text-foreground"
+              aria-label="Ara"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+          </div>
         </header>
 
         {mobileOpen ? (
@@ -302,7 +402,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             />
             <aside className="relative flex h-full w-[82%] max-w-80 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
               <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
-                <img src="/app-icon.svg" alt="NES Enerji" className="h-11 w-11 rounded-xl bg-white" />
+                <img
+                  src="/app-icon.svg"
+                  alt="NES Enerji"
+                  className="h-11 w-11 rounded-xl bg-white"
+                />
                 <div className="leading-tight">
                   <div className="font-black">NES ENERJİ</div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-highlight">
@@ -321,11 +425,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
                 {nav.map((item, index) =>
                   "separator" in item ? (
-                    <div key={`sep-mobile-${index}`} className="my-2 border-t border-sidebar-border" />
+                    <div
+                      key={`sep-mobile-${index}`}
+                      className="my-2 border-t border-sidebar-border"
+                    />
                   ) : (
                     (() => {
                       const active = location.pathname.startsWith(item.to);
-                      const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
+                      const badgeCount = item.badgeKey
+                        ? badgeCounts[item.badgeKey]
+                        : 0;
                       return (
                         <Link
                           key={item.label}
@@ -360,7 +469,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <p className="text-xs font-semibold text-muted-foreground">
                     {role ? roleLabels[role] : "Kullanıcı"}
                   </p>
-                  <p className="mt-1 truncate text-sm font-bold text-foreground">{displayName}</p>
+                  <p className="mt-1 truncate text-sm font-bold text-foreground">
+                    {displayName}
+                  </p>
                 </Link>
                 <Link
                   to="/profile"
@@ -385,6 +496,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+
+      <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }
