@@ -25,7 +25,7 @@ const LOGO_URL =
 const TIME_ZONE = "Europe/Istanbul";
 
 const BRAND = {
-  darkBg: "#0c0c14",
+  headerBg: "#f8fafc",
   cardBg: "#111120",
   border: "#1a1a28",
   primary: "#1d4ed8",
@@ -73,8 +73,29 @@ function formatIstanbul(iso: unknown): string | null {
   }).format(date);
 }
 
+// Tablo tabanlı düzen: Outlook masaüstü (Word render motoru) flexbox/inline-block
+// hizalamayı desteklemiyor, bu yüzden logo + "NES ENERJİ" yazısı tek satırlık bir
+// <table> ile yan yana ve dikeyde ortalanmış olarak yerleştirilir. Görsele hem HTML
+// width/height özniteliği hem eşleşen inline stil verilir; bazı istemciler stil
+// etiketlerini/CSS'i kırptığı için yalnızca birine güvenmek logonun gerilip
+// bozulmasına yol açabilir.
 function renderLogoHeader(): string {
-  return `<img src="${escapeHtml(LOGO_URL)}" alt="NES Enerji" height="32" style="display:block;height:32px;width:auto;" />`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td style="vertical-align:middle;padding:0;">
+        <img
+          src="${escapeHtml(LOGO_URL)}"
+          alt="NES Enerji"
+          width="104"
+          height="32"
+          style="display:block;width:104px;height:32px;border:0;outline:none;text-decoration:none;"
+        />
+      </td>
+      <td style="vertical-align:middle;padding:0 0 0 10px;">
+        <span style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:16px;font-weight:800;color:${BRAND.text};letter-spacing:0.03em;white-space:nowrap;">NES ENERJİ</span>
+      </td>
+    </tr>
+  </table>`;
 }
 
 function renderShell(title: string, bodyHtml: string): string {
@@ -86,7 +107,7 @@ function renderShell(title: string, bodyHtml: string): string {
         <td align="center">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;">
             <tr>
-              <td style="background:${BRAND.darkBg};padding:20px 24px;">
+              <td style="background:${BRAND.headerBg};padding:18px 24px;border-bottom:1px solid #e2e8f0;">
                 ${renderLogoHeader()}
               </td>
             </tr>
