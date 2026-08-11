@@ -248,7 +248,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         to={item.to}
         hash={item.hash}
         onClick={() => closeAfterClick && setMobileOpen(false)}
-        className={`relative flex h-11 items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap transition-colors ${
+        className={`relative flex h-9 shrink-0 items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap transition-colors ${
           active
             ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[2px] before:-translate-y-1/2 before:rounded-r before:bg-sidebar-active-border"
             : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
@@ -266,12 +266,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const navigation = (closeAfterClick = false) => (
-    <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2 py-4">
+    // flex + gap-0.5 (space-y yerine): ayırıcıların kendi margin'iyle
+    // (my-0.5) çakışmayan, öngörülebilir tek bir dikey ritim. py-2/gap-0.5,
+    // 100% zoom'da tipik masaüstü ekran yüksekliğinde en uzun rol menüsünün
+    // (admin, 12 öğe) bile scroll'a düşmeden sığması için sıkılaştırıldı;
+    // overflow-y-auto + min-h-0 güvenlik ağı olarak kalıyor — daha kısa
+    // ekranlarda menü hâlâ kayabilir, içerik asla erişilemez olmuyor.
+    <nav className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2 py-2">
       {nav.map((item, index) =>
         "separator" in item ? (
           <div
             key={`sep-${index}`}
-            className="my-2 border-t border-sidebar-border"
+            className="my-0.5 shrink-0 border-t border-sidebar-border"
           />
         ) : (
           navLink(item, closeAfterClick)
@@ -291,9 +297,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         to="/profile"
         title={`Profilim — ${displayName} · ${role ? roleLabels[role] : "Kullanıcı"}`}
         aria-label={`Profilim: ${displayName}, ${role ? roleLabels[role] : "Kullanıcı"}`}
-        className="mb-1 flex items-center gap-3 rounded-lg px-[13px] py-2 transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-active-border"
+        className="mb-0.5 flex items-center gap-3 rounded-lg px-[13px] py-1 transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-active-border"
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
+        {/* sidebar-avatar-center: daraltılmış (hover olmayan) durumda 32px
+            avatarın merkezini 20px nav ikonlarının merkez hizasına getirmek
+            için 6px sola kaydırır ((32-20)/2px, ikisi de aynı sol kenardan
+            [px-13px] başladığı için). transform layout'u etkilemediğinden
+            geniş sidebar'da (hover) transform sıfırlanınca isim/rol
+            satırının konumu hiç değişmiyor. */}
+        <span className="sidebar-avatar-center flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
           {displayName.slice(0, 1)}
         </span>
         <span className="sidebar-reveal leading-tight">
@@ -308,7 +320,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={handleSignOut}
-        className="flex h-10 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+        className="flex h-9 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
       >
         <LogOut className="h-5 w-5 shrink-0" />
         <span className="sidebar-reveal">Çıkış Yap</span>
@@ -337,11 +349,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
           </span>
         </Link>
-        <div className="shrink-0 px-2 pt-2">
+        <div className="shrink-0 px-2 pt-1">
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="flex h-11 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+            className="flex h-9 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
           >
             <Search className="h-5 w-5 shrink-0" />
             <span className="sidebar-reveal">Ara</span>
