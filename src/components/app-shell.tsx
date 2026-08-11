@@ -299,7 +299,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         aria-label={`Profilim: ${displayName}, ${role ? roleLabels[role] : "Kullanıcı"}`}
         className="mb-0.5 flex items-center gap-3 rounded-lg px-[13px] py-1 transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-active-border"
       >
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
+        {/* sidebar-avatar-center: daraltılmış (hover olmayan) durumda 32px
+            avatarın merkezini 20px nav ikonlarının merkez hizasına getirmek
+            için 6px sola kaydırır ((32-20)/2px, ikisi de aynı sol kenardan
+            [px-13px] başladığı için). transform layout'u etkilemediğinden
+            geniş sidebar'da (hover) transform sıfırlanınca isim/rol
+            satırının konumu hiç değişmiyor. */}
+        <span className="sidebar-avatar-center flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
           {displayName.slice(0, 1)}
         </span>
         <span className="sidebar-reveal leading-tight">
