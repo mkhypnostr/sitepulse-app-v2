@@ -214,3 +214,32 @@
   max-width: 160px;
   opacity: 1;
 }
+
+@utility sidebar-nav-scroll {
+  /* Nav menüsü artık normal ekranlarda taşmayacak şekilde sıkılaştırıldı;
+     bu yalnızca gerçekten kısa ekranlarda devreye giren bir güvenlik ağı.
+     Devreye girdiğinde varsayılan (beyaz/OS) kaydırma çubuğu yerine koyu
+     sidebar temasıyla uyumlu, ince bir çubuk gösterir — scroll gizlenmiyor,
+     yalnızca görsel olarak sidebar'a uyacak şekilde stilleniyor. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-border) transparent;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--sidebar-border);
+  border-radius: 9999px;
+}
+
+.sidebar-nav-scroll::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+  width: 0;
+}
