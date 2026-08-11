@@ -55,22 +55,34 @@ const typeIcons: Record<ResultType, typeof ListChecks> = {
   customer: UsersRound,
 };
 
-// Kullanıcının aratmak istediği metindeki ILIKE joker karakterlerini
-// (% ve _) kaçışlıyor; aksi halde ör. "%50" gibi bir arama, wildcard
-// olarak yorumlanıp beklenmedik eşleşmeler döndürebilir.
-function escapeIlike(term: string): string {
-  return term.replace(/[%_]/g, "\\$&");
+// PostgreSQL, "İ" (U+0130, Turkish nokta İ) karakterini lower()/ILIKE
+// altında ASCII "i"ye değil, ayrışık "i" + combining-dot-above dizisine
+// katlar (en_US.UTF-8 dahil, tr_TR'ye özgü olmayan tüm locale'lerde).
+// Sonuç: normal klavyeyle yazılan "bobin", başlığı "BOBİN..." olan bir
+// kayıtla ILIKE üzerinden hiçbir zaman eşleşmez (canlı veride doğrulandı:
+// 'BOBİN DEĞİŞİMİ' ilike '%bobin%' → false). Ğ/Ş/Ü/Ö/Ç için bu sorun yok,
+// onlar cross-case doğru katlanıyor.
+// Çözüm: ILIKE yerine Postgres'in case-insensitive regex operatörünü
+// (~*, PostgREST'te "imatch") kullanıp yalnızca i-ailesini (i/I/İ/ı)
+// locale'den bağımsız, açık bir karakter sınıfıyla eşliyoruz. Regex
+// olduğu için % / _ kaçışına gerek yok; genel regex özel karakterlerini
+// (., *, +, ?, ^, $, (, ), [, ], {, }, |, \) kaçışlamak yeterli.
+const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+
+function toTurkishSafePattern(term: string): string {
+  const escaped = term.replace(REGEX_SPECIAL_CHARS, "\\$&");
+  return escaped.replace(/[iIİı]/g, "[iIİı]");
 }
 
 async function searchWorkOrders(term: string): Promise<SearchResult[]> {
-  const escaped = escapeIlike(term);
+  const pattern = toTurkishSafePattern(term);
   const isNumeric = /^\d+$/.test(term);
 
   const queries = [
     supabase
       .from("work_orders")
       .select("id, work_order_no, title, customers(name)")
-      .ilike("title", `%${escaped}%`)
+      .filter("title", "imatch", pattern)
       .limit(RESULT_LIMIT),
   ];
   if (isNumeric) {
@@ -112,7 +124,7 @@ async function searchProjectTasks(
   let query = supabase
     .from("project_tasks")
     .select("id, task_name, project_id, projects(name)")
-    .ilike("task_name", `%${escapeIlike(term)}%`)
+    .filter("task_name", "imatch", toTurkishSafePattern(term))
     .limit(RESULT_LIMIT);
   if (!isManager) query = query.eq("responsible_id", userId);
 
@@ -142,7 +154,7 @@ async function searchOperationalTasks(
   let query = supabase
     .from("operational_tasks")
     .select("id, title")
-    .ilike("title", `%${escapeIlike(term)}%`)
+    .filter("title", "imatch", toTurkishSafePattern(term))
     .limit(RESULT_LIMIT);
   if (!isManager) query = query.eq("assigned_to", userId);
 
@@ -161,7 +173,7 @@ async function searchOperationalTasks(
 }
 
 async function searchProjects(term: string): Promise<SearchResult[]> {
-  const escaped = escapeIlike(term);
+  const pattern = toTurkishSafePattern(term);
   // .or() ile tek bir raw filter string'i birleştirmek yerine iki ayrı sorgu
   // kullanılıyor: arama teriminde virgül geçerse PostgREST'in or() söz dizimi
   // (virgülle ayrılmış koşullar) bozulabilir.
@@ -169,12 +181,12 @@ async function searchProjects(term: string): Promise<SearchResult[]> {
     supabase
       .from("projects")
       .select("id, name, project_no")
-      .ilike("name", `%${escaped}%`)
+      .filter("name", "imatch", pattern)
       .limit(RESULT_LIMIT),
     supabase
       .from("projects")
       .select("id, name, project_no")
-      .ilike("project_no", `%${escaped}%`)
+      .filter("project_no", "imatch", pattern)
       .limit(RESULT_LIMIT),
   ]);
   if (byName.error) throw byName.error;
@@ -198,7 +210,7 @@ async function searchCustomers(term: string): Promise<SearchResult[]> {
   const { data, error } = await supabase
     .from("customers")
     .select("id, name, contact")
-    .ilike("name", `%${escapeIlike(term)}%`)
+    .filter("name", "imatch", toTurkishSafePattern(term))
     .limit(RESULT_LIMIT);
   if (error) throw error;
 
@@ -291,7 +303,17 @@ export function GlobalSearch({
           klasik komut paleti moduna döner. */}
       <DialogContent className="left-0 top-0 flex h-full max-h-full w-full max-w-full translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border">
         <DialogTitle className="sr-only">Genel Arama</DialogTitle>
-        <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+        {/* shouldFilter={false}: sonuçlar zaten server-side (ILIKE/imatch) ile
+            filtreleniyor. cmdk'nin varsayılan filtresi kapatılmazsa, kendi
+            fuzzy eşleştirmesini CommandItem'ın `value` prop'una (burada
+            item.id — seçim/navigasyon için gerekli bir opak UUID) karşı
+            çalıştırıp, arama metniyle eşleşmeyen (neredeyse tüm) item'ları
+            gizliyor ve "Sonuç bulunamadı" gösteriyordu — sunucu doğru sonucu
+            döndürse bile (canlıda #7 "BOBİN DEĞİŞİMİ" ile doğrulandı). */}
+        <Command
+          shouldFilter={false}
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
+        >
           <CommandInput
             placeholder="İş emri, görev, proje veya müşteri ara..."
             value={query}
