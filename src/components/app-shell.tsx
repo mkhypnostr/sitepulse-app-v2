@@ -282,9 +282,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const accountArea = () => (
     <div className="border-t border-sidebar-border p-2">
+      {/* Avatar + isim/rol tek tıklanabilir profil giriş noktası: daraltılmış
+          sidebar'da yalnızca avatar görünür ama Link tüm satırı kaplıyor, bu
+          yüzden avatara tıklamak da yeterli. aria-label, sidebar-reveal ile
+          görsel olarak gizlenen metne screen reader için net bir yedek sağlar;
+          title ise daraltılmış haldeyken native tooltip veriyor. */}
       <Link
         to="/profile"
-        className="mb-1 flex items-center gap-3 rounded-lg px-[13px] py-2 transition-colors hover:bg-sidebar-accent"
+        title={`Profilim — ${displayName} · ${role ? roleLabels[role] : "Kullanıcı"}`}
+        aria-label={`Profilim: ${displayName}, ${role ? roleLabels[role] : "Kullanıcı"}`}
+        className="mb-1 flex items-center gap-3 rounded-lg px-[13px] py-2 transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-active-border"
       >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
           {displayName.slice(0, 1)}
@@ -297,13 +304,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             {role ? roleLabels[role] : "Kullanıcı"}
           </span>
         </span>
-      </Link>
-      <Link
-        to="/profile"
-        className="flex h-10 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-      >
-        <UserCog className="h-5 w-5 shrink-0" />
-        <span className="sidebar-reveal">Profilim</span>
       </Link>
       <button
         type="button"
