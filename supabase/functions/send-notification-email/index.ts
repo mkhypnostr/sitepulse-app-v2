@@ -18,12 +18,14 @@ const RESEND_REPLY_TO = Deno.env.get("RESEND_REPLY_TO") || "info@nesgrup.com";
 // public bucket'ında barındırılıyor (bkz.
 // supabase/migrations/20260809110000_brand_assets_public_bucket.sql).
 // LOGO_URL secret'ı ayarlanırsa (ör. kendi domaininize taşındığınızda) onu kullanır.
-// NOT: Storage'daki SVG'nin kendisinde beyaz, yuvarlak köşeli bir arka plan
-// (rx=108'lik <rect fill="#ffffff">) gömülü; e-posta header'ının zemini de
-// açık renk olduğundan bu neredeyse görünmez ama bazı istemcilerde hafif bir
-// "kapsül" kenarı sezilebiliyor. Bu, imaj dosyasının kendisinde; burada
-// yükseklik/genişlik ayarıyla giderilemez — asıl düzeltme SVG'nin şeffaf
-// zeminli bir sürümle Storage'da değiştirilmesini gerektirir.
+// NOT: Canlıda Storage'daki SVG'nin kendisinde beyaz, yuvarlak köşeli bir
+// arka plan (rx=108'lik <rect fill="#ffffff">) gömülüydü; e-posta header'ının
+// zemini de açık renk olduğundan bu neredeyse görünmez ama bazı istemcilerde
+// hafif bir "kapsül" kenarı sezilebiliyordu. Bu, imaj dosyasının kendisinde
+// bir sorundu; burada yükseklik/genişlik ayarıyla giderilemezdi. Şeffaf
+// zeminli düzeltilmiş kaynak dosya artık repoda: bkz.
+// supabase/storage/brand-assets/nes-enerji-logo.svg — Storage'daki canlı
+// objeye yüklenmesi (aynı bucket/yol) ayrı bir dağıtım adımıdır.
 const LOGO_URL =
   Deno.env.get("LOGO_URL") ||
   "https://nyfocdnlbknxpxbeeapj.supabase.co/storage/v1/object/public/brand-assets/nes-enerji-logo.svg";
