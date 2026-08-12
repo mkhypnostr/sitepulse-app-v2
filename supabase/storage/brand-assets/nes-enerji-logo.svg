@@ -3,8 +3,8 @@
      send-notification-email edge function'ının e-posta header logosu için kullanılır
      (bkz. supabase/functions/send-notification-email/index.ts, LOGO_URL).
      Orijinal varlıktan tek fark: rx=108'lik beyaz <rect> arka plan kaldırıldı, zemin
-     şeffaf; NES mavi logo işaretinin path'leri değişmedi. Bu dosya henüz canlı
-     Storage'a yüklenmedi — repo'daki kayıtlı kaynak, gerçek yükleme ayrı bir adımdır. -->
+     şeffaf; NES mavi logo işaretinin path'leri değişmedi. Bu dosya canlı
+     Storage'a yüklendi; repo'daki kopya izlenebilir kaynak olarak kalır. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="NES Enerji">
   <g transform="translate(118 77) scale(4.7)" fill="#0046a4">
     <path d="M19.543 15.035 4.383 30.191c-4.407 4.406-4.407 11.551 0 15.953L34.324 76.09l.336-.336c3.598-3.598 3.598-9.43 0-13.027L16.605 44.672c-3.312-3.317-3.312-8.688 0-12l2.684-2.684c4.101-4.101 4.211-10.715.254-14.953Z"/>
