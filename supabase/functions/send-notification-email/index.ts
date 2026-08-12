@@ -105,9 +105,9 @@ function renderLogoHeader(): string {
         <img
           src="${escapeHtml(LOGO_URL)}"
           alt="NES Enerji"
-          width="91"
+          width="28"
           height="28"
-          style="display:block;width:91px;height:28px;border:0;outline:none;text-decoration:none;"
+          style="display:block;width:28px;height:28px;border:0;outline:none;text-decoration:none;"
         />
       </td>
       <td style="vertical-align:middle;padding:0 0 0 10px;">
