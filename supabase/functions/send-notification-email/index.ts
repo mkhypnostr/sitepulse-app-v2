@@ -18,6 +18,14 @@ const RESEND_REPLY_TO = Deno.env.get("RESEND_REPLY_TO") || "info@nesgrup.com";
 // public bucket'ında barındırılıyor (bkz.
 // supabase/migrations/20260809110000_brand_assets_public_bucket.sql).
 // LOGO_URL secret'ı ayarlanırsa (ör. kendi domaininize taşındığınızda) onu kullanır.
+// NOT: Canlıda Storage'daki SVG'nin kendisinde beyaz, yuvarlak köşeli bir
+// arka plan (rx=108'lik <rect fill="#ffffff">) gömülüydü; e-posta header'ının
+// zemini de açık renk olduğundan bu neredeyse görünmez ama bazı istemcilerde
+// hafif bir "kapsül" kenarı sezilebiliyordu. Bu, imaj dosyasının kendisinde
+// bir sorundu; burada yükseklik/genişlik ayarıyla giderilemezdi. Şeffaf
+// zeminli düzeltilmiş kaynak dosya artık repoda: bkz.
+// supabase/storage/brand-assets/nes-enerji-logo.svg — Storage'daki canlı
+// objeye yüklenmesi (aynı bucket/yol) ayrı bir dağıtım adımıdır.
 const LOGO_URL =
   Deno.env.get("LOGO_URL") ||
   "https://nyfocdnlbknxpxbeeapj.supabase.co/storage/v1/object/public/brand-assets/nes-enerji-logo.svg";
@@ -36,7 +44,18 @@ const BRAND = {
 type Recipient = { email: string; name?: string | null };
 
 type NotificationPayload = {
-  event_type: "task_assigned" | "task_overdue" | "approval_pending" | "approval_decision";
+  // work_order_assigned / work_order_overdue: work_orders kaynaklı atama ve
+  // gecikme bildirimleri — metinde yalnızca "iş emri" geçer.
+  // task_assigned / task_overdue: project_tasks ve operational_tasks kaynaklı
+  // bildirimler — metinde "görev" geçmeye devam eder. Ayrım event_type
+  // üzerinden yapılır, tüm bildirimlerin ortak metni değiştirilmez.
+  event_type:
+    | "task_assigned"
+    | "task_overdue"
+    | "work_order_assigned"
+    | "work_order_overdue"
+    | "approval_pending"
+    | "approval_decision";
   recipients: Recipient[];
   data: Record<string, unknown>;
 };
@@ -86,9 +105,9 @@ function renderLogoHeader(): string {
         <img
           src="${escapeHtml(LOGO_URL)}"
           alt="NES Enerji"
-          width="104"
-          height="32"
-          style="display:block;width:104px;height:32px;border:0;outline:none;text-decoration:none;"
+          width="91"
+          height="28"
+          style="display:block;width:91px;height:28px;border:0;outline:none;text-decoration:none;"
         />
       </td>
       <td style="vertical-align:middle;padding:0 0 0 10px;">
@@ -152,7 +171,8 @@ function buildEmail(
 ): { subject: string; html: string } {
   const greetingName = recipient.name?.trim();
   const greeting = greetingName ? `Merhaba ${escapeHtml(greetingName)},` : "Merhaba,";
-  const taskName = String(data.taskName ?? "Görev");
+  const isWorkOrderEvent = eventType === "work_order_assigned" || eventType === "work_order_overdue";
+  const taskName = String(data.taskName ?? (isWorkOrderEvent ? "İş Emri" : "Görev"));
 
   switch (eventType) {
     case "task_assigned": {
@@ -183,6 +203,48 @@ function buildEmail(
           `Aşağıdaki görevin planlanan tarihi geçti ve henüz tamamlanmadı:`,
         )}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           ${infoRow("Görev", taskName)}
+          ${infoRow("Taşeron", contractorName)}
+        </table>`,
+      );
+      return { subject, html };
+    }
+    case "work_order_assigned": {
+      // Alıcı bağlamına göre metin: iş emrinin gerçek sorumlusuna/atanan
+      // kişiye "size atandı" dili; sorumlu olmayan adminlere "X'e atandı"
+      // dili. Aynı kişi hem admin hem atanansa (recipients listesi çağıran
+      // tarafta zaten tekilleştirilmiş olur, bkz. Deno.serve) bu karşılaştırma
+      // isAssignee=true verir ve atanan kişi metni kullanılır.
+      const assigneeEmail = typeof data.assigneeEmail === "string" ? data.assigneeEmail.trim().toLowerCase() : "";
+      const isAssignee = assigneeEmail !== "" && recipient.email.trim().toLowerCase() === assigneeEmail;
+      const assigneeName = data.assigneeName ? String(data.assigneeName) : "İlgili kullanıcı";
+      const assignedAt = formatIstanbul(data.assignedAt);
+      const plannedStart = formatIstanbul(data.plannedStart);
+      const plannedEnd = formatIstanbul(data.plannedEnd);
+      const location = data.location ? String(data.location) : null;
+      const subject = isAssignee ? `Size yeni iş emri atandı: ${taskName}` : `Yeni iş emri atandı: ${taskName}`;
+      const description = isAssignee
+        ? `Size yeni bir iş emri atandı: <strong>${escapeHtml(taskName)}</strong>.`
+        : `<strong>${escapeHtml(assigneeName)}</strong> adlı kullanıcıya yeni bir iş emri atandı: <strong>${escapeHtml(taskName)}</strong>.`;
+      const html = renderShell(
+        "Yeni iş emri atandı",
+        `${paragraph(greeting)}${paragraph(description)}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          ${assignedAt ? infoRow("Atama Zamanı", assignedAt) : ""}
+          ${plannedStart ? infoRow("Planlanan Başlangıç", plannedStart) : ""}
+          ${plannedEnd ? infoRow("Planlanan Bitiş", plannedEnd) : ""}
+          ${location ? infoRow("Lokasyon", location) : ""}
+        </table>`,
+      );
+      return { subject, html };
+    }
+    case "work_order_overdue": {
+      const contractorName = String(data.contractorName ?? "Atanmamış");
+      const subject = `Geciken iş emri: ${taskName}`;
+      const html = renderShell(
+        "Geciken iş emri uyarısı",
+        `${paragraph(greeting)}${paragraph(
+          `Aşağıdaki iş emrinin planlanan tarihi geçti ve henüz tamamlanmadı:`,
+        )}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          ${infoRow("İş Emri", taskName)}
           ${infoRow("Taşeron", contractorName)}
         </table>`,
       );
