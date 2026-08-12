@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   Wallet,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth-context";
@@ -111,7 +112,7 @@ type DashboardWorkOrder = Database["public"]["Tables"]["work_orders"]["Row"] & {
   } | null;
 };
 
-const EYEBROW = "text-[8.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground";
+const EYEBROW = "text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground/90";
 
 const projectStatusVariant: Record<ProjectStatus, NonNullable<BadgeProps["variant"]>> = {
   draft: "outline",
@@ -120,6 +121,79 @@ const projectStatusVariant: Record<ProjectStatus, NonNullable<BadgeProps["varian
   completed: "success",
   cancelled: "destructive",
 };
+
+// Özet kartlarındaki anlamsal renk sözlüğü: kırmızı yalnızca geciken/kritik,
+// amber yalnızca bekleyen, yeşil yalnızca tamamlanan/olumlu durumlar içindir.
+type CardAttention = "neutral" | "danger" | "warning" | "success";
+const ATTENTION_STYLES: Record<CardAttention, { border: string; iconWrap: string; topBar: string }> = {
+  neutral: { border: "border-border", iconWrap: "bg-primary/15 text-highlight", topBar: "bg-primary/50" },
+  danger: {
+    border: "border-destructive/30",
+    iconWrap: "bg-destructive/15 text-destructive",
+    topBar: "bg-destructive",
+  },
+  warning: { border: "border-warning/30", iconWrap: "bg-warning/15 text-warning", topBar: "bg-warning" },
+  success: { border: "border-success/30", iconWrap: "bg-success/15 text-success", topBar: "bg-success" },
+};
+
+function StatCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  href,
+  attention = "neutral",
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  icon: LucideIcon;
+  href: string;
+  attention?: CardAttention;
+}) {
+  const styles = ATTENTION_STYLES[attention];
+  return (
+    <a href={href} className="group block h-full">
+      <Card
+        className={`relative h-full min-h-[140px] overflow-hidden ${styles.border} bg-card transition-colors duration-150 group-hover:border-primary/50`}
+      >
+        <span aria-hidden="true" className={`absolute inset-x-0 top-0 h-[3px] ${styles.topBar}`} />
+        <CardContent className="flex h-full flex-col justify-between gap-4 p-5">
+          <div className="flex items-start justify-between gap-2">
+            <p className={EYEBROW}>{label}</p>
+            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${styles.iconWrap}`}>
+              <Icon className="h-4 w-4" />
+            </div>
+          </div>
+          <div>
+            <p className="text-[32px] leading-none font-black tabular-nums text-foreground sm:text-[34px]">
+              {value}
+            </p>
+            <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground/80">{detail}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </a>
+  );
+}
+
+function SectionEmpty({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 py-8 text-center">
+      <Icon className="h-5 w-5 text-muted-foreground/50" />
+      <p className="text-sm font-semibold text-foreground/80">{title}</p>
+      {description ? <p className="max-w-[240px] text-xs text-muted-foreground">{description}</p> : null}
+    </div>
+  );
+}
 
 function DashboardPage() {
   const { role, user } = useAuth();
@@ -606,7 +680,7 @@ function DashboardPage() {
       detail: pendingApprovalCount ? "Karar bekleyen kayıt var" : "Bekleyen kayıt yok",
       icon: ShieldAlert,
       href: "/approvals",
-      attention: pendingApprovalCount > 0 ? ("danger" as const) : undefined,
+      attention: pendingApprovalCount > 0 ? ("warning" as const) : undefined,
     },
     {
       label: "Geciken Görevler",
@@ -622,6 +696,7 @@ function DashboardPage() {
       detail: monthLabel,
       icon: CheckCircle2,
       href: "/work-orders",
+      attention: completedThisMonth > 0 ? ("success" as const) : undefined,
     },
     {
       label: "Kritik Stok",
@@ -629,7 +704,7 @@ function DashboardPage() {
       detail: lowStock.length ? "Minimum seviyenin altında" : "Kritik stok yok",
       icon: Package,
       href: "/stock",
-      attention: lowStock.length > 0 ? ("warning" as const) : undefined,
+      attention: lowStock.length > 0 ? ("danger" as const) : undefined,
     },
   ];
 
@@ -642,66 +717,49 @@ function DashboardPage() {
   const timeLabel = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(now);
 
   return (
-    <>
-      <PageHeader
-        title="Genel Bakış"
-        description={`${dateLabel} · ${timeLabel}`}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/reports">
-                <FileDown className="h-4 w-4" /> Rapor Al
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link to="/work-orders" search={{ create: true, projectId: undefined }}>
-                <Plus className="h-4 w-4" /> Yeni İş Emri
-              </Link>
-            </Button>
-          </div>
-        }
+    <div className="relative">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.05]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, oklch(0.968 0.007 247.9) 1px, transparent 1px), linear-gradient(to bottom, oklch(0.968 0.007 247.9) 1px, transparent 1px)",
+          backgroundSize: "48px 48px",
+          maskImage: "linear-gradient(to bottom, black, transparent 80%)",
+          WebkitMaskImage: "linear-gradient(to bottom, black, transparent 80%)",
+        }}
       />
+
+      <div className="mb-6 flex flex-col gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-highlight/80">Operasyon Paneli</p>
+          <h1 className="mt-1 text-2xl font-black tracking-tight text-foreground sm:text-[28px]">
+            Genel Bakış
+          </h1>
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <span aria-hidden="true" className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-success" />
+            <span className="capitalize">{dateLabel}</span>
+            <span className="text-border">·</span>
+            <span className="font-mono tabular-nums">{timeLabel}</span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" asChild>
+            <Link to="/reports">
+              <FileDown className="h-4 w-4" /> Rapor Al
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link to="/work-orders" search={{ create: true, projectId: undefined }}>
+              <Plus className="h-4 w-4" /> Yeni İş Emri
+            </Link>
+          </Button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         {statCards.map((metric) => (
-          <a
-            key={metric.label}
-            href={metric.href}
-            className="block h-full transition-transform hover:-translate-y-0.5"
-          >
-            <Card
-              className={`h-full min-h-[132px] ${
-                metric.attention === "danger"
-                  ? "border-destructive/40 bg-destructive/5"
-                  : metric.attention === "warning"
-                    ? "border-warning/40 bg-warning/5"
-                    : "border-border bg-card"
-              }`}
-            >
-              <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className={EYEBROW}>{metric.label}</p>
-                  <div
-                    className={`shrink-0 rounded-lg p-2 ${
-                      metric.attention === "danger"
-                        ? "bg-destructive/15 text-destructive"
-                        : metric.attention === "warning"
-                          ? "bg-warning/15 text-warning"
-                          : "bg-primary/15 text-highlight"
-                    }`}
-                  >
-                    <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
-                  <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">
-                    {metric.detail}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </a>
+          <StatCard key={metric.label} {...metric} />
         ))}
       </div>
 
@@ -746,7 +804,11 @@ function DashboardPage() {
               </Link>
             ))}
             {projectRows.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Henüz proje yok.</p>
+              <SectionEmpty
+                icon={FolderKanban}
+                title="Henüz proje yok"
+                description="Yeni bir proje oluşturulduğunda burada listelenir."
+              />
             ) : null}
           </div>
         </section>
@@ -785,12 +847,11 @@ function DashboardPage() {
               </div>
             </div>
           ) : (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center">
-              <Wallet className="h-8 w-8 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">
-                Finansal veriler yalnızca yöneticiye görünür.
-              </p>
-            </div>
+            <SectionEmpty
+              icon={Wallet}
+              title="Finansal veriler gizli"
+              description="Bu bilgiler yalnızca yöneticiye görünür."
+            />
           )}
         </section>
       </div>
@@ -808,9 +869,9 @@ function DashboardPage() {
               <a
                 key={item.id}
                 href={item.href}
-                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-destructive/50"
+                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-warning/50"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
                   <item.icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -823,7 +884,11 @@ function DashboardPage() {
               </a>
             ))}
             {pendingApprovalItems.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Onay bekleyen kayıt yok.</p>
+              <SectionEmpty
+                icon={ShieldAlert}
+                title="Onay bekleyen kayıt yok"
+                description="Tüm kayıtlar güncel durumda."
+              />
             ) : null}
           </div>
         </section>
@@ -851,7 +916,7 @@ function DashboardPage() {
               </div>
             ))}
             {lowStock.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Kritik stok yok.</p>
+              <SectionEmpty icon={Package} title="Kritik stok yok" description="Stok seviyeleri normal aralıkta." />
             ) : null}
           </div>
         </section>
@@ -923,10 +988,10 @@ function DashboardPage() {
             );
           })}
           {activeTaskItems.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Aktif görev yok.</p>
+            <SectionEmpty icon={ListChecks} title="Aktif görev yok" description="Şu anda açık görev bulunmuyor." />
           ) : null}
         </div>
       </section>
-    </>
+    </div>
   );
 }
