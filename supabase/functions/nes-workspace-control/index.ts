@@ -1040,6 +1040,10 @@ async function writeAudit(
   });
 }
 
+const OAUTH_SECURITY_SCHEMES = [
+  { type: "oauth2", scopes: ["openid", "email", "profile"] },
+];
+
 const tools = [
   {
     name: "get_google_workspace_status",
@@ -1208,6 +1212,13 @@ const tools = [
   },
 ];
 
+for (const tool of tools) {
+  Object.assign(tool, {
+    securitySchemes: OAUTH_SECURITY_SCHEMES,
+    _meta: { securitySchemes: OAUTH_SECURITY_SCHEMES },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -1225,14 +1236,6 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "POST") return json({ error: "POST kullanın." }, 405);
 
-  const actor = await authenticate(req);
-  if (!actor) return unauthorized();
-  if (!actor.isAdmin)
-    return json(
-      { error: "Bu bağlantı yalnızca NES yöneticileri içindir." },
-      403,
-    );
-
   let request: JsonRpcRequest;
   try {
     request = await req.json();
@@ -1245,7 +1248,7 @@ Deno.serve(async (req: Request) => {
     return rpcResult(request.id, {
       protocolVersion: "2025-06-18",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.0.0" },
+      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.0.1" },
     });
   }
   if (request.method === "notifications/initialized") {
@@ -1260,6 +1263,34 @@ Deno.serve(async (req: Request) => {
   const toolName = typeof params.name === "string" ? params.name : "";
   if (!tools.some((tool) => tool.name === toolName))
     return rpcError(request.id, -32602, "Bilinmeyen araç");
+
+  const actor = await authenticate(req);
+  if (!actor) {
+    return rpcResult(request.id, {
+      content: [{ type: "text", text: "Bu işlem için NES hesabınızı bağlayın." }],
+      _meta: {
+        "mcp/www_authenticate": [
+          `Bearer resource_metadata="${RESOURCE_METADATA_URL}", error="invalid_token", error_description="NES hesabıyla oturum açmanız gerekiyor"`,
+        ],
+      },
+      isError: true,
+    });
+  }
+  if (!actor.isAdmin) {
+    return rpcResult(request.id, {
+      content: [
+        {
+          type: "text",
+          text: "Bu bağlantı yalnızca NES yöneticileri içindir.",
+        },
+      ],
+      structuredContent: {
+        success: false,
+        error: "Bu bağlantı yalnızca NES yöneticileri içindir.",
+      },
+      isError: true,
+    });
+  }
 
   const requestId = crypto.randomUUID();
   const inputSummary =
