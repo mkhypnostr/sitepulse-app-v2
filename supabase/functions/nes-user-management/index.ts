@@ -411,7 +411,10 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
       if (removeOtherRolesError) throw removeOtherRolesError;
     } catch (error) {
       if (previousEmail) {
-        await admin.auth.admin.updateUserById(targetUserId, { email: previousEmail });
+        await admin.auth.admin.updateUserById(targetUserId, {
+          email: previousEmail,
+          email_confirm: true,
+        });
       }
       await writeAudit({
         requestId,
