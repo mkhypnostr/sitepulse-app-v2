@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Eye, EyeOff, KeyRound, Plus, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, KeyRound, Mail, Plus, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -57,6 +57,12 @@ type CreateUserRpcResponse = {
 
 type EditableRole = Exclude<AppRole, "admin">;
 const editableRoles: EditableRole[] = ["contractor", "customer"];
+// Yönetici rolü giriş e-postası değiştirme ekranından asla verilemez veya kaldırılamaz.
+const assignableNonAdminRoles: EditableRole[] = ["technical_office", "contractor", "customer"];
+
+function emailIsValid(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) && value.trim().length <= 254;
+}
 
 function passwordIsValid(value: string) {
   return (
@@ -85,6 +91,15 @@ function TeamPage() {
   const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [showResetPassword, setShowResetPassword] = useState(false);
+  const [emailChangeTarget, setEmailChangeTarget] = useState<{
+    id: string;
+    name: string;
+    currentEmail: string | null;
+    currentRole: AppRole;
+  } | null>(null);
+  const [emailChangeConfirming, setEmailChangeConfirming] = useState(false);
+  const [newLoginEmail, setNewLoginEmail] = useState("");
+  const [newLoginRole, setNewLoginRole] = useState<AppRole>("customer");
   const teamQuery = useQuery({
     queryKey: ["team"],
     enabled: canManageContractors,
@@ -184,6 +199,71 @@ function TeamPage() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
+
+  const closeEmailChangeDialog = () => {
+    setEmailChangeTarget(null);
+    setEmailChangeConfirming(false);
+    setNewLoginEmail("");
+  };
+
+  const openEmailChangeDialog = (member: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    role: AppRole;
+  }) => {
+    setEmailChangeTarget({
+      id: member.id,
+      name: member.full_name || "Bu kullanıcı",
+      currentEmail: member.email,
+      currentRole: member.role,
+    });
+    setEmailChangeConfirming(false);
+    setNewLoginEmail("");
+    setNewLoginRole(member.role);
+  };
+
+  const updateEmailMutation = useMutation({
+    mutationFn: async () => {
+      if (!emailChangeTarget) throw new Error("Kullanıcı seçilmedi.");
+      const trimmedEmail = newLoginEmail.trim().toLowerCase();
+      const roleChanged = newLoginRole !== emailChangeTarget.currentRole;
+      const { data, error } = await supabase.functions.invoke("nes-user-management", {
+        body: {
+          jsonrpc: "2.0",
+          id: crypto.randomUUID(),
+          method: "tools/call",
+          params: {
+            name: "update_nes_user_email",
+            arguments: {
+              target_user_id: emailChangeTarget.id,
+              new_email: trimmedEmail,
+              ...(roleChanged ? { new_role: newLoginRole } : {}),
+            },
+          },
+        },
+      });
+
+      if (error) throw error;
+      const response = data as CreateUserRpcResponse | null;
+      const result = response?.result?.structuredContent;
+      if (response?.error?.message) throw new Error(response.error.message);
+      if (response?.result?.isError || !result?.success) {
+        throw new Error(result?.error || "Giriş e-postası değiştirilemedi.");
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["team"] });
+      closeEmailChangeDialog();
+      toast.success("Giriş e-postası güncellendi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const emailChangeFormValid =
+    Boolean(emailChangeTarget) &&
+    emailIsValid(newLoginEmail) &&
+    newLoginEmail.trim().toLowerCase() !== (emailChangeTarget?.currentEmail ?? "").toLowerCase();
 
   const formIsValid =
     contractorForm.fullName.trim().length >= 2 &&
@@ -428,7 +508,7 @@ function TeamPage() {
                 <TableHead>Firma</TableHead>
                 <TableHead>Telefon</TableHead>
                 <TableHead className="w-56">Rol</TableHead>
-                {isAdmin ? <TableHead className="w-40">Şifre</TableHead> : null}
+                {isAdmin ? <TableHead className="w-64">İşlemler</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -436,6 +516,9 @@ function TeamPage() {
                 <TableRow key={member.id}>
                   <TableCell className="font-bold">
                     {member.full_name || "İsimsiz kullanıcı"}
+                    {isAdmin && member.email ? (
+                      <p className="mt-0.5 text-xs font-normal text-muted-foreground">{member.email}</p>
+                    ) : null}
                   </TableCell>
                   <TableCell>{member.company_name || "—"}</TableCell>
                   <TableCell>{member.phone || "—"}</TableCell>
@@ -472,18 +555,26 @@ function TeamPage() {
                   </TableCell>
                   {isAdmin ? (
                     <TableCell>
-                      {member.role === "admin" || member.role === "technical_office" ? (
-                        <span className="text-xs text-muted-foreground">Korumalı</span>
-                      ) : (
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setResetTarget({ id: member.id, name: member.full_name || "Bu kullanıcı" })}
+                          onClick={() => openEmailChangeDialog(member)}
                         >
-                          <KeyRound className="mr-2 h-4 w-4" /> Şifre Yenile
+                          <Mail className="mr-2 h-4 w-4" /> E-postayı Değiştir
                         </Button>
-                      )}
+                        {member.role === "admin" || member.role === "technical_office" ? null : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setResetTarget({ id: member.id, name: member.full_name || "Bu kullanıcı" })}
+                          >
+                            <KeyRound className="mr-2 h-4 w-4" /> Şifre Yenile
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   ) : null}
                 </TableRow>
@@ -543,6 +634,141 @@ function TeamPage() {
               {resetPasswordMutation.isPending ? "Yenileniyor..." : "Şifreyi Yenile"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(emailChangeTarget)}
+        onOpenChange={(open) => {
+          if (!open && !updateEmailMutation.isPending) closeEmailChangeDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {emailChangeConfirming && emailChangeTarget ? (
+            <>
+              <DialogHeader>
+                <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-warning/15 text-warning">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <DialogTitle>Giriş e-postasını değiştirin mi?</DialogTitle>
+                <DialogDescription>
+                  Bu işlem hemen uygulanır. Eski e-posta ile giriş kesilir; şifre ve kullanıcı kimliği korunur.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">Kullanıcı</p>
+                  <p className="font-bold">{emailChangeTarget.name}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Mevcut e-posta</p>
+                  <p className="break-all font-semibold">{emailChangeTarget.currentEmail || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Yeni e-posta</p>
+                  <p className="break-all font-bold text-highlight">{newLoginEmail.trim().toLowerCase()}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Rol</p>
+                  {newLoginRole === emailChangeTarget.currentRole ? (
+                    <p className="font-semibold">{roleLabels[emailChangeTarget.currentRole]} (değişmeyecek)</p>
+                  ) : (
+                    <p className="font-bold text-highlight">
+                      {roleLabels[emailChangeTarget.currentRole]} → {roleLabels[newLoginRole]}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEmailChangeConfirming(false)}
+                  disabled={updateEmailMutation.isPending}
+                >
+                  Geri
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => updateEmailMutation.mutate()}
+                  disabled={updateEmailMutation.isPending}
+                >
+                  {updateEmailMutation.isPending ? "Güncelleniyor..." : "E-postayı Değiştir"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Giriş e-postasını değiştir</DialogTitle>
+                <DialogDescription>
+                  {emailChangeTarget?.name} için yeni kurumsal giriş e-postası belirleyin. İsteğe bağlı olarak rolü de
+                  güncelleyebilirsiniz. Bu işlem yalnızca yöneticiler tarafından yapılabilir.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4">
+                <label className="grid gap-1.5 text-sm font-medium">
+                  Mevcut e-posta
+                  <Input value={emailChangeTarget?.currentEmail || "—"} disabled readOnly />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium">
+                  <span>
+                    Yeni giriş e-postası <span className="text-destructive">*</span>
+                  </span>
+                  <Input
+                    type="email"
+                    value={newLoginEmail}
+                    onChange={(event) => setNewLoginEmail(event.target.value)}
+                    maxLength={254}
+                    autoComplete="email"
+                    placeholder="ornek@nesgrup.com"
+                  />
+                </label>
+                {emailChangeTarget?.currentRole === "admin" ? (
+                  <div className="grid gap-1.5 text-sm font-medium">
+                    <span>Rol</span>
+                    <div className="inline-flex h-11 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 font-bold text-highlight">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>Yönetici — Korumalı</span>
+                    </div>
+                    <span className="text-xs font-normal leading-5 text-muted-foreground">
+                      Yönetici hesabının rolü bu ekrandan değiştirilemez; yalnızca e-posta güncellenir.
+                    </span>
+                  </div>
+                ) : (
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    Rol
+                    <Select
+                      value={newLoginRole}
+                      onValueChange={(value: EditableRole) => setNewLoginRole(value)}
+                    >
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assignableNonAdminRoles.map((itemRole) => (
+                          <SelectItem key={itemRole} value={itemRole}>
+                            {roleLabels[itemRole]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs font-normal leading-5 text-muted-foreground">
+                      Mevcut rolü korumak için değiştirmeden bırakın.
+                    </span>
+                  </label>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  onClick={() => setEmailChangeConfirming(true)}
+                  disabled={!emailChangeFormValid}
+                >
+                  Bilgileri Kontrol Et
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </>
