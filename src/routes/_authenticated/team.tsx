@@ -57,7 +57,8 @@ type CreateUserRpcResponse = {
 
 type EditableRole = Exclude<AppRole, "admin">;
 const editableRoles: EditableRole[] = ["contractor", "customer"];
-const allRoles: AppRole[] = ["admin", "technical_office", "contractor", "customer"];
+// Yönetici rolü giriş e-postası değiştirme ekranından asla verilemez veya kaldırılamaz.
+const assignableNonAdminRoles: EditableRole[] = ["technical_office", "contractor", "customer"];
 
 function emailIsValid(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) && value.trim().length <= 254;
@@ -722,24 +723,40 @@ function TeamPage() {
                     placeholder="ornek@nesgrup.com"
                   />
                 </label>
-                <label className="grid gap-1.5 text-sm font-medium">
-                  Rol
-                  <Select value={newLoginRole} onValueChange={(value: AppRole) => setNewLoginRole(value)}>
-                    <SelectTrigger className="h-11">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allRoles.map((itemRole) => (
-                        <SelectItem key={itemRole} value={itemRole}>
-                          {roleLabels[itemRole]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-xs font-normal leading-5 text-muted-foreground">
-                    Mevcut rolü korumak için değiştirmeden bırakın.
-                  </span>
-                </label>
+                {emailChangeTarget?.currentRole === "admin" ? (
+                  <div className="grid gap-1.5 text-sm font-medium">
+                    <span>Rol</span>
+                    <div className="inline-flex h-11 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 font-bold text-highlight">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>Yönetici — Korumalı</span>
+                    </div>
+                    <span className="text-xs font-normal leading-5 text-muted-foreground">
+                      Yönetici hesabının rolü bu ekrandan değiştirilemez; yalnızca e-posta güncellenir.
+                    </span>
+                  </div>
+                ) : (
+                  <label className="grid gap-1.5 text-sm font-medium">
+                    Rol
+                    <Select
+                      value={newLoginRole}
+                      onValueChange={(value: EditableRole) => setNewLoginRole(value)}
+                    >
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assignableNonAdminRoles.map((itemRole) => (
+                          <SelectItem key={itemRole} value={itemRole}>
+                            {roleLabels[itemRole]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs font-normal leading-5 text-muted-foreground">
+                      Mevcut rolü korumak için değiştirmeden bırakın.
+                    </span>
+                  </label>
+                )}
               </div>
               <DialogFooter>
                 <Button

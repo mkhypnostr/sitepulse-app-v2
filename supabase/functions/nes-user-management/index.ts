@@ -337,13 +337,15 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
 
   if (!/^[0-9a-f-]{36}$/i.test(targetUserId)) throw new Error("Geçersiz kullanıcı seçildi.");
   if (!validEmail(newEmail)) throw new Error("Geçerli bir e-posta adresi girin.");
+  // Yönetici rolü ayrıcalık yükseltmesini önlemek için bu araçtan asla verilemez;
+  // yalnızca mevcut yönetici olmayan roller arasında geçiş yapılabilir.
   if (
     requestedRole !== undefined &&
-    !(["admin", "technical_office", "contractor", "customer"] as AppRole[]).includes(
+    !(["technical_office", "contractor", "customer"] as AppRole[]).includes(
       requestedRole as AppRole,
     )
   ) {
-    throw new Error("Rol admin, technical_office, contractor veya customer olmalıdır.");
+    throw new Error("Rol yalnızca technical_office, contractor veya customer olabilir.");
   }
   const newRole = requestedRole as AppRole | undefined;
 
@@ -358,6 +360,13 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
 
   const previousEmail = userResult.user.email ?? null;
   const currentRole = roleRow.role as AppRole;
+
+  // Yönetici hesaplarının rolü bu ekrandan asla değiştirilemez (kendi rolünü veya
+  // başka bir yöneticinin rolünü düşürme dahil); yalnızca giriş e-postası güncellenebilir.
+  if (currentRole === "admin" && newRole !== undefined) {
+    throw new Error("Yönetici hesabının rolü bu ekrandan değiştirilemez; yalnızca e-posta güncellenebilir.");
+  }
+
   const finalRole = newRole ?? currentRole;
 
   if (previousEmail && previousEmail.toLowerCase() === newEmail) {
@@ -519,7 +528,7 @@ const tools = [
     name: "update_nes_user_email",
     title: "NES giriş e-postasını değiştir",
     description:
-      "Bir hesabın kurumsal giriş e-postasını değiştirir (ör. kişisel bir adresten @nesgrup.com adresine taşıma). Kullanıcı kimliği, profil, atamalar, roller ve şifre korunur; yalnızca giriş e-postası ve isteğe bağlı olarak rol güncellenir. Yalnızca yöneticiler çağırabilir. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
+      "Bir hesabın kurumsal giriş e-postasını değiştirir (ör. kişisel bir adresten @nesgrup.com adresine taşıma). Kullanıcı kimliği, profil, atamalar ve şifre korunur. Yönetici (admin) hesaplarının rolü bu araçtan hiçbir zaman değiştirilemez; yalnızca e-postaları güncellenebilir. Yönetici olmayan hesaplar için isteğe bağlı olarak technical_office, contractor veya customer rolüne geçiş yapılabilir. Yalnızca yöneticiler çağırabilir. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -532,8 +541,9 @@ const tools = [
         new_email: { type: "string", format: "email", description: "Yeni kurumsal giriş e-postası" },
         new_role: {
           type: "string",
-          enum: ["admin", "technical_office", "contractor", "customer"],
-          description: "İsteğe bağlı: e-posta değişimiyle birlikte rolü de günceller",
+          enum: ["technical_office", "contractor", "customer"],
+          description:
+            "İsteğe bağlı: e-posta değişimiyle birlikte rolü de günceller. Yönetici rolü bu araçtan asla verilemez veya kaldırılamaz.",
         },
       },
       required: ["target_user_id", "new_email"],
