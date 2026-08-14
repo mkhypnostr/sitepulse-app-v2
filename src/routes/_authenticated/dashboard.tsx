@@ -6,6 +6,7 @@ import {
   Boxes,
   BriefcaseBusiness,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   FileDown,
   FolderKanban,
@@ -14,6 +15,7 @@ import {
   Plus,
   ShieldAlert,
   Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
@@ -111,7 +113,7 @@ type DashboardWorkOrder = Database["public"]["Tables"]["work_orders"]["Row"] & {
   } | null;
 };
 
-const EYEBROW = "text-[8.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground";
+const EYEBROW = "font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80";
 
 const projectStatusVariant: Record<ProjectStatus, NonNullable<BadgeProps["variant"]>> = {
   draft: "outline",
@@ -120,6 +122,89 @@ const projectStatusVariant: Record<ProjectStatus, NonNullable<BadgeProps["varian
   completed: "success",
   cancelled: "destructive",
 };
+
+// Operasyon şeridindeki ve durum rozetindeki anlamsal renk sözlüğü: kırmızı
+// yalnızca geciken/kritik, amber yalnızca bekleyen, yeşil yalnızca olumlu
+// durumlar içindir — renk dekor değil, durumun kendisidir.
+type Attention = "neutral" | "danger" | "warning" | "success";
+const ATTENTION_STYLES: Record<Attention, { dot: string; icon: string; ring: string }> = {
+  neutral: { dot: "bg-primary", icon: "text-highlight", ring: "ring-primary/20" },
+  danger: {
+    dot: "bg-destructive shadow-[0_0_0_3px_oklch(0.711_0.166_22.2/0.18)]",
+    icon: "text-destructive",
+    ring: "ring-destructive/25",
+  },
+  warning: {
+    dot: "bg-warning shadow-[0_0_0_3px_oklch(0.837_0.164_84.4/0.18)]",
+    icon: "text-warning",
+    ring: "ring-warning/25",
+  },
+  success: {
+    dot: "bg-success shadow-[0_0_0_3px_oklch(0.773_0.153_163.2/0.18)]",
+    icon: "text-success",
+    ring: "ring-success/25",
+  },
+};
+const STATUS_BANNER_STYLES: Record<Attention, string> = {
+  neutral: "border-l-primary bg-primary/5 text-foreground",
+  danger: "border-l-destructive bg-destructive/5 text-destructive",
+  warning: "border-l-warning bg-warning/5 text-warning",
+  success: "border-l-success bg-success/5 text-success",
+};
+
+function StatCell({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  href,
+  attention = "neutral",
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  icon: LucideIcon;
+  href: string;
+  attention?: Attention;
+}) {
+  const s = ATTENTION_STYLES[attention];
+  return (
+    <a
+      href={href}
+      className="group flex flex-col gap-2 bg-card px-4 py-4 transition-colors hover:bg-accent/50 sm:px-5 sm:py-5"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} />
+          <span className={`${EYEBROW} leading-tight`}>{label}</span>
+        </div>
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${s.icon} opacity-70 transition-opacity group-hover:opacity-100`} />
+      </div>
+      <p className="text-[28px] leading-none font-bold tabular-nums text-foreground sm:text-[30px]">{value}</p>
+      <p className="truncate text-[11px] leading-snug text-muted-foreground/75">{detail}</p>
+    </a>
+  );
+}
+
+function SectionEmpty({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/60 px-4 py-7 text-center">
+      <Icon className="h-4 w-4 text-muted-foreground/50" />
+      <p className="text-sm font-semibold text-foreground/80">{title}</p>
+      {description ? (
+        <p className="max-w-[210px] text-xs leading-snug text-muted-foreground">{description}</p>
+      ) : null}
+    </div>
+  );
+}
 
 function DashboardPage() {
   const { role, user } = useAuth();
@@ -592,7 +677,14 @@ function DashboardPage() {
       return { ...project, percentage: projectApprovedProgress(tasks).percentage };
     });
 
-  const statCards = [
+  const statCards: Array<{
+    label: string;
+    value: number;
+    detail: string;
+    icon: LucideIcon;
+    href: string;
+    attention?: Attention;
+  }> = [
     {
       label: "Aktif İş Emirleri",
       value: active,
@@ -606,7 +698,7 @@ function DashboardPage() {
       detail: pendingApprovalCount ? "Karar bekleyen kayıt var" : "Bekleyen kayıt yok",
       icon: ShieldAlert,
       href: "/approvals",
-      attention: pendingApprovalCount > 0 ? ("danger" as const) : undefined,
+      attention: pendingApprovalCount > 0 ? "warning" : undefined,
     },
     {
       label: "Geciken Görevler",
@@ -614,7 +706,7 @@ function DashboardPage() {
       detail: overdueTaskCount ? "Planlanan tarihi geçen görev var" : "Geciken görev yok",
       icon: AlertTriangle,
       href: "/tasks?filter=overdue",
-      attention: overdueTaskCount > 0 ? ("danger" as const) : undefined,
+      attention: overdueTaskCount > 0 ? "danger" : undefined,
     },
     {
       label: "Tamamlanan (Ay)",
@@ -622,6 +714,7 @@ function DashboardPage() {
       detail: monthLabel,
       icon: CheckCircle2,
       href: "/work-orders",
+      attention: completedThisMonth > 0 ? "success" : undefined,
     },
     {
       label: "Kritik Stok",
@@ -629,7 +722,7 @@ function DashboardPage() {
       detail: lowStock.length ? "Minimum seviyenin altında" : "Kritik stok yok",
       icon: Package,
       href: "/stock",
-      attention: lowStock.length > 0 ? ("warning" as const) : undefined,
+      attention: lowStock.length > 0 ? "danger" : undefined,
     },
   ];
 
@@ -641,12 +734,45 @@ function DashboardPage() {
   }).format(now);
   const timeLabel = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(now);
 
+  // Üstteki operasyon durumu şeridi, zaten hesaplanmış sayılardan (yeni sorgu
+  // yok) tek cümlelik bir özet üretir: en ciddi duruma göre renklenir.
+  const opAttention: Attention =
+    overdueTaskCount > 0 ? "danger" : pendingApprovalCount > 0 || lowStock.length > 0 ? "warning" : "success";
+  const opStatusParts: string[] = [];
+  if (overdueTaskCount > 0) opStatusParts.push(`${overdueTaskCount} gecikme`);
+  if (pendingApprovalCount > 0) opStatusParts.push(`${pendingApprovalCount} onay bekliyor`);
+  if (lowStock.length > 0) opStatusParts.push(`${lowStock.length} kritik stok`);
+  const opStatusText = opStatusParts.length ? opStatusParts.join(" · ") : "Kritik konu yok — operasyon güncel";
+
   return (
-    <>
-      <PageHeader
-        title="Genel Bakış"
-        description={`${dateLabel} · ${timeLabel}`}
-        actions={
+    <div className="relative">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.05]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, oklch(0.968 0.007 247.9) 1px, transparent 1px), linear-gradient(to bottom, oklch(0.968 0.007 247.9) 1px, transparent 1px)",
+          backgroundSize: "48px 48px",
+          maskImage: "linear-gradient(to bottom, black, transparent 80%)",
+          WebkitMaskImage: "linear-gradient(to bottom, black, transparent 80%)",
+        }}
+      />
+
+      <div className="mb-5 border-b border-border/60 pb-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-highlight/80">
+              NES Enerji · Operasyon Merkezi
+            </p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-foreground sm:text-[28px]">
+              Genel Bakış
+            </h1>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-muted-foreground">
+              <span className="capitalize">{dateLabel}</span>
+              <span className="text-border">/</span>
+              <span className="tabular-nums">{timeLabel}</span>
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" asChild>
               <Link to="/reports">
@@ -659,274 +785,244 @@ function DashboardPage() {
               </Link>
             </Button>
           </div>
-        }
-      />
+        </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <div
+          className={`mt-4 flex items-center gap-2 rounded-lg border-l-2 px-3 py-2 text-xs font-semibold ${STATUS_BANNER_STYLES[opAttention]}`}
+        >
+          <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${ATTENTION_STYLES[opAttention].dot}`} />
+          <span>{opStatusText}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border/60 sm:grid-cols-5">
         {statCards.map((metric) => (
-          <a
-            key={metric.label}
-            href={metric.href}
-            className="block h-full transition-transform hover:-translate-y-0.5"
-          >
-            <Card
-              className={`h-full min-h-[132px] ${
-                metric.attention === "danger"
-                  ? "border-destructive/40 bg-destructive/5"
-                  : metric.attention === "warning"
-                    ? "border-warning/40 bg-warning/5"
-                    : "border-border bg-card"
-              }`}
-            >
-              <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className={EYEBROW}>{metric.label}</p>
-                  <div
-                    className={`shrink-0 rounded-lg p-2 ${
-                      metric.attention === "danger"
-                        ? "bg-destructive/15 text-destructive"
-                        : metric.attention === "warning"
-                          ? "bg-warning/15 text-warning"
-                          : "bg-primary/15 text-highlight"
-                    }`}
-                  >
-                    <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
-                  <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">
-                    {metric.detail}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </a>
+          <StatCell key={metric.label} {...metric} />
         ))}
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <section id="project-status" className="surface-panel scroll-mt-6 p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className={EYEBROW}>Proje Durumu</p>
-            <Link to="/projects" className="text-xs font-semibold text-highlight">
-              Tümünü gör
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {projectRows.map((project) => (
-              <Link
-                key={project.id}
-                to="/projects/$projectId"
-                params={{ projectId: project.id }}
-                className="block rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-highlight">
-                      <FolderKanban className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-foreground">{project.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {project.customers?.name ?? "Müşteri atanmadı"}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant={projectStatusVariant[project.status]} className="shrink-0">
-                    {projectStatusLabel[project.status]}
-                  </Badge>
-                </div>
-                <div className="mt-3 flex items-center gap-3">
-                  <Progress value={project.percentage} className="h-2 flex-1" />
-                  <span className="w-10 shrink-0 text-right text-xs font-bold text-foreground">
-                    %{project.percentage}
-                  </span>
-                </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        {/* Sol: aksiyon gerektiren akış — onaylar ve aktif görevler önce gelir. */}
+        <div className="flex min-w-0 flex-col gap-4">
+          <section id="approval-center" className="surface-panel scroll-mt-6 p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <p className={EYEBROW}>Onay Merkezi</p>
+              <Link to="/approvals" className="text-xs font-semibold text-highlight">
+                Tümünü gör
               </Link>
-            ))}
-            {projectRows.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Henüz proje yok.</p>
-            ) : null}
-          </div>
-        </section>
-
-        <section id="finance" className="surface-panel scroll-mt-6 p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className={EYEBROW}>Aylık Finans</p>
-            <span className="text-xs text-muted-foreground">{monthLabel}</span>
-          </div>
-          {canFinance ? (
-            <div className="space-y-2.5 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Satış İşçilik</span>
-                <span className="font-bold text-foreground">{formatTRY(financeTotals.laborSales)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Satış Malzeme</span>
-                <span className="font-bold text-foreground">{formatTRY(financeTotals.materialSales)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Taşeron Maliyeti</span>
-                <span className="font-bold text-destructive">-{formatTRY(financeTotals.contractorCost)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Malzeme Maliyeti</span>
-                <span className="font-bold text-destructive">-{formatTRY(financeTotals.materialCost)}</span>
-              </div>
-              <div className="my-1 border-t border-border" />
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-foreground">Net Kar</span>
-                <span
-                  className={`text-lg font-black ${netProfit >= 0 ? "text-success" : "text-destructive"}`}
+            </div>
+            <div className="space-y-2">
+              {pendingApprovalItems.slice(0, 5).map((item) => (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  className="group flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-warning/50"
                 >
-                  {formatTRY(netProfit)}
-                </span>
-              </div>
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning ring-1 ring-inset ring-warning/25">
+                    <item.icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-foreground">{item.title}</p>
+                    <p className="truncate text-xs text-muted-foreground">{item.label}</p>
+                  </div>
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                    {item.time ? formatProjectDateTime(item.time) : "—"}
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-warning" />
+                </a>
+              ))}
+              {pendingApprovalItems.length === 0 ? (
+                <SectionEmpty
+                  icon={ShieldAlert}
+                  title="Onay bekleyen kayıt yok"
+                  description="Tüm kayıtlar güncel durumda."
+                />
+              ) : null}
             </div>
-          ) : (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center">
-              <Wallet className="h-8 w-8 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">
-                Finansal veriler yalnızca yöneticiye görünür.
-              </p>
-            </div>
-          )}
-        </section>
-      </div>
+          </section>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <section id="approval-center" className="surface-panel scroll-mt-6 p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className={EYEBROW}>Onay Merkezi</p>
-            <Link to="/approvals" className="text-xs font-semibold text-highlight">
-              Tümünü gör
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {pendingApprovalItems.slice(0, 3).map((item) => (
-              <a
-                key={item.id}
-                href={item.href}
-                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-destructive/50"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
-                  <item.icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">{item.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{item.label}</p>
-                </div>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {item.time ? formatProjectDateTime(item.time) : "—"}
-                </span>
+          <section className="surface-panel p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <p className={EYEBROW}>Aktif Görevler</p>
+              <a href="/tasks" className="text-xs font-semibold text-highlight">
+                Tümünü gör
               </a>
-            ))}
-            {pendingApprovalItems.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Onay bekleyen kayıt yok.</p>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="surface-panel p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className={EYEBROW}>Kritik Stok</p>
-            <Link to="/stock" className="text-xs font-semibold text-highlight">
-              Tümünü gör
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {lowStock.slice(0, 5).map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
-                  <Boxes className="h-4 w-4" />
-                </span>
-                <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">{item.name}</p>
-                <span className="shrink-0 text-xs font-bold text-warning">
-                  {item.quantity} {item.unit}
-                </span>
-              </div>
-            ))}
-            {lowStock.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Kritik stok yok.</p>
-            ) : null}
-          </div>
-        </section>
-      </div>
-
-      <section className="surface-panel mt-4 p-4 sm:p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <p className={EYEBROW}>Aktif Görevler</p>
-          <a href="/tasks" className="text-xs font-semibold text-highlight">
-            Tümünü gör
-          </a>
-        </div>
-        <div className="space-y-2">
-          {activeTaskItems.slice(0, 8).map((item) => {
-            const bucket = taskDueBucket(item.plannedDate, now);
-            const Icon = item.kind === "project" ? FolderKanban : ListChecks;
-            return (
-              <a
-                key={item.id}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg border border-l-4 border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50 ${
-                  bucket === "overdue"
-                    ? "border-l-destructive"
-                    : bucket === "today" || bucket === "tomorrow"
-                      ? "border-l-warning"
-                      : "border-l-transparent"
-                }`}
-              >
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                    bucket === "overdue"
-                      ? "bg-destructive/15 text-destructive"
-                      : bucket === "today" || bucket === "tomorrow"
-                        ? "bg-warning/15 text-warning"
-                        : "bg-primary/15 text-highlight"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">{item.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{item.relation}</p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p
-                    className={`text-xs font-bold ${
+            </div>
+            <div className="space-y-2">
+              {activeTaskItems.slice(0, 8).map((item) => {
+                const bucket = taskDueBucket(item.plannedDate, now);
+                const Icon = item.kind === "project" ? FolderKanban : ListChecks;
+                return (
+                  <a
+                    key={item.id}
+                    href={item.href}
+                    className={`flex items-center gap-3 rounded-lg border border-l-4 border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50 ${
                       bucket === "overdue"
-                        ? "text-destructive"
+                        ? "border-l-destructive"
                         : bucket === "today" || bucket === "tomorrow"
-                          ? "text-warning"
-                          : "text-muted-foreground"
+                          ? "border-l-warning"
+                          : "border-l-transparent"
                     }`}
                   >
-                    {bucket === "overdue"
-                      ? "Gecikti"
-                      : bucket === "today"
-                        ? "Bugün"
-                        : bucket === "tomorrow"
-                          ? "Yarın"
-                          : item.plannedDate
-                            ? formatDate(item.plannedDate)
-                            : "Tarih yok"}
-                  </p>
-                  {(bucket === "overdue" || bucket === "today" || bucket === "tomorrow") && item.plannedDate ? (
-                    <p className="text-[10px] text-muted-foreground">{formatDate(item.plannedDate)}</p>
-                  ) : null}
-                </div>
-              </a>
-            );
-          })}
-          {activeTaskItems.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Aktif görev yok.</p>
-          ) : null}
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${
+                        bucket === "overdue"
+                          ? "bg-destructive/15 text-destructive ring-destructive/25"
+                          : bucket === "today" || bucket === "tomorrow"
+                            ? "bg-warning/15 text-warning ring-warning/25"
+                            : "bg-primary/15 text-highlight ring-primary/20"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-foreground">{item.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{item.relation}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p
+                        className={`text-xs font-bold ${
+                          bucket === "overdue"
+                            ? "text-destructive"
+                            : bucket === "today" || bucket === "tomorrow"
+                              ? "text-warning"
+                              : "text-muted-foreground"
+                        }`}
+                      >
+                        {bucket === "overdue"
+                          ? "Gecikti"
+                          : bucket === "today"
+                            ? "Bugün"
+                            : bucket === "tomorrow"
+                              ? "Yarın"
+                              : item.plannedDate
+                                ? formatDate(item.plannedDate)
+                                : "Tarih yok"}
+                      </p>
+                      {(bucket === "overdue" || bucket === "today" || bucket === "tomorrow") && item.plannedDate ? (
+                        <p className="font-mono text-[10px] text-muted-foreground">{formatDate(item.plannedDate)}</p>
+                      ) : null}
+                    </div>
+                  </a>
+                );
+              })}
+              {activeTaskItems.length === 0 ? (
+                <SectionEmpty icon={ListChecks} title="Aktif görev yok" description="Şu anda açık görev bulunmuyor." />
+              ) : null}
+            </div>
+          </section>
         </div>
-      </section>
-    </>
+
+        {/* Sağ rail: durum/bağlam bilgisi — proje sağlığı, stok, finans özeti. */}
+        <div className="flex min-w-0 flex-col gap-4">
+          <section id="project-status" className="surface-panel scroll-mt-6 p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <p className={EYEBROW}>Proje Durumu</p>
+              <Link to="/projects" className="text-xs font-semibold text-highlight">
+                Tümünü gör
+              </Link>
+            </div>
+            <div className="space-y-2.5">
+              {projectRows.map((project) => (
+                <Link
+                  key={project.id}
+                  to="/projects/$projectId"
+                  params={{ projectId: project.id }}
+                  className="block rounded-lg border border-border/60 bg-background/30 p-2.5 transition-colors hover:border-primary/50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 truncate text-sm font-bold text-foreground">{project.name}</p>
+                    <Badge variant={projectStatusVariant[project.status]} className="shrink-0">
+                      {projectStatusLabel[project.status]}
+                    </Badge>
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {project.customers?.name ?? "Müşteri atanmadı"}
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Progress value={project.percentage} className="h-1.5 flex-1" />
+                    <span className="w-9 shrink-0 text-right font-mono text-xs font-bold text-foreground">
+                      %{project.percentage}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+              {projectRows.length === 0 ? (
+                <SectionEmpty
+                  icon={FolderKanban}
+                  title="Henüz proje yok"
+                  description="Yeni bir proje oluşturulduğunda burada listelenir."
+                />
+              ) : null}
+            </div>
+          </section>
+
+          <section className="surface-panel p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <p className={EYEBROW}>Kritik Stok</p>
+              <Link to="/stock" className="text-xs font-semibold text-highlight">
+                Tümünü gör
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {lowStock.slice(0, 5).map((item) => (
+                <div key={item.id} className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-background/30 p-2.5">
+                  <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-warning shadow-[0_0_0_3px_oklch(0.837_0.164_84.4/0.18)]" />
+                  <p className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{item.name}</p>
+                  <span className="shrink-0 font-mono text-xs font-bold text-warning">
+                    {item.quantity} {item.unit}
+                  </span>
+                </div>
+              ))}
+              {lowStock.length === 0 ? (
+                <SectionEmpty icon={Package} title="Kritik stok yok" description="Stok seviyeleri normal aralıkta." />
+              ) : null}
+            </div>
+          </section>
+
+          <section id="finance" className="surface-panel scroll-mt-6 p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <p className={EYEBROW}>Aylık Finans</p>
+              <span className="text-xs text-muted-foreground">{monthLabel}</span>
+            </div>
+            {canFinance ? (
+              <div className="space-y-2 font-mono text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-sans text-xs text-muted-foreground">Satış İşçilik</span>
+                  <span className="tabular-nums font-bold text-foreground">{formatTRY(financeTotals.laborSales)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-sans text-xs text-muted-foreground">Satış Malzeme</span>
+                  <span className="tabular-nums font-bold text-foreground">{formatTRY(financeTotals.materialSales)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-sans text-xs text-muted-foreground">Taşeron Maliyeti</span>
+                  <span className="tabular-nums font-bold text-destructive">-{formatTRY(financeTotals.contractorCost)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-sans text-xs text-muted-foreground">Malzeme Maliyeti</span>
+                  <span className="tabular-nums font-bold text-destructive">-{formatTRY(financeTotals.materialCost)}</span>
+                </div>
+                <div className="my-1 border-t border-border" />
+                <div className="flex items-center justify-between">
+                  <span className="font-sans text-sm font-bold text-foreground">Net Kar</span>
+                  <span
+                    className={`tabular-nums text-lg font-black ${netProfit >= 0 ? "text-success" : "text-destructive"}`}
+                  >
+                    {formatTRY(netProfit)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <SectionEmpty
+                icon={Wallet}
+                title="Finansal veriler gizli"
+                description="Bu bilgiler yalnızca yöneticiye görünür."
+              />
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
   );
 }
