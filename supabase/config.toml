@@ -1,1 +1,6 @@
 project_id = "nes-enerji-is-takip"
+
+# Google OAuth callback is unauthenticated by design; MCP POST requests are
+# validated inside the function against Supabase Auth and the NES admin role.
+[functions.nes-workspace-control]
+verify_jwt = false
