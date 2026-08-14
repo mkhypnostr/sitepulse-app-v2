@@ -1479,6 +1479,7 @@ export type Database = {
         Args: never
         Returns: {
           company_name: string
+          email: string | null
           full_name: string
           id: string
           phone: string

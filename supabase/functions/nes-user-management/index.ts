@@ -130,7 +130,7 @@ async function writeAudit(input: {
   targetUserId?: string | null;
   email: string;
   role: AppRole;
-  action?: "create_user" | "reset_password";
+  action?: "create_user" | "reset_password" | "update_email";
   outcome: "success" | "failed";
   errorCode?: string | null;
 }) {
@@ -328,6 +328,117 @@ async function resetUserPassword(actorUserId: string, rawArguments: unknown) {
   return { success: true, user_id: targetUserId, message: "Geçici şifre yenilendi." };
 }
 
+async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
+  const args = (rawArguments ?? {}) as Record<string, unknown>;
+  const targetUserId = typeof args.target_user_id === "string" ? args.target_user_id : "";
+  const newEmail = normalizedEmail(args.new_email);
+  const requestedRole = args.new_role;
+  const requestId = crypto.randomUUID();
+
+  if (!/^[0-9a-f-]{36}$/i.test(targetUserId)) throw new Error("Geçersiz kullanıcı seçildi.");
+  if (!validEmail(newEmail)) throw new Error("Geçerli bir e-posta adresi girin.");
+  if (
+    requestedRole !== undefined &&
+    !(["admin", "technical_office", "contractor", "customer"] as AppRole[]).includes(
+      requestedRole as AppRole,
+    )
+  ) {
+    throw new Error("Rol admin, technical_office, contractor veya customer olmalıdır.");
+  }
+  const newRole = requestedRole as AppRole | undefined;
+
+  const [{ data: userResult, error: userError }, { data: roleRow, error: roleError }] =
+    await Promise.all([
+      admin.auth.admin.getUserById(targetUserId),
+      admin.from("user_roles").select("role").eq("user_id", targetUserId).maybeSingle(),
+    ]);
+
+  if (userError || !userResult.user) throw new Error("Kullanıcı bulunamadı.");
+  if (roleError || !roleRow) throw new Error("Kullanıcının rolü bulunamadı.");
+
+  const previousEmail = userResult.user.email ?? null;
+  const currentRole = roleRow.role as AppRole;
+  const finalRole = newRole ?? currentRole;
+
+  if (previousEmail && previousEmail.toLowerCase() === newEmail) {
+    throw new Error("Yeni e-posta mevcut e-posta ile aynı olamaz.");
+  }
+
+  const { error: emailError } = await admin.auth.admin.updateUserById(targetUserId, {
+    email: newEmail,
+    email_confirm: true,
+  });
+
+  if (emailError) {
+    await writeAudit({
+      requestId,
+      actorUserId,
+      targetUserId,
+      email: newEmail,
+      role: currentRole,
+      action: "update_email",
+      outcome: "failed",
+      errorCode: emailError.code ?? "email_update_failed",
+    });
+    const message =
+      emailError.code === "email_exists" || /already|exist/i.test(emailError.message)
+        ? "Bu e-posta adresi zaten başka bir hesap tarafından kullanılıyor."
+        : emailError.message;
+    throw new Error(message);
+  }
+
+  if (newRole && newRole !== currentRole) {
+    try {
+      const { error: roleUpsertError } = await admin
+        .from("user_roles")
+        .upsert({ user_id: targetUserId, role: newRole }, { onConflict: "user_id,role" });
+      if (roleUpsertError) throw roleUpsertError;
+
+      const { error: removeOtherRolesError } = await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", targetUserId)
+        .neq("role", newRole);
+      if (removeOtherRolesError) throw removeOtherRolesError;
+    } catch (error) {
+      if (previousEmail) {
+        await admin.auth.admin.updateUserById(targetUserId, { email: previousEmail });
+      }
+      await writeAudit({
+        requestId,
+        actorUserId,
+        targetUserId,
+        email: newEmail,
+        role: currentRole,
+        action: "update_email",
+        outcome: "failed",
+        errorCode: "role_update_failed_rolled_back",
+      });
+      const message = error instanceof Error ? error.message : "Rol güncellenemedi.";
+      throw new Error(message);
+    }
+  }
+
+  await writeAudit({
+    requestId,
+    actorUserId,
+    targetUserId,
+    email: newEmail,
+    role: finalRole,
+    action: "update_email",
+    outcome: "success",
+  });
+
+  return {
+    success: true,
+    user_id: targetUserId,
+    previous_email: previousEmail,
+    new_email: newEmail,
+    role: finalRole,
+    message: "Giriş e-postası güncellendi.",
+  };
+}
+
 const tools = [
   {
     name: "create_nes_user",
@@ -404,6 +515,36 @@ const tools = [
       openWorldHint: false,
     },
   },
+  {
+    name: "update_nes_user_email",
+    title: "NES giriş e-postasını değiştir",
+    description:
+      "Bir hesabın kurumsal giriş e-postasını değiştirir (ör. kişisel bir adresten @nesgrup.com adresine taşıma). Kullanıcı kimliği, profil, atamalar, roller ve şifre korunur; yalnızca giriş e-postası ve isteğe bağlı olarak rol güncellenir. Yalnızca yöneticiler çağırabilir. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        target_user_id: {
+          type: "string",
+          format: "uuid",
+          description: "E-postası değiştirilecek kullanıcı kimliği",
+        },
+        new_email: { type: "string", format: "email", description: "Yeni kurumsal giriş e-postası" },
+        new_role: {
+          type: "string",
+          enum: ["admin", "technical_office", "contractor", "customer"],
+          description: "İsteğe bağlı: e-posta değişimiyle birlikte rolü de günceller",
+        },
+      },
+      required: ["target_user_id", "new_email"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
 ];
 
 Deno.serve(async (req: Request) => {
@@ -453,7 +594,8 @@ Deno.serve(async (req: Request) => {
 
   if (request.method === "tools/call") {
     const params = request.params ?? {};
-    if (params.name !== "create_nes_user" && params.name !== "reset_nes_user_password") {
+    const knownTools = ["create_nes_user", "reset_nes_user_password", "update_nes_user_email"];
+    if (!knownTools.includes(params.name as string)) {
       return rpcError(request.id, -32602, "Bilinmeyen araç");
     }
     if (params.name === "reset_nes_user_password" && !auth.isAdmin) {
@@ -463,12 +605,24 @@ Deno.serve(async (req: Request) => {
         isError: true,
       });
     }
+    if (params.name === "update_nes_user_email" && !auth.isAdmin) {
+      return rpcResult(request.id, {
+        content: [{ type: "text", text: "Giriş e-postası değişimi yalnızca yöneticiler içindir." }],
+        structuredContent: {
+          success: false,
+          error: "Giriş e-postası değişimi yalnızca yöneticiler içindir.",
+        },
+        isError: true,
+      });
+    }
 
     try {
       const result =
         params.name === "create_nes_user"
           ? await createUser(auth, params.arguments)
-          : await resetUserPassword(auth.user.id, params.arguments);
+          : params.name === "reset_nes_user_password"
+            ? await resetUserPassword(auth.user.id, params.arguments)
+            : await updateUserEmail(auth.user.id, params.arguments);
       return rpcResult(request.id, {
         content: [{ type: "text", text: JSON.stringify(result) }],
         structuredContent: result,
