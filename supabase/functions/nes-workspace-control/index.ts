@@ -25,12 +25,16 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/nes-workspace-control`;
 const RESOURCE_METADATA_URL = `${FUNCTION_URL}/.well-known/oauth-protected-resource`;
 const AUTH_SERVER_URL = `${SUPABASE_URL}/auth/v1`;
-const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_WORKSPACE_CLIENT_ID") ?? "";
-const GOOGLE_CLIENT_SECRET =
-  Deno.env.get("GOOGLE_WORKSPACE_CLIENT_SECRET") ?? "";
-const GOOGLE_REDIRECT_URI =
+type GoogleOAuthClientConfig = {
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+};
+
+const GOOGLE_REDIRECT_URI_FALLBACK =
   Deno.env.get("GOOGLE_WORKSPACE_REDIRECT_URI") ||
   `${FUNCTION_URL}/google/callback`;
+let googleOAuthClientConfigCache: GoogleOAuthClientConfig | null = null;
 const OPERATIONS_DRIVE_ID =
   Deno.env.get("NES_OPERATIONS_DRIVE_ID") || "0ANT5zef2P9oDUk9PVA";
 const GOOGLE_SCOPES = [
@@ -95,6 +99,46 @@ function readAdminKey() {
 const admin = createClient(SUPABASE_URL, readAdminKey(), {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+async function getGoogleOAuthClientConfig(): Promise<GoogleOAuthClientConfig> {
+  if (googleOAuthClientConfigCache) return googleOAuthClientConfigCache;
+
+  const envClientId = Deno.env.get("GOOGLE_WORKSPACE_CLIENT_ID") ?? "";
+  const envClientSecret = Deno.env.get("GOOGLE_WORKSPACE_CLIENT_SECRET") ?? "";
+  if (envClientId && envClientSecret) {
+    googleOAuthClientConfigCache = {
+      client_id: envClientId,
+      client_secret: envClientSecret,
+      redirect_uri: GOOGLE_REDIRECT_URI_FALLBACK,
+    };
+    return googleOAuthClientConfigCache;
+  }
+
+  const { data, error } = await admin.rpc(
+    "get_google_workspace_oauth_client_credentials",
+  );
+  const row = Array.isArray(data) ? data[0] : data;
+  if (
+    error ||
+    !row ||
+    typeof row.client_id !== "string" ||
+    !row.client_id ||
+    typeof row.client_secret !== "string" ||
+    !row.client_secret
+  ) {
+    throw new Error("Google OAuth sunucu ayarları tamamlanmamış.");
+  }
+
+  googleOAuthClientConfigCache = {
+    client_id: row.client_id,
+    client_secret: row.client_secret,
+    redirect_uri:
+      typeof row.redirect_uri === "string" && row.redirect_uri
+        ? row.redirect_uri
+        : GOOGLE_REDIRECT_URI_FALLBACK,
+  };
+  return googleOAuthClientConfigCache;
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -251,15 +295,13 @@ async function googleAccessToken(ownerUserId: string) {
     : 0;
   if (expiresAt > Date.now() + 90_000) return credentials.access_token;
 
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    throw new Error("Google OAuth sunucu ayarları tamamlanmamış.");
-  }
+  const googleOAuth = await getGoogleOAuthClientConfig();
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
+      client_id: googleOAuth.client_id,
+      client_secret: googleOAuth.client_secret,
       refresh_token: credentials.refresh_token,
       grant_type: "refresh_token",
     }),
@@ -457,9 +499,7 @@ async function ensurePermission(
 }
 
 async function startGoogleConnection(actor: Actor) {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    throw new Error("Google OAuth istemci ayarları henüz sunucuya eklenmemiş.");
-  }
+  const googleOAuth = await getGoogleOAuthClientConfig();
   const state = randomToken(32);
   const codeVerifier = randomToken(64);
   const codeChallenge = await sha256(codeVerifier);
@@ -474,8 +514,8 @@ async function startGoogleConnection(actor: Actor) {
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.search = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: GOOGLE_REDIRECT_URI,
+    client_id: googleOAuth.client_id,
+    redirect_uri: googleOAuth.redirect_uri,
     response_type: "code",
     scope: GOOGLE_SCOPES.join(" "),
     access_type: "offline",
@@ -495,6 +535,7 @@ async function startGoogleConnection(actor: Actor) {
 }
 
 async function handleGoogleCallback(url: URL) {
+  const googleOAuth = await getGoogleOAuthClientConfig();
   const state = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code") ?? "";
   const googleError = url.searchParams.get("error");
@@ -530,12 +571,12 @@ async function handleGoogleCallback(url: URL) {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
+      client_id: googleOAuth.client_id,
+      client_secret: googleOAuth.client_secret,
       code,
       code_verifier: oauthState.code_verifier,
       grant_type: "authorization_code",
-      redirect_uri: GOOGLE_REDIRECT_URI,
+      redirect_uri: googleOAuth.redirect_uri,
     }),
   });
   const token = (await tokenResponse.json()) as Record<string, unknown>;
@@ -621,7 +662,7 @@ async function workspaceStatus(actor: Actor) {
   ]);
   return {
     connected: Boolean(connection),
-    oauth_server_configured: Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
+    oauth_server_configured: Boolean(googleOAuth.client_id && googleOAuth.client_secret),
     google_account: connection?.google_email ?? null,
     scopes: connection?.scopes ?? [],
     token_expires_at: connection?.expires_at ?? null,
