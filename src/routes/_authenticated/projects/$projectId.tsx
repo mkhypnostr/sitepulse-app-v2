@@ -431,6 +431,7 @@ function ProjectDetailPage() {
                               project.status !== "cancelled"
                             }
                             canAssign={canAssignTasks}
+                            canReview={canManageProjects}
                           />
                         ))}
                       </div>
@@ -603,11 +604,13 @@ function TaskEditor({
   assignees,
   editable,
   canAssign,
+  canReview,
 }: {
   task: ProjectTask;
   assignees: TaskAssignee[];
   editable: boolean;
   canAssign: boolean;
+  canReview: boolean;
 }) {
   const { role, user } = useAuth();
   const canSubmitProgress =
@@ -730,7 +733,7 @@ function TaskEditor({
       <ProjectTaskProgress
         task={task}
         canSubmit={canSubmitProgress}
-        canReview={role === "admin"}
+        canReview={canReview}
       />
 
       <div className={`mt-4 grid gap-3 md:grid-cols-2 ${canAssign ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
