@@ -2,7 +2,8 @@ import type { Database } from "@/integrations/supabase/types";
 
 export type ProjectType = Database["public"]["Enums"]["project_type"];
 export type ProjectStatus = Database["public"]["Enums"]["project_status"];
-export type ProjectTaskStatus = Database["public"]["Enums"]["project_task_status"];
+export type ProjectTaskStatus =
+  Database["public"]["Enums"]["project_task_status"];
 
 export const projectTypeOptions: Array<{
   value: ProjectType;
@@ -14,7 +15,8 @@ export const projectTypeOptions: Array<{
     value: "electric_permit",
     label: "Elektrik Ruhsat Projesi",
     shortLabel: "Elektrik Ruhsat",
-    description: "Belge toplama, proje çizimi, kurum onayları ve ruhsat süreci.",
+    description:
+      "Belge toplama, proje çizimi, kurum onayları ve ruhsat süreci.",
   },
   {
     value: "site_project",
@@ -30,7 +32,10 @@ export const projectTypeOptions: Array<{
   },
 ];
 
-export const projectStatusOptions: Array<{ value: ProjectStatus; label: string }> = [
+export const projectStatusOptions: Array<{
+  value: ProjectStatus;
+  label: string;
+}> = [
   { value: "draft", label: "Taslak" },
   { value: "active", label: "Devam Ediyor" },
   { value: "on_hold", label: "Beklemede" },
@@ -91,11 +96,15 @@ export function formatProjectDateTime(value: string | null | undefined) {
 
 export function projectProgress(statuses: ProjectTaskStatus[]) {
   const applicable = statuses.filter((status) => status !== "not_applicable");
-  const completed = applicable.filter((status) => status === "completed").length;
+  const completed = applicable.filter(
+    (status) => status === "completed",
+  ).length;
   return {
     completed,
     total: applicable.length,
-    percentage: applicable.length ? Math.round((completed / applicable.length) * 100) : 0,
+    percentage: applicable.length
+      ? Math.round((completed / applicable.length) * 100)
+      : 0,
   };
 }
 
@@ -103,7 +112,9 @@ export function projectApprovedProgress(
   tasks: Array<{ approved_progress_pct: number; status: ProjectTaskStatus }>,
 ) {
   const applicable = tasks.filter((task) => task.status !== "not_applicable");
-  const completed = applicable.filter((task) => task.approved_progress_pct === 100).length;
+  const completed = applicable.filter(
+    (task) => task.approved_progress_pct === 100,
+  ).length;
   const approvedTotal = applicable.reduce(
     (total, task) => total + task.approved_progress_pct,
     0,
@@ -111,6 +122,8 @@ export function projectApprovedProgress(
   return {
     completed,
     total: applicable.length,
-    percentage: applicable.length ? Math.round(approvedTotal / applicable.length) : 0,
+    percentage: applicable.length
+      ? Math.round(approvedTotal / applicable.length)
+      : 0,
   };
 }

@@ -41,7 +41,9 @@ export const Route = createFileRoute("/")({
 
 function safeRedirect(value: string | undefined) {
   if (!value) return "/dashboard";
-  return value.startsWith("/oauth/consent?authorization_id=") ? value : "/dashboard";
+  return value.startsWith("/oauth/consent?authorization_id=")
+    ? value
+    : "/dashboard";
 }
 
 function IndexComponent() {
@@ -50,7 +52,8 @@ function IndexComponent() {
   const [showPassword, setShowPassword] = useState(false);
   const [loginInProgress, setLoginInProgress] = useState(false);
   const [installInstructionsOpen, setInstallInstructionsOpen] = useState(false);
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const { user, loading } = useAuth();
   const { redirect } = Route.useSearch();
@@ -60,7 +63,9 @@ function IndexComponent() {
   }, [loading, redirect, user]);
 
   useEffect(() => {
-    const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
+    const navigatorWithStandalone = navigator as Navigator & {
+      standalone?: boolean;
+    };
     const standalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       navigatorWithStandalone.standalone === true;
@@ -156,15 +161,19 @@ function IndexComponent() {
         <section className="min-w-0 flex items-center px-6 py-10 sm:px-10 lg:px-16 lg:py-16">
           <div className="mx-auto w-full max-w-2xl">
             <div className="inline-block rounded-xl bg-white p-2.5 shadow-sm">
-              <img src="/nes-enerji-logo.png" alt="NES Enerji" className="h-8 w-auto sm:h-10" />
+              <img
+                src="/nes-enerji-logo.png"
+                alt="NES Enerji"
+                className="h-8 w-auto sm:h-10"
+              />
             </div>
 
             <h1 className="mt-8 max-w-xl text-3xl font-black leading-tight tracking-tight text-foreground sm:text-4xl lg:text-5xl">
               Türkiye&apos;nin Enerji Sektörüne Özel Saha Operasyon Sistemi
             </h1>
             <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground">
-              NES Enerji tarafından size açılan işlere, proje ilerlemesine, fotoğraflara ve
-              raporlara güvenli şekilde ulaşın.
+              NES Enerji tarafından size açılan işlere, proje ilerlemesine,
+              fotoğraflara ve raporlara güvenli şekilde ulaşın.
             </p>
 
             <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -172,12 +181,14 @@ function IndexComponent() {
                 {
                   icon: HardHat,
                   label: "Şantiye Yönetimi",
-                  description: "Saha görevlerini ve iş emirlerini uçtan uca yönetin.",
+                  description:
+                    "Saha görevlerini ve iş emirlerini uçtan uca yönetin.",
                 },
                 {
                   icon: Users,
                   label: "Ekip Koordinasyonu",
-                  description: "Taşeron ve ekiplerle gerçek zamanlı koordinasyon kurun.",
+                  description:
+                    "Taşeron ve ekiplerle gerçek zamanlı koordinasyon kurun.",
                 },
                 {
                   icon: ShieldCheck,
@@ -187,8 +198,12 @@ function IndexComponent() {
               ].map((item) => (
                 <Card key={item.label} className="px-4 py-4">
                   <item.icon className="h-5 w-5 text-highlight" />
-                  <p className="mt-3 text-sm font-black text-foreground">{item.label}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.description}</p>
+                  <p className="mt-3 text-sm font-black text-foreground">
+                    {item.label}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    {item.description}
+                  </p>
                 </Card>
               ))}
             </div>
@@ -205,7 +220,8 @@ function IndexComponent() {
                 Size tanımlanan hesabınızla giriş yapın
               </CardTitle>
               <p className="text-sm leading-6 text-muted-foreground">
-                NES Enerji tarafından iletilen kullanıcı adı veya e-posta ile geçici şifrenizi kullanın.
+                NES Enerji tarafından iletilen kullanıcı adı veya e-posta ile
+                geçici şifrenizi kullanın.
               </p>
             </CardHeader>
             <CardContent className="pt-6">
@@ -238,7 +254,9 @@ function IndexComponent() {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-highlight"
-                      aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
+                      aria-label={
+                        showPassword ? "Şifreyi gizle" : "Şifreyi göster"
+                      }
                     >
                       {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
                     </button>
@@ -276,14 +294,18 @@ function IndexComponent() {
                 </Button>
               </div>
               <p className="mt-6 text-center text-xs leading-5 text-muted-foreground">
-                Hesabınız yoksa veya giriş yapamıyorsanız NES Enerji yetkilinizle iletişime geçin.
+                Hesabınız yoksa veya giriş yapamıyorsanız NES Enerji
+                yetkilinizle iletişime geçin.
               </p>
             </CardContent>
           </Card>
         </section>
       </div>
 
-      <Dialog open={installInstructionsOpen} onOpenChange={setInstallInstructionsOpen}>
+      <Dialog
+        open={installInstructionsOpen}
+        onOpenChange={setInstallInstructionsOpen}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto border-[#164361] bg-[#061827] text-white sm:max-w-lg">
           <DialogHeader>
             <div className="mb-2 inline-flex w-fit items-center gap-2 rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-black uppercase tracking-wider text-cyan-300">
@@ -304,9 +326,11 @@ function IndexComponent() {
                 <div>
                   <h3 className="font-black">iPhone / iPad</h3>
                   <p className="mt-1 text-sm leading-6 text-slate-300">
-                    Tarayıcıdaki <strong className="text-white">Paylaş</strong> simgesine basın,
-                    aşağı kaydırın, <strong className="text-white">Ana Ekrana Ekle</strong> ve
-                    ardından <strong className="text-white">Ekle</strong> seçeneğine basın.
+                    Tarayıcıdaki <strong className="text-white">Paylaş</strong>{" "}
+                    simgesine basın, aşağı kaydırın,{" "}
+                    <strong className="text-white">Ana Ekrana Ekle</strong> ve
+                    ardından <strong className="text-white">Ekle</strong>{" "}
+                    seçeneğine basın.
                   </p>
                 </div>
               </div>
@@ -318,9 +342,18 @@ function IndexComponent() {
                 <div>
                   <h3 className="font-black">Android telefon / tablet</h3>
                   <p className="mt-1 text-sm leading-6 text-slate-300">
-                    Chrome'da sağ üstteki <strong className="text-white">üç noktaya</strong> basın.
-                    <strong className="text-white"> Uygulamayı yükle</strong> veya
-                    <strong className="text-white"> Ana ekrana ekle</strong> seçeneğine basın.
+                    Chrome'da sağ üstteki{" "}
+                    <strong className="text-white">üç noktaya</strong> basın.
+                    <strong className="text-white">
+                      {" "}
+                      Uygulamayı yükle
+                    </strong>{" "}
+                    veya
+                    <strong className="text-white">
+                      {" "}
+                      Ana ekrana ekle
+                    </strong>{" "}
+                    seçeneğine basın.
                   </p>
                 </div>
               </div>
@@ -333,8 +366,11 @@ function IndexComponent() {
                   <h3 className="font-black">Windows / Mac bilgisayar</h3>
                   <p className="mt-1 text-sm leading-6 text-slate-300">
                     Chrome veya Edge adres çubuğundaki
-                    <strong className="text-white"> uygulama yükleme simgesine</strong> basın. Simge
-                    görünmüyorsa sağ üst menüden{" "}
+                    <strong className="text-white">
+                      {" "}
+                      uygulama yükleme simgesine
+                    </strong>{" "}
+                    basın. Simge görünmüyorsa sağ üst menüden{" "}
                     <strong className="text-white">Uygulamayı yükle</strong>
                     seçeneğini açın.
                   </p>
@@ -345,7 +381,8 @@ function IndexComponent() {
 
           <div className="mt-1 flex items-center gap-3 rounded-xl bg-emerald-400/10 p-4 text-sm text-emerald-100">
             <Smartphone className="h-5 w-5 shrink-0 text-emerald-300" />
-            Kurulumdan sonra mavi NES simgesi ana ekranda veya masaüstünde görünür.
+            Kurulumdan sonra mavi NES simgesi ana ekranda veya masaüstünde
+            görünür.
           </div>
 
           <Button

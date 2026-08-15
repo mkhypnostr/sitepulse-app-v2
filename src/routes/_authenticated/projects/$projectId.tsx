@@ -33,7 +33,11 @@ import {
   taskStatusClass,
   type ProjectTaskStatus,
 } from "@/lib/projects";
-import { AccessDenied, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { MapPreview } from "@/components/map-preview";
 import { ProjectLifecycleControls } from "@/components/project-lifecycle-controls";
 import { ProjectTaskEvidence } from "@/components/project-task-evidence";
@@ -70,8 +74,13 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 });
 
 type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
-type Manager = Pick<Database["public"]["Tables"]["profiles"]["Row"], "id" | "full_name">;
-type TaskAssignee = Manager & { role: "admin" | "technical_office" | "contractor" | "customer" };
+type Manager = Pick<
+  Database["public"]["Tables"]["profiles"]["Row"],
+  "id" | "full_name"
+>;
+type TaskAssignee = Manager & {
+  role: "admin" | "technical_office" | "contractor" | "customer";
+};
 
 function ProjectDetailPage() {
   const { role } = useAuth();
@@ -109,7 +118,13 @@ function ProjectDetailPage() {
       if (!projectResult.data) throw new Error("Proje bulunamadı");
 
       const project = projectResult.data;
-      const [customersResult, processesResult, tasksResult, assigneesResult, taskAssigneesResult] = await Promise.all([
+      const [
+        customersResult,
+        processesResult,
+        tasksResult,
+        assigneesResult,
+        taskAssigneesResult,
+      ] = await Promise.all([
         supabase.rpc("list_project_customers"),
         supabase
           .from("project_processes")
@@ -135,10 +150,15 @@ function ProjectDetailPage() {
 
       return {
         project,
-        customer: (customersResult.data ?? []).find((item) => item.id === project.customer_id) ?? null,
+        customer:
+          (customersResult.data ?? []).find(
+            (item) => item.id === project.customer_id,
+          ) ?? null,
         processes: processesResult.data,
         tasks: tasksResult.data,
-        managers: assignees.filter((item) => item.role === "admin" || item.role === "technical_office"),
+        managers: assignees.filter(
+          (item) => item.role === "admin" || item.role === "technical_office",
+        ),
         contractors: assignees.filter((item) => item.role === "contractor"),
         taskAssignees: taskAssigneesResult.data ?? [],
       };
@@ -152,17 +172,22 @@ function ProjectDetailPage() {
     const targetId = window.location.hash.replace("#", "");
     if (!targetId) return;
     const timer = window.setTimeout(() => {
-      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document
+        .getElementById(targetId)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 80);
     return () => window.clearTimeout(timer);
   }, [projectQuery.data]);
 
   if (!canManageProjects) return <AccessDenied />;
-  if (projectQuery.isLoading) return <LoadingState label="Proje ayrıntıları yükleniyor..." />;
+  if (projectQuery.isLoading)
+    return <LoadingState label="Proje ayrıntıları yükleniyor..." />;
   if (projectQuery.error || !projectQuery.data) {
     return (
       <div className="surface-panel p-8 text-center">
-        <p className="font-bold text-destructive">{errorMessage(projectQuery.error)}</p>
+        <p className="font-bold text-destructive">
+          {errorMessage(projectQuery.error)}
+        </p>
         <Button asChild variant="outline" className="mt-5">
           <Link to="/projects">Projelere Dön</Link>
         </Button>
@@ -170,13 +195,18 @@ function ProjectDetailPage() {
     );
   }
 
-  const { project, customer, processes, tasks, managers, taskAssignees } = projectQuery.data;
+  const { project, customer, processes, tasks, managers, taskAssignees } =
+    projectQuery.data;
   const assignees = taskAssignees as TaskAssignee[];
   const processProgresses = processes.map((process) => ({
     ...process,
-    progress: projectApprovedProgress(tasks.filter((task) => task.process_id === process.id)),
+    progress: projectApprovedProgress(
+      tasks.filter((task) => task.process_id === process.id),
+    ),
   }));
-  const managerById = new Map(managers.map((manager) => [manager.id, manager.full_name]));
+  const managerById = new Map(
+    managers.map((manager) => [manager.id, manager.full_name]),
+  );
   const location = [project.province, project.district, project.neighborhood]
     .filter(Boolean)
     .join(" / ");
@@ -214,13 +244,18 @@ function ProjectDetailPage() {
                   : "Drive Klasörlerini Hazırla"}
               </Button>
             )}
-            {canEditTasks && project.status !== "completed" && project.status !== "cancelled" ? (
+            {canEditTasks &&
+            project.status !== "completed" &&
+            project.status !== "cancelled" ? (
               <Button onClick={() => setCreateTaskOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" /> Yeni Proje Görevi
               </Button>
             ) : null}
             <Button asChild variant="outline">
-              <Link to="/project-report/$projectId" params={{ projectId: project.id }}>
+              <Link
+                to="/project-report/$projectId"
+                params={{ projectId: project.id }}
+              >
                 <FileText className="mr-2 h-4 w-4" /> Proje Raporu
               </Link>
             </Button>
@@ -243,7 +278,10 @@ function ProjectDetailPage() {
           open={createTaskOpen}
           onOpenChange={setCreateTaskOpen}
           projectId={project.id}
-          processes={processes.map((process) => ({ id: process.id, label: projectTypeLabel[process.process_type] }))}
+          processes={processes.map((process) => ({
+            id: process.id,
+            label: projectTypeLabel[process.process_type],
+          }))}
           assignees={assignees}
           canAssign={canAssignTasks}
         />
@@ -257,13 +295,21 @@ function ProjectDetailPage() {
         <div className="surface-panel p-5">
           <h2 className="mb-4 font-black">Proje Kartı</h2>
           <div className="grid gap-4 text-sm sm:grid-cols-2">
-            <InfoItem icon={Building2} label="Müşteri" value={customer?.name || "—"} />
+            <InfoItem
+              icon={Building2}
+              label="Müşteri"
+              value={customer?.name || "—"}
+            />
             <InfoItem
               icon={UserRound}
               label="NES Sorumlusu"
               value={managerById.get(project.manager_id ?? "") || "Atanmadı"}
             />
-            <InfoItem icon={MapPin} label="Konum" value={location || "Konum girilmedi"} />
+            <InfoItem
+              icon={MapPin}
+              label="Konum"
+              value={location || "Konum girilmedi"}
+            />
             <InfoItem
               icon={CalendarDays}
               label="Tarih"
@@ -281,7 +327,9 @@ function ProjectDetailPage() {
               <p className="text-xs font-bold uppercase tracking-wider text-highlight">
                 Durum Açıklaması
               </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{project.status_note}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">
+                {project.status_note}
+              </p>
             </div>
           ) : null}
 
@@ -298,14 +346,20 @@ function ProjectDetailPage() {
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Proje Açıklaması
               </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm">{project.description}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">
+                {project.description}
+              </p>
             </div>
           ) : null}
 
           {project.location_url ? (
             <MapPreview
               mapUrl={project.location_url}
-              fallbackQuery={[project.neighborhood, project.district, project.province]
+              fallbackQuery={[
+                project.neighborhood,
+                project.district,
+                project.province,
+              ]
                 .filter(Boolean)
                 .join(", ")}
               className="mt-5"
@@ -320,7 +374,8 @@ function ProjectDetailPage() {
             ) : null}
             {project.block_no || project.parcel_no ? (
               <Badge variant="outline" className="px-3 py-2">
-                Ada {project.block_no || "—"} · Parsel {project.parcel_no || "—"}
+                Ada {project.block_no || "—"} · Parsel{" "}
+                {project.parcel_no || "—"}
               </Badge>
             ) : null}
             {project.area ? (
@@ -338,19 +393,28 @@ function ProjectDetailPage() {
           </p>
           <div className="mt-5 space-y-4">
             {processProgresses.map((process) => (
-              <div key={process.id} className="rounded-xl border border-border bg-muted/20 p-4">
+              <div
+                key={process.id}
+                className="rounded-xl border border-border bg-muted/20 p-4"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-black">{projectTypeLabel[process.process_type]}</p>
+                    <p className="font-black">
+                      {projectTypeLabel[process.process_type]}
+                    </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {process.progress.completed}/{process.progress.total} görev tamamlandı
+                      {process.progress.completed}/{process.progress.total}{" "}
+                      görev tamamlandı
                     </p>
                   </div>
                   <span className="text-xl font-black text-highlight">
                     %{process.progress.percentage}
                   </span>
                 </div>
-                <Progress value={process.progress.percentage} className="mt-3 h-2.5" />
+                <Progress
+                  value={process.progress.percentage}
+                  className="mt-3 h-2.5"
+                />
               </div>
             ))}
           </div>
@@ -383,7 +447,9 @@ function ProjectDetailPage() {
           className="space-y-4"
         >
           {processes.map((process) => {
-            const processTasks = tasks.filter((task) => task.process_id === process.id);
+            const processTasks = tasks.filter(
+              (task) => task.process_id === process.id,
+            );
             const processProgress = projectApprovedProgress(processTasks);
             const phases = groupTasksByPhase(processTasks);
             return (
@@ -399,11 +465,15 @@ function ProjectDetailPage() {
                         {projectTypeLabel[process.process_type]}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {processProgress.completed}/{processProgress.total} görev tamamlandı
+                        {processProgress.completed}/{processProgress.total}{" "}
+                        görev tamamlandı
                       </p>
                     </div>
                     <div className="flex items-center gap-3 sm:w-52">
-                      <Progress value={processProgress.percentage} className="h-2 flex-1" />
+                      <Progress
+                        value={processProgress.percentage}
+                        className="h-2 flex-1"
+                      />
                       <span className="w-10 text-right text-xs font-bold">
                         %{processProgress.percentage}
                       </span>
@@ -468,7 +538,10 @@ function InfoItem({
 }
 
 function groupTasksByPhase(tasks: ProjectTask[]) {
-  const phases = new Map<number, { name: string; order: number; tasks: ProjectTask[] }>();
+  const phases = new Map<
+    number,
+    { name: string; order: number; tasks: ProjectTask[] }
+  >();
   tasks.forEach((task) => {
     const phase = phases.get(task.phase_order) ?? {
       name: task.phase_name,
@@ -510,13 +583,16 @@ function ProjectTaskCreateDialog({
 
   const createTask = useMutation({
     mutationFn: async () => {
-      if (taskName.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
-      if (!processId) throw new Error("Görevin bağlı olduğu proje sürecini seçin.");
+      if (taskName.trim().length < 3)
+        throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      if (!processId)
+        throw new Error("Görevin bağlı olduğu proje sürecini seçin.");
       const { error } = await supabase.rpc("create_project_task", {
         target_project_id: projectId,
         target_process_id: processId,
         new_task_name: taskName.trim(),
-        assigned_user_id: canAssign && responsibleId !== "none" ? responsibleId : undefined,
+        assigned_user_id:
+          canAssign && responsibleId !== "none" ? responsibleId : undefined,
         planned_on: plannedDate || undefined,
         task_note: note.trim() || undefined,
       });
@@ -524,7 +600,9 @@ function ProjectTaskCreateDialog({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project-detail", projectId] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-detail", projectId],
+        }),
         queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
         queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
@@ -546,51 +624,93 @@ function ProjectTaskCreateDialog({
         <DialogHeader>
           <DialogTitle>Yeni proje görevi</DialogTitle>
           <DialogDescription>
-            Görev bir proje sürecine bağlanır. {canAssign ? "Sorumlu kişi tüm kayıtlı kullanıcılar arasından seçilebilir." : "Sorumlu ataması yönetici tarafından yapılır."}
+            Görev bir proje sürecine bağlanır.{" "}
+            {canAssign
+              ? "Sorumlu kişi tüm kayıtlı kullanıcılar arasından seçilebilir."
+              : "Sorumlu ataması yönetici tarafından yapılır."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <label className="grid gap-1.5 text-sm font-medium">
             Görev adı
-            <Input value={taskName} onChange={(event) => setTaskName(event.target.value)} maxLength={180} />
+            <Input
+              value={taskName}
+              onChange={(event) => setTaskName(event.target.value)}
+              maxLength={180}
+            />
           </label>
-          <div className={canAssign ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
+          <div
+            className={canAssign ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}
+          >
             <label className="grid gap-1.5 text-sm font-medium">
               Proje süreci
               <Select value={processId} onValueChange={setProcessId}>
-                <SelectTrigger><SelectValue placeholder="Süreç seçin" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Süreç seçin" />
+                </SelectTrigger>
                 <SelectContent>
-                  {processes.map((process) => <SelectItem key={process.id} value={process.id}>{process.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </label>
-            {canAssign ? <label className="grid gap-1.5 text-sm font-medium">
-              Sorumlu kişi
-              <Select value={responsibleId} onValueChange={setResponsibleId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Henüz atama yok</SelectItem>
-                  {assignees.map((assignee) => (
-                    <SelectItem key={assignee.id} value={assignee.id}>
-                      {assignee.full_name || "İsimsiz kullanıcı"} · {assignee.role === "technical_office" ? "Teknik Ofis" : assignee.role === "contractor" ? "Taşeron" : assignee.role === "customer" ? "Müşteri" : "Yönetici"}
+                  {processes.map((process) => (
+                    <SelectItem key={process.id} value={process.id}>
+                      {process.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </label> : null}
+            </label>
+            {canAssign ? (
+              <label className="grid gap-1.5 text-sm font-medium">
+                Sorumlu kişi
+                <Select value={responsibleId} onValueChange={setResponsibleId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Henüz atama yok</SelectItem>
+                    {assignees.map((assignee) => (
+                      <SelectItem key={assignee.id} value={assignee.id}>
+                        {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
+                        {assignee.role === "technical_office"
+                          ? "Teknik Ofis"
+                          : assignee.role === "contractor"
+                            ? "Taşeron"
+                            : assignee.role === "customer"
+                              ? "Müşteri"
+                              : "Yönetici"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : null}
           </div>
           <label className="grid gap-1.5 text-sm font-medium">
             Planlanan tarih
-            <Input type="date" value={plannedDate} onChange={(event) => setPlannedDate(event.target.value)} />
+            <Input
+              type="date"
+              value={plannedDate}
+              onChange={(event) => setPlannedDate(event.target.value)}
+            />
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
             Başlangıç notu
-            <Textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} placeholder="Görev kapsamı veya teslim beklentisi" />
+            <Textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={2000}
+              placeholder="Görev kapsamı veya teslim beklentisi"
+            />
           </label>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Vazgeç</Button>
-          <Button onClick={() => createTask.mutate()} disabled={createTask.isPending || taskName.trim().length < 3 || !processId}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Vazgeç
+          </Button>
+          <Button
+            onClick={() => createTask.mutate()}
+            disabled={
+              createTask.isPending || taskName.trim().length < 3 || !processId
+            }
+          >
             {createTask.isPending ? "Kaydediliyor..." : "Görevi Oluştur"}
           </Button>
         </DialogFooter>
@@ -619,10 +739,14 @@ function TaskEditor({
     (role === "contractor" || role === "technical_office");
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<ProjectTaskStatus>(task.status);
-  const [responsibleId, setResponsibleId] = useState(task.responsible_id ?? "none");
+  const [responsibleId, setResponsibleId] = useState(
+    task.responsible_id ?? "none",
+  );
   const [plannedDate, setPlannedDate] = useState(task.planned_date ?? "");
   const [actualDate, setActualDate] = useState(task.actual_date ?? "");
-  const [externalSystem, setExternalSystem] = useState(task.external_system ?? "");
+  const [externalSystem, setExternalSystem] = useState(
+    task.external_system ?? "",
+  );
   const [note, setNote] = useState(task.note ?? "");
 
   useEffect(() => {
@@ -642,7 +766,16 @@ function TaskEditor({
       actualDate !== (task.actual_date ?? "") ||
       externalSystem !== (task.external_system ?? "") ||
       note !== (task.note ?? ""),
-    [status, responsibleId, plannedDate, actualDate, externalSystem, note, task, canAssign],
+    [
+      status,
+      responsibleId,
+      plannedDate,
+      actualDate,
+      externalSystem,
+      note,
+      task,
+      canAssign,
+    ],
   );
 
   const updateTask = useMutation({
@@ -651,25 +784,31 @@ function TaskEditor({
         ? await supabase.rpc("update_project_task", {
             target_task_id: task.id,
             new_status: status,
-            assigned_user_id: responsibleId === "none" ? undefined : responsibleId,
+            assigned_user_id:
+              responsibleId === "none" ? undefined : responsibleId,
             planned_on: plannedDate || undefined,
             actual_on: actualDate || undefined,
             task_system: externalSystem.trim() || undefined,
             task_note: note.trim() || undefined,
           })
-        : await supabase.rpc("update_project_task_technical" as never, {
-            target_task_id: task.id,
-            new_status: status,
-            planned_on: plannedDate || undefined,
-            actual_on: actualDate || undefined,
-            task_system: externalSystem.trim() || undefined,
-            task_note: note.trim() || undefined,
-          } as never);
+        : await supabase.rpc(
+            "update_project_task_technical" as never,
+            {
+              target_task_id: task.id,
+              new_status: status,
+              planned_on: plannedDate || undefined,
+              actual_on: actualDate || undefined,
+              task_system: externalSystem.trim() || undefined,
+              task_note: note.trim() || undefined,
+            } as never,
+          );
       if (error) throw error;
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-detail", task.project_id],
+        }),
         queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
         queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
@@ -688,7 +827,9 @@ function TaskEditor({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-detail", task.project_id],
+        }),
         queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
         queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
@@ -706,7 +847,9 @@ function TaskEditor({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-black text-highlight">{task.task_order}</span>
+            <span className="text-xs font-black text-highlight">
+              {task.task_order}
+            </span>
             <h4 className="font-bold">{task.task_name}</h4>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -724,7 +867,9 @@ function TaskEditor({
               </Badge>
             ) : null}
             {task.completed_at ? (
-              <Badge variant="outline">{formatProjectDate(task.completed_at)} tamamlandı</Badge>
+              <Badge variant="outline">
+                {formatProjectDate(task.completed_at)} tamamlandı
+              </Badge>
             ) : null}
           </div>
         </div>
@@ -736,7 +881,9 @@ function TaskEditor({
         canReview={canReview}
       />
 
-      <div className={`mt-4 grid gap-3 md:grid-cols-2 ${canAssign ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
+      <div
+        className={`mt-4 grid gap-3 md:grid-cols-2 ${canAssign ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}
+      >
         <label className="grid gap-1 text-xs font-bold">
           Durum
           <Select
@@ -752,7 +899,9 @@ function TaskEditor({
                 .filter(
                   (option) =>
                     option.value === task.status ||
-                    ["not_started", "blocked", "not_applicable"].includes(option.value),
+                    ["not_started", "blocked", "not_applicable"].includes(
+                      option.value,
+                    ),
                 )
                 .map((option) => (
                   <SelectItem key={option.value} value={option.value}>
@@ -762,23 +911,31 @@ function TaskEditor({
             </SelectContent>
           </Select>
         </label>
-        {canAssign ? <label className="grid gap-1 text-xs font-bold">
-          Sorumlu
-          <Select value={responsibleId} onValueChange={setResponsibleId} disabled={!editable}>
-            <SelectTrigger className="h-10">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Atanmadı</SelectItem>
-              {assignees.map((assignee) => (
-                <SelectItem key={assignee.id} value={assignee.id}>
-                  {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
-                  {assignee.role === "contractor" ? "Taşeron" : "NES Teknik Ofis"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label> : null}
+        {canAssign ? (
+          <label className="grid gap-1 text-xs font-bold">
+            Sorumlu
+            <Select
+              value={responsibleId}
+              onValueChange={setResponsibleId}
+              disabled={!editable}
+            >
+              <SelectTrigger className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Atanmadı</SelectItem>
+                {assignees.map((assignee) => (
+                  <SelectItem key={assignee.id} value={assignee.id}>
+                    {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
+                    {assignee.role === "contractor"
+                      ? "Taşeron"
+                      : "NES Teknik Ofis"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+        ) : null}
         <label className="grid gap-1 text-xs font-bold">
           Planlanan Tarih
           <Input
@@ -838,7 +995,11 @@ function TaskEditor({
               className="h-11 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
               disabled={deleteExtraTask.isPending}
               onClick={() => {
-                if (window.confirm(`“${task.task_name}” ek görevini silmek istediğinizden emin misiniz?`)) {
+                if (
+                  window.confirm(
+                    `“${task.task_name}” ek görevini silmek istediğinizden emin misiniz?`,
+                  )
+                ) {
                   deleteExtraTask.mutate();
                 }
               }}

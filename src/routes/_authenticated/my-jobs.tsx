@@ -5,7 +5,12 @@ import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { formatDate } from "@/lib/format";
 import { projectTaskStatusLabel } from "@/lib/projects";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { JobList } from "@/components/job-list";
 
@@ -16,7 +21,14 @@ export const Route = createFileRoute("/_authenticated/my-jobs")({
 type IndependentTask = {
   id: string;
   title: string;
-  status: "not_started" | "in_progress" | "external_approval" | "revision_required" | "blocked" | "completed" | "not_applicable";
+  status:
+    | "not_started"
+    | "in_progress"
+    | "external_approval"
+    | "revision_required"
+    | "blocked"
+    | "completed"
+    | "not_applicable";
   planned_date: string | null;
   projects: { name: string; project_no: string } | null;
 };
@@ -51,10 +63,16 @@ function MyJobsPage() {
   });
 
   if (role !== "contractor") return <AccessDenied />;
-  if (query.isLoading || independentTasksQuery.isLoading) return <LoadingState />;
-  if (query.error) return <p className="text-destructive">{errorMessage(query.error)}</p>;
+  if (query.isLoading || independentTasksQuery.isLoading)
+    return <LoadingState />;
+  if (query.error)
+    return <p className="text-destructive">{errorMessage(query.error)}</p>;
   if (independentTasksQuery.error) {
-    return <p className="text-destructive">{errorMessage(independentTasksQuery.error)}</p>;
+    return (
+      <p className="text-destructive">
+        {errorMessage(independentTasksQuery.error)}
+      </p>
+    );
   }
 
   const independentTasks = independentTasksQuery.data ?? [];
@@ -65,7 +83,10 @@ function MyJobsPage() {
         title="Bana Atanan Görevler"
         description="İlerleme, fotoğraf ve kullanılan malzeme girişlerini görev detayı üzerinden yapın."
       />
-      <JobList orders={query.data ?? []} emptyLabel="Size atanmış görev bulunmuyor" />
+      <JobList
+        orders={query.data ?? []}
+        emptyLabel="Size atanmış görev bulunmuyor"
+      />
 
       <section className="surface-panel mt-6 p-4 sm:p-5">
         <div className="mb-3">
@@ -90,15 +111,21 @@ function MyJobsPage() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{projectTaskStatusLabel[task.status]}</Badge>
+                      <Badge variant="outline">
+                        {projectTaskStatusLabel[task.status]}
+                      </Badge>
                     </div>
                     <h3 className="mt-2 truncate font-bold">{task.title}</h3>
                     <p className="text-xs font-semibold text-highlight">
-                      {task.projects ? `${task.projects.project_no} · ${task.projects.name}` : "Bağımsız görev"}
+                      {task.projects
+                        ? `${task.projects.project_no} · ${task.projects.name}`
+                        : "Bağımsız görev"}
                     </p>
                   </div>
                   <span className="shrink-0 text-sm text-muted-foreground">
-                    {task.planned_date ? formatDate(task.planned_date) : "Tarih belirlenmedi"}
+                    {task.planned_date
+                      ? formatDate(task.planned_date)
+                      : "Tarih belirlenmedi"}
                   </span>
                 </div>
               </div>

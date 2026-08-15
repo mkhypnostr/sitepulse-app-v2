@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Plus, Search, SlidersHorizontal, Trash2, AlertTriangle } from "lucide-react";
+import {
+  Eye,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  AlertTriangle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -10,7 +17,12 @@ import { canSeeFinancials, isOperationalManager } from "@/lib/permissions";
 import { formatDate, formatTRY, halfHourOptions } from "@/lib/format";
 import { safeHttpsMapUrl } from "@/lib/map-location";
 import { MapPreview } from "@/components/map-preview";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +49,8 @@ import {
 export const Route = createFileRoute("/_authenticated/work-orders")({
   validateSearch: (search: Record<string, unknown>) => ({
     create: search.create === true || search.create === "true",
-    projectId: typeof search.projectId === "string" ? search.projectId : undefined,
+    projectId:
+      typeof search.projectId === "string" ? search.projectId : undefined,
   }),
   component: WorkOrdersPage,
 });
@@ -50,7 +63,11 @@ function WorkOrdersPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string; no: number | null } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    title: string;
+    no: number | null;
+  } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [form, setForm] = useState({
@@ -81,28 +98,39 @@ function WorkOrdersPage() {
     queryKey: ["admin-work-orders"],
     enabled: canManage,
     queryFn: async () => {
-      const [ordersResult, customersResult, projectsResult, assigneesResult, assignmentsResult] =
-        await Promise.all([
-          supabase
-            .from("work_orders")
-            .select(
-              // work_order_financials RLS yalnızca admin'e açık; teknik ofis
-              // için bu embed otomatik olarak null döner (bkz. canSeeAmounts).
-              "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, customer_labor_amount, customer_material_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
-            )
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("customers")
-            .select("id, name, contact, contact_user_id, billing_title, tax_office, tax_no, billing_address")
-            .order("name"),
-          supabase
-            .from("projects")
-            .select("id, name, project_no, customer_id, location_url, show_to_customer, status")
-            .not("status", "in", '("completed","cancelled")')
-            .order("name"),
-          supabase.rpc("list_task_assignees"),
-          supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
-        ]);
+      const [
+        ordersResult,
+        customersResult,
+        projectsResult,
+        assigneesResult,
+        assignmentsResult,
+      ] = await Promise.all([
+        supabase
+          .from("work_orders")
+          .select(
+            // work_order_financials RLS yalnızca admin'e açık; teknik ofis
+            // için bu embed otomatik olarak null döner (bkz. canSeeAmounts).
+            "*, customers(name), projects(name, project_no), work_order_financials(customer_amount, customer_labor_amount, customer_material_amount, contractor_labor_amount, estimated_material_cost, approved_progress_pct)",
+          )
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("customers")
+          .select(
+            "id, name, contact, contact_user_id, billing_title, tax_office, tax_no, billing_address",
+          )
+          .order("name"),
+        supabase
+          .from("projects")
+          .select(
+            "id, name, project_no, customer_id, location_url, show_to_customer, status",
+          )
+          .not("status", "in", '("completed","cancelled")')
+          .order("name"),
+        supabase.rpc("list_task_assignees"),
+        supabase
+          .from("work_order_assignments")
+          .select("work_order_id, contractor_id"),
+      ]);
       if (ordersResult.error) throw ordersResult.error;
       if (customersResult.error) throw customersResult.error;
       if (projectsResult.error) throw projectsResult.error;
@@ -122,9 +150,12 @@ function WorkOrdersPage() {
   const deleteOrder = useMutation({
     mutationFn: async () => {
       if (!deleteTarget) throw new Error("Silinecek görev bulunamadı.");
-      const { error } = await supabase.rpc("delete_work_order_permanently" as never, {
-        target_work_order_id: deleteTarget.id,
-      } as never);
+      const { error } = await supabase.rpc(
+        "delete_work_order_permanently" as never,
+        {
+          target_work_order_id: deleteTarget.id,
+        } as never,
+      );
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -146,7 +177,9 @@ function WorkOrdersPage() {
 
   useEffect(() => {
     if (!projectId || !pageQuery.data) return;
-    const selectedProject = pageQuery.data.projects.find((project) => project.id === projectId);
+    const selectedProject = pageQuery.data.projects.find(
+      (project) => project.id === projectId,
+    );
     if (!selectedProject) return;
     const projectCustomer = pageQuery.data.customers.find(
       (customer) => customer.id === selectedProject.customer_id,
@@ -171,55 +204,84 @@ function WorkOrdersPage() {
         throw new Error("Google Maps konum bağlantısı geçersiz görünüyor");
       }
       if (!saveAsDraft && !locationUrl) {
-        throw new Error("Görevi aktif olarak oluşturmak için geçerli bir konum bağlantısı girin (taslak olarak kaydedebilirsiniz)");
+        throw new Error(
+          "Görevi aktif olarak oluşturmak için geçerli bir konum bağlantısı girin (taslak olarak kaydedebilirsiniz)",
+        );
       }
       if (!saveAsDraft && form.assigneeId === "none") {
-        throw new Error("Görevi aktif olarak oluşturmak için sorumlu bir taşeron seçin (taslak olarak kaydedebilirsiniz)");
+        throw new Error(
+          "Görevi aktif olarak oluşturmak için sorumlu bir taşeron seçin (taslak olarak kaydedebilirsiniz)",
+        );
       }
-      const scheduledAt = form.date && form.time ? new Date(`${form.date}T${form.time}:00`).toISOString() : null;
+      const scheduledAt =
+        form.date && form.time
+          ? new Date(`${form.date}T${form.time}:00`).toISOString()
+          : null;
       const plannedEndAt =
-        form.endDate && form.endTime ? new Date(`${form.endDate}T${form.endTime}:00`).toISOString() : null;
+        form.endDate && form.endTime
+          ? new Date(`${form.endDate}T${form.endTime}:00`).toISOString()
+          : null;
       if (!saveAsDraft && (!scheduledAt || !plannedEndAt)) {
-        throw new Error("Görevi aktif olarak oluşturmak için planlanan başlangıç ve bitiş tarih-saatini girin (taslak olarak kaydedebilirsiniz)");
+        throw new Error(
+          "Görevi aktif olarak oluşturmak için planlanan başlangıç ve bitiş tarih-saatini girin (taslak olarak kaydedebilirsiniz)",
+        );
       }
       if (scheduledAt && plannedEndAt && plannedEndAt <= scheduledAt) {
         throw new Error("Planlanan bitiş, başlangıçtan sonra olmalıdır");
       }
       const workScopeType = form.workScopeType;
-      const materialSource = form.workScopeType === "labor_only" ? "none" : form.materialSource;
+      const materialSource =
+        form.workScopeType === "labor_only" ? "none" : form.materialSource;
 
       if (canSeeAmounts && form.customerId) {
         const taxNo = form.taxNo.trim();
         if (taxNo && (taxNo.length < 4 || taxNo.length > 32)) {
-          throw new Error("Vergi numarası 4 ile 32 karakter arasında olmalıdır");
+          throw new Error(
+            "Vergi numarası 4 ile 32 karakter arasında olmalıdır",
+          );
         }
         const selectedCustomer = pageQuery.data?.customers.find(
           (customer) => customer.id === form.customerId,
         );
         if (selectedCustomer) {
-          const { error: billingError } = await supabase.rpc("save_customer_details", {
-            customer_name: selectedCustomer.name,
-            customer_contact: selectedCustomer.contact ?? "",
-            customer_billing_title: form.billingTitle.trim(),
-            customer_tax_office: form.taxOffice.trim(),
-            customer_tax_no: taxNo,
-            customer_billing_address: form.billingAddress.trim(),
-            target_contact_user_id: selectedCustomer.contact_user_id ?? undefined,
-            target_customer_id: selectedCustomer.id,
-          });
+          const { error: billingError } = await supabase.rpc(
+            "save_customer_details",
+            {
+              customer_name: selectedCustomer.name,
+              customer_contact: selectedCustomer.contact ?? "",
+              customer_billing_title: form.billingTitle.trim(),
+              customer_tax_office: form.taxOffice.trim(),
+              customer_tax_no: taxNo,
+              customer_billing_address: form.billingAddress.trim(),
+              target_contact_user_id:
+                selectedCustomer.contact_user_id ?? undefined,
+              target_customer_id: selectedCustomer.id,
+            },
+          );
           if (billingError) throw billingError;
         }
       }
 
       if (canSeeAmounts) {
-        const customerLaborAmount = Number(form.customerLaborAmount.replace(",", "."));
-        const customerMaterialAmount = Number(form.customerMaterialAmount.replace(",", "."));
-        const contractorLaborAmount = Number(form.contractorLaborAmount.replace(",", "."));
-        const estimatedMaterialCost = Number(form.estimatedMaterialCost.replace(",", "."));
+        const customerLaborAmount = Number(
+          form.customerLaborAmount.replace(",", "."),
+        );
+        const customerMaterialAmount = Number(
+          form.customerMaterialAmount.replace(",", "."),
+        );
+        const contractorLaborAmount = Number(
+          form.contractorLaborAmount.replace(",", "."),
+        );
+        const estimatedMaterialCost = Number(
+          form.estimatedMaterialCost.replace(",", "."),
+        );
         if (
-          ![customerLaborAmount, customerMaterialAmount, contractorLaborAmount, estimatedMaterialCost].every(
-            (value) => Number.isFinite(value) && value >= 0,
-          )
+          ![
+            customerLaborAmount,
+            customerMaterialAmount,
+            contractorLaborAmount,
+            estimatedMaterialCost,
+          ].every((value) => Number.isFinite(value) && value >= 0)
         ) {
           throw new Error("Ticari tutarları kontrol edin");
         }
@@ -240,7 +302,8 @@ function WorkOrdersPage() {
           order_work_scope_type: workScopeType,
           order_default_material_source: materialSource,
           visible_to_customer: form.showToCustomer,
-          assigned_contractor_id: form.assigneeId === "none" ? undefined : form.assigneeId,
+          assigned_contractor_id:
+            form.assigneeId === "none" ? undefined : form.assigneeId,
           target_project_id: form.projectId || undefined,
           save_as_draft: saveAsDraft,
         });
@@ -261,7 +324,8 @@ function WorkOrdersPage() {
         order_work_scope_type: workScopeType,
         order_default_material_source: materialSource,
         visible_to_customer: form.showToCustomer,
-        assigned_contractor_id: form.assigneeId === "none" ? undefined : form.assigneeId,
+        assigned_contractor_id:
+          form.assigneeId === "none" ? undefined : form.assigneeId,
         target_project_id: form.projectId || undefined,
         save_as_draft: saveAsDraft,
       });
@@ -294,20 +358,26 @@ function WorkOrdersPage() {
         taxOffice: "",
         billingAddress: "",
       });
-      toast.success(saveAsDraft ? "Görev taslak olarak kaydedildi" : "Görev oluşturuldu");
+      toast.success(
+        saveAsDraft ? "Görev taslak olarak kaydedildi" : "Görev oluşturuldu",
+      );
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
   const visibilityMutation = useMutation({
     mutationFn: async ({ id, visible }: { id: string; visible: boolean }) => {
-      const { error } = await supabase.rpc("set_work_order_customer_visibility", {
-        target_work_order_id: id,
-        visible,
-      });
+      const { error } = await supabase.rpc(
+        "set_work_order_customer_visibility",
+        {
+          target_work_order_id: id,
+          visible,
+        },
+      );
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] }),
     onError: (error) => toast.error(errorMessage(error)),
   });
 
@@ -321,7 +391,9 @@ function WorkOrdersPage() {
     assignees: [],
     assignments: [],
   };
-  const selectedProject = data.projects.find((project) => project.id === form.projectId);
+  const selectedProject = data.projects.find(
+    (project) => project.id === form.projectId,
+  );
   const assigneeById = new Map(data.assignees.map((item) => [item.id, item]));
   const assignmentByOrder = new Map(
     data.assignments.map((item) => [item.work_order_id, item.contractor_id]),
@@ -358,9 +430,10 @@ function WorkOrdersPage() {
         <DialogHeader>
           <DialogTitle>Yeni iş emri</DialogTitle>
           <DialogDescription>
-            Bağımsız bir görev oluşturun veya görevi mevcut bir projeye bağlayın. Sorumlu taşeron,
-            planlanan başlangıç-bitiş tarihi ve konum girilmeden görev yalnızca taslak olarak
-            kaydedilebilir; müşteri her zaman opsiyoneldir.
+            Bağımsız bir görev oluşturun veya görevi mevcut bir projeye
+            bağlayın. Sorumlu taşeron, planlanan başlangıç-bitiş tarihi ve konum
+            girilmeden görev yalnızca taslak olarak kaydedilebilir; müşteri her
+            zaman opsiyoneldir.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -423,11 +496,14 @@ function WorkOrdersPage() {
               value={form.customerId || "none"}
               disabled={Boolean(selectedProject)}
               onValueChange={(customerId) => {
-                const chosenCustomer = data.customers.find((customer) => customer.id === customerId);
+                const chosenCustomer = data.customers.find(
+                  (customer) => customer.id === customerId,
+                );
                 setForm({
                   ...form,
                   customerId: customerId === "none" ? "" : customerId,
-                  showToCustomer: customerId === "none" ? false : form.showToCustomer,
+                  showToCustomer:
+                    customerId === "none" ? false : form.showToCustomer,
                   billingTitle: chosenCustomer?.billing_title ?? "",
                   taxNo: chosenCustomer?.tax_no ?? "",
                   taxOffice: chosenCustomer?.tax_office ?? "",
@@ -439,7 +515,9 @@ function WorkOrdersPage() {
                 <SelectValue placeholder="Müşteri seçin" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Müşteri yok (bağımsız görev)</SelectItem>
+                <SelectItem value="none">
+                  Müşteri yok (bağımsız görev)
+                </SelectItem>
                 {data.customers.map((customer) => (
                   <SelectItem key={customer.id} value={customer.id}>
                     {customer.name}
@@ -461,27 +539,33 @@ function WorkOrdersPage() {
                 <SelectItem value="none">Henüz atama</SelectItem>
                 {data.assignees.map((assignee) => (
                   <SelectItem key={assignee.id} value={assignee.id}>
-                    {assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}
+                    {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
+                    {roleLabels[assignee.role]}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <span className="text-xs text-muted-foreground">
-              Görevi aktif olarak oluşturmak için zorunludur; taslak olarak boş bırakılabilir.
+              Görevi aktif olarak oluşturmak için zorunludur; taslak olarak boş
+              bırakılabilir.
             </span>
           </label>
           <label className="grid gap-1 text-sm sm:col-span-2">
             Başlık
             <Input
               value={form.title}
-              onChange={(event) => setForm({ ...form, title: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, title: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm sm:col-span-2">
             Açıklama
             <Textarea
               value={form.description}
-              onChange={(event) => setForm({ ...form, description: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, description: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm sm:col-span-2">
@@ -489,28 +573,40 @@ function WorkOrdersPage() {
             <Input
               value={form.locationUrl}
               disabled={Boolean(selectedProject)}
-              onChange={(event) => setForm({ ...form, locationUrl: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, locationUrl: event.target.value })
+              }
               placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
             />
             <span className="text-xs text-muted-foreground">
-              Düz adres yerine haritadaki yerin paylaşım bağlantısını yapıştırın. Görevi aktif
-              olarak oluşturmak için zorunludur; taslak olarak boş bırakılabilir.
+              Düz adres yerine haritadaki yerin paylaşım bağlantısını
+              yapıştırın. Görevi aktif olarak oluşturmak için zorunludur; taslak
+              olarak boş bırakılabilir.
             </span>
           </label>
           {safeHttpsMapUrl(form.locationUrl) ? (
-            <MapPreview mapUrl={form.locationUrl} compact className="sm:col-span-2" />
+            <MapPreview
+              mapUrl={form.locationUrl}
+              compact
+              className="sm:col-span-2"
+            />
           ) : null}
           <label className="grid gap-1 text-sm">
             Planlanan Başlangıç Tarihi
             <Input
               type="date"
               value={form.date}
-              onChange={(event) => setForm({ ...form, date: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, date: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm">
             Başlangıç Saati
-            <Select value={form.time} onValueChange={(time) => setForm({ ...form, time })}>
+            <Select
+              value={form.time}
+              onValueChange={(time) => setForm({ ...form, time })}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -528,12 +624,17 @@ function WorkOrdersPage() {
             <Input
               type="date"
               value={form.endDate}
-              onChange={(event) => setForm({ ...form, endDate: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, endDate: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm">
             Bitiş Saati
-            <Select value={form.endTime} onValueChange={(endTime) => setForm({ ...form, endTime })}>
+            <Select
+              value={form.endTime}
+              onValueChange={(endTime) => setForm({ ...form, endTime })}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -570,7 +671,9 @@ function WorkOrdersPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="labor_only">Yalnızca işçilik</SelectItem>
-                    <SelectItem value="labor_and_material">İşçilik + malzeme</SelectItem>
+                    <SelectItem value="labor_and_material">
+                      İşçilik + malzeme
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </label>
@@ -579,16 +682,24 @@ function WorkOrdersPage() {
                 <Select
                   value={form.materialSource}
                   disabled={form.workScopeType === "labor_only"}
-                  onValueChange={(materialSource) => setForm({ ...form, materialSource })}
+                  onValueChange={(materialSource) =>
+                    setForm({ ...form, materialSource })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Malzeme kullanılmayacak</SelectItem>
+                    <SelectItem value="none">
+                      Malzeme kullanılmayacak
+                    </SelectItem>
                     <SelectItem value="nes_stock">NES deposu</SelectItem>
-                    <SelectItem value="contractor">Taşeron malzemesi</SelectItem>
-                    <SelectItem value="customer_site">Müşteri / şantiye malzemesi</SelectItem>
+                    <SelectItem value="contractor">
+                      Taşeron malzemesi
+                    </SelectItem>
+                    <SelectItem value="customer_site">
+                      Müşteri / şantiye malzemesi
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </label>
@@ -598,7 +709,12 @@ function WorkOrdersPage() {
                   inputMode="decimal"
                   placeholder="0"
                   value={form.customerLaborAmount}
-                  onChange={(event) => setForm({ ...form, customerLaborAmount: event.target.value })}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      customerLaborAmount: event.target.value,
+                    })
+                  }
                 />
               </label>
               <label className="grid gap-1 text-sm">
@@ -607,7 +723,12 @@ function WorkOrdersPage() {
                   inputMode="decimal"
                   placeholder="0"
                   value={form.customerMaterialAmount}
-                  onChange={(event) => setForm({ ...form, customerMaterialAmount: event.target.value })}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      customerMaterialAmount: event.target.value,
+                    })
+                  }
                 />
               </label>
               <label className="grid gap-1 text-sm">
@@ -616,7 +737,12 @@ function WorkOrdersPage() {
                   inputMode="decimal"
                   placeholder="0"
                   value={form.contractorLaborAmount}
-                  onChange={(event) => setForm({ ...form, contractorLaborAmount: event.target.value })}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      contractorLaborAmount: event.target.value,
+                    })
+                  }
                 />
               </label>
               <label className="grid gap-1 text-sm">
@@ -625,33 +751,46 @@ function WorkOrdersPage() {
                   inputMode="decimal"
                   placeholder="0"
                   value={form.estimatedMaterialCost}
-                  onChange={(event) => setForm({ ...form, estimatedMaterialCost: event.target.value })}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      estimatedMaterialCost: event.target.value,
+                    })
+                  }
                 />
               </label>
               <div className="rounded-[14px] border border-border/60 bg-background/30 p-3 text-sm">
-                <p className="text-xs text-muted-foreground">Tahmini Brüt Fark</p>
+                <p className="text-xs text-muted-foreground">
+                  Tahmini Brüt Fark
+                </p>
                 <p className="mt-1 text-lg font-black text-highlight">
                   {formatTRY(
                     (Number(form.customerLaborAmount.replace(",", ".")) || 0) +
-                      (Number(form.customerMaterialAmount.replace(",", ".")) || 0) -
-                      (Number(form.contractorLaborAmount.replace(",", ".")) || 0) -
-                      (Number(form.estimatedMaterialCost.replace(",", ".")) || 0),
+                      (Number(form.customerMaterialAmount.replace(",", ".")) ||
+                        0) -
+                      (Number(form.contractorLaborAmount.replace(",", ".")) ||
+                        0) -
+                      (Number(form.estimatedMaterialCost.replace(",", ".")) ||
+                        0),
                   )}
                 </p>
               </div>
             </>
           ) : (
             <p className="rounded-[14px] border border-border/60 bg-background/30 p-3 text-xs leading-5 text-muted-foreground sm:col-span-2">
-              Ticari tutarlar bu görevde görünmez; satış ve işçilik bedelleri yönetici tarafından
-              girilir.
+              Ticari tutarlar bu görevde görünmez; satış ve işçilik bedelleri
+              yönetici tarafından girilir.
             </p>
           )}
           {canSeeAmounts ? (
             <div className="grid gap-3 rounded-[14px] border border-border/60 bg-background/30 p-3 sm:col-span-2">
               <div>
-                <p className="text-sm font-bold">Fatura Bilgileri (opsiyonel)</p>
+                <p className="text-sm font-bold">
+                  Fatura Bilgileri (opsiyonel)
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Seçili müşterinin fatura ünvanı, vergi bilgileri ve fatura adresini günceller.
+                  Seçili müşterinin fatura ünvanı, vergi bilgileri ve fatura
+                  adresini günceller.
                   {!form.customerId ? " Önce müşteri seçin." : ""}
                 </p>
               </div>
@@ -661,7 +800,9 @@ function WorkOrdersPage() {
                   <Input
                     value={form.billingTitle}
                     disabled={!form.customerId}
-                    onChange={(event) => setForm({ ...form, billingTitle: event.target.value })}
+                    onChange={(event) =>
+                      setForm({ ...form, billingTitle: event.target.value })
+                    }
                   />
                 </label>
                 <label className="grid gap-1 text-sm">
@@ -669,7 +810,9 @@ function WorkOrdersPage() {
                   <Input
                     value={form.taxNo}
                     disabled={!form.customerId}
-                    onChange={(event) => setForm({ ...form, taxNo: event.target.value })}
+                    onChange={(event) =>
+                      setForm({ ...form, taxNo: event.target.value })
+                    }
                   />
                 </label>
                 <label className="grid gap-1 text-sm">
@@ -677,7 +820,9 @@ function WorkOrdersPage() {
                   <Input
                     value={form.taxOffice}
                     disabled={!form.customerId}
-                    onChange={(event) => setForm({ ...form, taxOffice: event.target.value })}
+                    onChange={(event) =>
+                      setForm({ ...form, taxOffice: event.target.value })
+                    }
                   />
                 </label>
                 <label className="grid gap-1 text-sm sm:col-span-2">
@@ -685,7 +830,9 @@ function WorkOrdersPage() {
                   <Textarea
                     value={form.billingAddress}
                     disabled={!form.customerId}
-                    onChange={(event) => setForm({ ...form, billingAddress: event.target.value })}
+                    onChange={(event) =>
+                      setForm({ ...form, billingAddress: event.target.value })
+                    }
                   />
                 </label>
               </div>
@@ -696,7 +843,9 @@ function WorkOrdersPage() {
             <Switch
               checked={form.showToCustomer}
               disabled={!form.customerId}
-              onCheckedChange={(showToCustomer) => setForm({ ...form, showToCustomer })}
+              onCheckedChange={(showToCustomer) =>
+                setForm({ ...form, showToCustomer })
+              }
             />
           </label>
         </div>
@@ -719,7 +868,8 @@ function WorkOrdersPage() {
               !form.endDate ||
               !form.endTime ||
               form.assigneeId === "none" ||
-              (form.workScopeType === "labor_and_material" && form.materialSource === "none") ||
+              (form.workScopeType === "labor_and_material" &&
+                form.materialSource === "none") ||
               createOrder.isPending
             }
           >
@@ -778,8 +928,11 @@ function WorkOrdersPage() {
       ) : (
         <div className="grid gap-4">
           {filteredOrders.map((order) => {
-            const assignee = assigneeById.get(assignmentByOrder.get(order.id) ?? "");
-            const goToDetail = () => navigate({ to: "/jobs/$jobId", params: { jobId: order.id } });
+            const assignee = assigneeById.get(
+              assignmentByOrder.get(order.id) ?? "",
+            );
+            const goToDetail = () =>
+              navigate({ to: "/jobs/$jobId", params: { jobId: order.id } });
             return (
               <div
                 key={order.id}
@@ -797,7 +950,9 @@ function WorkOrdersPage() {
                       <span className="font-mono text-xs text-muted-foreground">
                         #{order.work_order_no}
                       </span>
-                      <Badge variant="outline">{statusLabels[order.status]}</Badge>
+                      <Badge variant="outline">
+                        {statusLabels[order.status]}
+                      </Badge>
                     </div>
                     <h2 className="mt-2 text-lg font-black">{order.title}</h2>
                     {order.projects ? (
@@ -811,9 +966,14 @@ function WorkOrdersPage() {
                     )}
                     <p className="text-sm text-muted-foreground">
                       {order.customers?.name || "Müşteri yok"} ·{" "}
-                      {order.scheduled_at ? formatDate(order.scheduled_at) : "Tarih belirlenmedi"} ·{" "}
+                      {order.scheduled_at
+                        ? formatDate(order.scheduled_at)
+                        : "Tarih belirlenmedi"}{" "}
+                      ·{" "}
                       {order.location ||
-                        (order.location_url ? "Harita konumu eklendi" : "Konum yok")}
+                        (order.location_url
+                          ? "Harita konumu eklendi"
+                          : "Konum yok")}
                     </p>
                     <p className="mt-1 text-sm">
                       Sorumlu:{" "}
@@ -833,21 +993,31 @@ function WorkOrdersPage() {
                       <div className="mt-2 space-y-1 text-right text-xs">
                         <p>
                           Müşteri:{" "}
-                          <strong>{formatTRY(order.work_order_financials?.customer_amount)}</strong>
+                          <strong>
+                            {formatTRY(
+                              order.work_order_financials?.customer_amount,
+                            )}
+                          </strong>
                         </p>
                         <p>
                           Taşeron:{" "}
                           <strong>
-                            {formatTRY(order.work_order_financials?.contractor_labor_amount)}
+                            {formatTRY(
+                              order.work_order_financials
+                                ?.contractor_labor_amount,
+                            )}
                           </strong>
                         </p>
                         <p className="text-highlight">
                           Brüt fark:{" "}
                           <strong>
                             {formatTRY(
-                              (order.work_order_financials?.customer_amount ?? 0) -
-                                (order.work_order_financials?.contractor_labor_amount ?? 0) -
-                                (order.work_order_financials?.estimated_material_cost ?? 0),
+                              (order.work_order_financials?.customer_amount ??
+                                0) -
+                                (order.work_order_financials
+                                  ?.contractor_labor_amount ?? 0) -
+                                (order.work_order_financials
+                                  ?.estimated_material_cost ?? 0),
                             )}
                           </strong>
                         </p>
@@ -859,7 +1029,9 @@ function WorkOrdersPage() {
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div>
-                      <p className="text-xs text-muted-foreground">Müşteri görünümü</p>
+                      <p className="text-xs text-muted-foreground">
+                        Müşteri görünümü
+                      </p>
                       <p className="text-sm font-semibold">
                         {order.show_to_customer ? "Açık" : "Kapalı"}
                       </p>
@@ -872,7 +1044,12 @@ function WorkOrdersPage() {
                       }
                     />
                   </div>
-                  <Button asChild variant="outline" className="h-12" onClick={(event) => event.stopPropagation()}>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="h-12"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <Link to="/jobs/$jobId" params={{ jobId: order.id }}>
                       <Eye className="mr-2 h-4 w-4" /> Detay
                     </Link>
@@ -884,7 +1061,11 @@ function WorkOrdersPage() {
                       className="h-12 border-destructive/50 text-destructive hover:text-destructive"
                       onClick={(event) => {
                         event.stopPropagation();
-                        setDeleteTarget({ id: order.id, title: order.title, no: order.work_order_no });
+                        setDeleteTarget({
+                          id: order.id,
+                          title: order.title,
+                          no: order.work_order_no,
+                        });
                       }}
                     >
                       <Trash2 className="mr-2 h-4 w-4" /> Sil
@@ -901,18 +1082,41 @@ function WorkOrdersPage() {
           ) : null}
         </div>
       )}
-      <Dialog open={Boolean(deleteTarget)} onOpenChange={(nextOpen) => !nextOpen && !deleteOrder.isPending && setDeleteTarget(null)}>
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(nextOpen) =>
+          !nextOpen && !deleteOrder.isPending && setDeleteTarget(null)
+        }
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/15 text-destructive"><AlertTriangle className="h-6 w-6" /></div>
+            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
             <DialogTitle>Saha görevi kalıcı olarak silinsin mi?</DialogTitle>
             <DialogDescription>
-              {deleteTarget ? `#${deleteTarget.no ?? "—"} · ${deleteTarget.title}` : "Bu görev"} ve bağlı atama, ilerleme, kanıt ve finans kayıtları silinir. Bu işlem geri alınamaz.
+              {deleteTarget
+                ? `#${deleteTarget.no ?? "—"} · ${deleteTarget.title}`
+                : "Bu görev"}{" "}
+              ve bağlı atama, ilerleme, kanıt ve finans kayıtları silinir. Bu
+              işlem geri alınamaz.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteOrder.isPending}>Vazgeç</Button>
-            <Button variant="destructive" onClick={() => deleteOrder.mutate()} disabled={deleteOrder.isPending}>{deleteOrder.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}</Button>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteOrder.isPending}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteOrder.mutate()}
+              disabled={deleteOrder.isPending}
+            >
+              {deleteOrder.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

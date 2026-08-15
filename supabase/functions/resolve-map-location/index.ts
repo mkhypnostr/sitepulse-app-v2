@@ -6,14 +6,18 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json; charset=utf-8",
+    },
   });
 }
 
@@ -33,7 +37,8 @@ function allowedGoogleMapsUrl(value: string) {
     host === "google.com" ||
     host === "www.google.com" ||
     host === "maps.google.com" ||
-    (/^(www\.|maps\.)?google\.[a-z.]+$/.test(host) && url.pathname.startsWith("/maps"));
+    (/^(www\.|maps\.)?google\.[a-z.]+$/.test(host) &&
+      url.pathname.startsWith("/maps"));
 
   return allowed ? url : null;
 }
@@ -72,7 +77,9 @@ function extractCoordinates(value: string) {
   const url = new URL(value);
   for (const parameter of ["q", "query", "ll", "center", "destination"]) {
     const candidate = url.searchParams.get(parameter);
-    const match = candidate?.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+    const match = candidate?.match(
+      /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/,
+    );
     if (!match) continue;
     const latitude = Number(match[1]);
     const longitude = Number(match[2]);
@@ -83,11 +90,13 @@ function extractCoordinates(value: string) {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "POST kullanın." }, 405);
 
   const authorization = req.headers.get("Authorization") ?? "";
-  if (!authorization.startsWith("Bearer ")) return json({ error: "Oturum gerekli." }, 401);
+  if (!authorization.startsWith("Bearer "))
+    return json({ error: "Oturum gerekli." }, 401);
 
   const accessToken = authorization.slice("Bearer ".length).trim();
   if (!accessToken) return json({ error: "Oturum doğrulanamadı." }, 401);
@@ -95,8 +104,10 @@ Deno.serve(async (req: Request) => {
   const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
-  const { data: authData, error: authError } = await client.auth.getUser(accessToken);
-  if (authError || !authData.user) return json({ error: "Geçersiz oturum." }, 401);
+  const { data: authData, error: authError } =
+    await client.auth.getUser(accessToken);
+  if (authError || !authData.user)
+    return json({ error: "Geçersiz oturum." }, 401);
 
   let rawUrl = "";
   try {
@@ -110,7 +121,10 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Geçerli bir harita bağlantısı girin." }, 400);
   const initialUrl = allowedGoogleMapsUrl(rawUrl);
   if (!initialUrl)
-    return json({ error: "Yalnızca güvenli Google Maps bağlantıları kabul edilir." }, 400);
+    return json(
+      { error: "Yalnızca güvenli Google Maps bağlantıları kabul edilir." },
+      400,
+    );
 
   let resolvedUrl = initialUrl.toString();
   try {
@@ -127,7 +141,9 @@ Deno.serve(async (req: Request) => {
     // Doğrudan bağlantı yine de aşağıda çözümlenebilir.
   }
 
-  const location = extractCoordinates(resolvedUrl) ?? extractCoordinates(initialUrl.toString());
+  const location =
+    extractCoordinates(resolvedUrl) ??
+    extractCoordinates(initialUrl.toString());
   return json({
     original_url: initialUrl.toString(),
     resolved_url: resolvedUrl,

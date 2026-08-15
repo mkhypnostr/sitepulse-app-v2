@@ -14,7 +14,10 @@ function validCoordinates(latitude: number, longitude: number) {
   );
 }
 
-function coordinates(latitude: string, longitude: string): MapCoordinates | null {
+function coordinates(
+  latitude: string,
+  longitude: string,
+): MapCoordinates | null {
   const parsedLatitude = Number(latitude);
   const parsedLongitude = Number(longitude);
   return validCoordinates(parsedLatitude, parsedLongitude)
@@ -48,16 +51,22 @@ export function extractMapCoordinates(value: string | null | undefined) {
     // URL zaten okunabilir durumdaysa çözümleme gerekmez.
   }
 
-  const atMatch = decodedUrl.match(/@(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/);
+  const atMatch = decodedUrl.match(
+    /@(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/,
+  );
   if (atMatch) return coordinates(atMatch[1], atMatch[2]);
 
-  const dataMatch = decodedUrl.match(/!3d(-?\d{1,2}(?:\.\d+)?).*?!4d(-?\d{1,3}(?:\.\d+)?)/);
+  const dataMatch = decodedUrl.match(
+    /!3d(-?\d{1,2}(?:\.\d+)?).*?!4d(-?\d{1,3}(?:\.\d+)?)/,
+  );
   if (dataMatch) return coordinates(dataMatch[1], dataMatch[2]);
 
   const url = new URL(safeUrl);
   for (const parameter of ["q", "query", "ll", "center", "destination"]) {
     const candidate = url.searchParams.get(parameter);
-    const match = candidate?.match(/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+    const match = candidate?.match(
+      /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/,
+    );
     if (match) return coordinates(match[1], match[2]);
   }
 
@@ -67,7 +76,10 @@ export function extractMapCoordinates(value: string | null | undefined) {
 // "maps.google.com" bir iframe içinden yüklendiğinde Google bağlantıyı
 // reddediyor (ERR_CONNECTION_CLOSED); embed her zaman "www.google.com"
 // üzerinden istenmeli — 301 ile resmi /maps/embed sayfasına yönlenir.
-export function googleMapsCoordinateEmbedUrl({ latitude, longitude }: MapCoordinates) {
+export function googleMapsCoordinateEmbedUrl({
+  latitude,
+  longitude,
+}: MapCoordinates) {
   return `https://www.google.com/maps?q=${latitude},${longitude}&z=16&output=embed`;
 }
 

@@ -14,11 +14,17 @@ import {
   taskStatusClass,
   type ProjectTaskStatus,
 } from "@/lib/projects";
-import { AccessDenied, EmptyState, LoadingState } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+} from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-export const Route = createFileRoute("/_authenticated/project-report/$projectId")({
+export const Route = createFileRoute(
+  "/_authenticated/project-report/$projectId",
+)({
   component: ProjectReportPage,
 });
 
@@ -52,7 +58,10 @@ type ReportTask = {
 };
 
 function groupByPhase(tasks: ReportTask[]) {
-  const phases = new Map<number, { name: string; order: number; tasks: ReportTask[] }>();
+  const phases = new Map<
+    number,
+    { name: string; order: number; tasks: ReportTask[] }
+  >();
   tasks.forEach((task) => {
     const phase = phases.get(task.phase_order) ?? {
       name: task.phase_name,
@@ -64,7 +73,10 @@ function groupByPhase(tasks: ReportTask[]) {
   });
   return [...phases.values()]
     .sort((a, b) => a.order - b.order)
-    .map((phase) => ({ ...phase, tasks: phase.tasks.sort((a, b) => a.task_order - b.task_order) }));
+    .map((phase) => ({
+      ...phase,
+      tasks: phase.tasks.sort((a, b) => a.task_order - b.task_order),
+    }));
 }
 
 function ProjectReportPage() {
@@ -84,23 +96,28 @@ function ProjectReportPage() {
       if (projectResult.error) throw projectResult.error;
       if (!projectResult.data) throw new Error("Proje bulunamadı");
 
-      const [processesResult, tasksResult, workOrdersResult, assigneesResult] = await Promise.all([
-        supabase.from("project_processes").select("*").eq("project_id", projectId).order("position"),
-        supabase
-          .from("project_tasks")
-          .select(
-            "id, phase_name, phase_order, task_name, task_order, status, responsible_id, planned_date, actual_date, note, approved_progress_pct",
-          )
-          .eq("project_id", projectId)
-          .order("phase_order")
-          .order("task_order"),
-        supabase
-          .from("work_orders")
-          .select("id, work_order_no, title, status, progress_pct")
-          .eq("project_id", projectId)
-          .order("scheduled_at", { ascending: false }),
-        supabase.rpc("list_task_assignees"),
-      ]);
+      const [processesResult, tasksResult, workOrdersResult, assigneesResult] =
+        await Promise.all([
+          supabase
+            .from("project_processes")
+            .select("*")
+            .eq("project_id", projectId)
+            .order("position"),
+          supabase
+            .from("project_tasks")
+            .select(
+              "id, phase_name, phase_order, task_name, task_order, status, responsible_id, planned_date, actual_date, note, approved_progress_pct",
+            )
+            .eq("project_id", projectId)
+            .order("phase_order")
+            .order("task_order"),
+          supabase
+            .from("work_orders")
+            .select("id, work_order_no, title, status, progress_pct")
+            .eq("project_id", projectId)
+            .order("scheduled_at", { ascending: false }),
+          supabase.rpc("list_task_assignees"),
+        ]);
       if (processesResult.error) throw processesResult.error;
       if (tasksResult.error) throw tasksResult.error;
       if (workOrdersResult.error) throw workOrdersResult.error;
@@ -110,7 +127,9 @@ function ProjectReportPage() {
       const evidenceResult = taskIds.length
         ? await supabase
             .from("project_task_evidence")
-            .select("id, project_task_id, storage_path, file_name, evidence_type, description")
+            .select(
+              "id, project_task_id, storage_path, file_name, evidence_type, description",
+            )
             .in("project_task_id", taskIds)
             .order("created_at")
         : { data: [], error: null };
@@ -143,11 +162,15 @@ function ProjectReportPage() {
 
       const evidenceWithUrls = await Promise.all(
         (evidenceResult.data ?? []).map(async (item) => {
-          if (item.evidence_type !== "photo") return { ...item, signedUrl: null };
+          if (item.evidence_type !== "photo")
+            return { ...item, signedUrl: null };
           const signed = await supabase.storage
             .from("project-evidence")
             .createSignedUrl(item.storage_path, 3600);
-          return { ...item, signedUrl: signed.error ? null : signed.data.signedUrl };
+          return {
+            ...item,
+            signedUrl: signed.error ? null : signed.data.signedUrl,
+          };
         }),
       );
 
@@ -175,30 +198,48 @@ function ProjectReportPage() {
     return (
       <EmptyState
         title="Rapor açılamadı"
-        description={reportQuery.error ? errorMessage(reportQuery.error) : "Proje bulunamadı."}
+        description={
+          reportQuery.error
+            ? errorMessage(reportQuery.error)
+            : "Proje bulunamadı."
+        }
       />
     );
   }
 
-  const { project, processes, tasks, workOrders, assignees, materials, financials, evidenceByTaskId } =
-    reportQuery.data;
-  const assigneeById = new Map(assignees.map((assignee) => [assignee.id, assignee.full_name]));
+  const {
+    project,
+    processes,
+    tasks,
+    workOrders,
+    assignees,
+    materials,
+    financials,
+    evidenceByTaskId,
+  } = reportQuery.data;
+  const assigneeById = new Map(
+    assignees.map((assignee) => [assignee.id, assignee.full_name]),
+  );
   const location = [project.province, project.district, project.neighborhood]
     .filter(Boolean)
     .join(" / ");
   const phases = groupByPhase(tasks);
   const overallProgress = projectApprovedProgress(tasks);
   const totalSales = financials.reduce(
-    (sum, item) => sum + item.customer_labor_amount + item.customer_material_amount,
+    (sum, item) =>
+      sum + item.customer_labor_amount + item.customer_material_amount,
     0,
   );
   const totalCost = financials.reduce(
-    (sum, item) => sum + item.contractor_labor_amount + item.estimated_material_cost,
+    (sum, item) =>
+      sum + item.contractor_labor_amount + item.estimated_material_cost,
     0,
   );
   const totalMargin = totalSales - totalCost;
   const materialLabel = (item: (typeof materials)[number]) =>
-    item.is_nes_stock ? item.stock_items?.name || "NES stok malzemesi" : item.custom_material_name || "Malzeme";
+    item.is_nes_stock
+      ? item.stock_items?.name || "NES stok malzemesi"
+      : item.custom_material_name || "Malzeme";
   const materialSourceLabel: Record<string, string> = {
     nes_stock: "NES deposu",
     contractor: "Taşeron malzemesi",
@@ -265,7 +306,11 @@ function ProjectReportPage() {
         ${financeSection}
         <p style="margin-top:32px;color:#64748b;font-size:9pt;text-align:center;">${NES_CONTACT_ADDRESS}<br/>Telefon: ${NES_CONTACT_PHONE} · Mail: ${NES_CONTACT_EMAIL}</p>
       </div>`;
-    downloadWordDocument(`proje-raporu-${project.project_no}.doc`, "Proje Raporu", body);
+    downloadWordDocument(
+      `proje-raporu-${project.project_no}.doc`,
+      "Proje Raporu",
+      body,
+    );
   }
 
   return (
@@ -331,22 +376,26 @@ function ProjectReportPage() {
           </p>
           <p className="sm:col-span-2">
             <strong>Proje Türü:</strong>{" "}
-            {processes.map((process) => projectTypeLabel[process.process_type]).join(", ") || "—"}
+            {processes
+              .map((process) => projectTypeLabel[process.process_type])
+              .join(", ") || "—"}
           </p>
         </section>
 
         {project.description ? (
           <section className="mt-7">
             <h2 className="text-xl font-black">Proje Açıklaması</h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{project.description}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+              {project.description}
+            </p>
           </section>
         ) : null}
 
         <section className="mt-7">
           <h2 className="text-xl font-black">Genel İlerleme</h2>
           <p className="mt-2 text-sm text-slate-700">
-            {overallProgress.completed}/{overallProgress.total} görev tamamlandı ·{" "}
-            <strong>%{overallProgress.percentage}</strong> onaylı ilerleme
+            {overallProgress.completed}/{overallProgress.total} görev tamamlandı
+            · <strong>%{overallProgress.percentage}</strong> onaylı ilerleme
           </p>
         </section>
 
@@ -368,22 +417,30 @@ function ProjectReportPage() {
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="font-bold">{task.task_name}</p>
-                          <Badge variant="outline" className={taskStatusClass[task.status]}>
+                          <Badge
+                            variant="outline"
+                            className={taskStatusClass[task.status]}
+                          >
                             {projectTaskStatusLabel[task.status]}
                           </Badge>
                         </div>
                         <p className="mt-1 text-xs text-slate-500">
-                          Sorumlu: {assigneeById.get(task.responsible_id ?? "") || "Atanmadı"} · Plan:{" "}
-                          {formatProjectDate(task.planned_date)} · Onaylı ilerleme: %
-                          {task.approved_progress_pct}
+                          Sorumlu:{" "}
+                          {assigneeById.get(task.responsible_id ?? "") ||
+                            "Atanmadı"}{" "}
+                          · Plan: {formatProjectDate(task.planned_date)} ·
+                          Onaylı ilerleme: %{task.approved_progress_pct}
                         </p>
                         {task.note ? (
-                          <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">{task.note}</p>
+                          <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">
+                            {task.note}
+                          </p>
                         ) : null}
                         {evidence.length ? (
                           <div className="mt-3 grid gap-2 sm:grid-cols-3">
                             {evidence.map((item) =>
-                              item.evidence_type === "photo" && item.signedUrl ? (
+                              item.evidence_type === "photo" &&
+                              item.signedUrl ? (
                                 <img
                                   key={item.id}
                                   src={item.signedUrl}
@@ -411,7 +468,9 @@ function ProjectReportPage() {
               </div>
             ))}
             {phases.length === 0 ? (
-              <p className="text-sm text-slate-500">Henüz proje görevi tanımlanmadı.</p>
+              <p className="text-sm text-slate-500">
+                Henüz proje görevi tanımlanmadı.
+              </p>
             ) : null}
           </div>
         </section>
@@ -429,13 +488,16 @@ function ProjectReportPage() {
                     #{order.work_order_no} · {order.title}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {workOrderStatusLabel[order.status] || order.status} · İlerleme %{order.progress_pct}
+                    {workOrderStatusLabel[order.status] || order.status} ·
+                    İlerleme %{order.progress_pct}
                   </p>
                 </div>
               </div>
             ))}
             {workOrders.length === 0 ? (
-              <p className="text-sm text-slate-500">Bu projeye bağlı saha görevi yok.</p>
+              <p className="text-sm text-slate-500">
+                Bu projeye bağlı saha görevi yok.
+              </p>
             ) : null}
           </div>
         </section>
@@ -451,7 +513,8 @@ function ProjectReportPage() {
                 <div>
                   <p className="font-bold">{materialLabel(item)}</p>
                   <p className="text-xs text-slate-500">
-                    {materialSourceLabel[item.material_source] || item.material_source}
+                    {materialSourceLabel[item.material_source] ||
+                      item.material_source}
                   </p>
                 </div>
                 <strong>
@@ -473,17 +536,25 @@ function ProjectReportPage() {
                 <strong className="block text-xs uppercase tracking-wide text-slate-500">
                   Toplam Satış
                 </strong>
-                <span className="text-lg font-black">{formatTRY(totalSales)}</span>
+                <span className="text-lg font-black">
+                  {formatTRY(totalSales)}
+                </span>
               </p>
               <p>
                 <strong className="block text-xs uppercase tracking-wide text-slate-500">
                   Toplam Maliyet
                 </strong>
-                <span className="text-lg font-black">{formatTRY(totalCost)}</span>
+                <span className="text-lg font-black">
+                  {formatTRY(totalCost)}
+                </span>
               </p>
               <p>
-                <strong className="block text-xs uppercase tracking-wide text-slate-500">Kâr</strong>
-                <span className={`text-lg font-black ${totalMargin < 0 ? "text-red-600" : "text-blue-700"}`}>
+                <strong className="block text-xs uppercase tracking-wide text-slate-500">
+                  Kâr
+                </strong>
+                <span
+                  className={`text-lg font-black ${totalMargin < 0 ? "text-red-600" : "text-blue-700"}`}
+                >
                   {formatTRY(totalMargin)}
                 </span>
               </p>

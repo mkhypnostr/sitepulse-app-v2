@@ -1,6 +1,13 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileText, Images, Loader2, Paperclip, Trash2 } from "lucide-react";
+import {
+  Download,
+  FileText,
+  Images,
+  Loader2,
+  Paperclip,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -11,7 +18,12 @@ import { PhotoCaptureField } from "@/components/photo-capture-field";
 type EvidenceType = "photo" | "document";
 
 const maxFileSize = 20 * 1024 * 1024;
-const permittedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const permittedMimeTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
 
 function safeFileName(name: string) {
   const extension =
@@ -68,7 +80,8 @@ export function ProjectTaskEvidence({
       description?: string;
     }) => {
       if (!user) throw new Error("Oturum bulunamadı.");
-      if (file.size > maxFileSize) throw new Error("Dosya en fazla 20 MB olabilir.");
+      if (file.size > maxFileSize)
+        throw new Error("Dosya en fazla 20 MB olabilir.");
       if (!permittedMimeTypes.has(file.type)) {
         throw new Error("Yalnızca JPG, PNG, WEBP veya PDF dosyası ekleyin.");
       }
@@ -80,10 +93,12 @@ export function ProjectTaskEvidence({
       }
 
       const storagePath = `tasks/${taskId}/${safeFileName(file.name)}`;
-      const upload = await supabase.storage.from("project-evidence").upload(storagePath, file, {
-        contentType: file.type,
-        upsert: false,
-      });
+      const upload = await supabase.storage
+        .from("project-evidence")
+        .upload(storagePath, file, {
+          contentType: file.type,
+          upsert: false,
+        });
       if (upload.error) throw upload.error;
 
       const { error } = await supabase.from("project_task_evidence").insert({
@@ -99,10 +114,16 @@ export function ProjectTaskEvidence({
       if (error) throw error;
     },
     onSuccess: async (_data, variables) => {
-      await queryClient.invalidateQueries({ queryKey: ["project-task-evidence", taskId] });
-      await queryClient.invalidateQueries({ queryKey: ["project-detail", projectId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-task-evidence", taskId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-detail", projectId],
+      });
       toast.success(
-        variables.evidenceType === "photo" ? "Fotoğrafınız eklendi" : "Kanıt dosyası eklendi",
+        variables.evidenceType === "photo"
+          ? "Fotoğrafınız eklendi"
+          : "Kanıt dosyası eklendi",
       );
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -124,10 +145,19 @@ export function ProjectTaskEvidence({
   };
 
   const deleteEvidence = useMutation({
-    mutationFn: async ({ id, storagePath }: { id: string; storagePath: string }) => {
-      const { error: deleteRecordError } = await supabase.rpc("delete_project_task_evidence", {
-        target_evidence_id: id,
-      });
+    mutationFn: async ({
+      id,
+      storagePath,
+    }: {
+      id: string;
+      storagePath: string;
+    }) => {
+      const { error: deleteRecordError } = await supabase.rpc(
+        "delete_project_task_evidence",
+        {
+          target_evidence_id: id,
+        },
+      );
       if (deleteRecordError) throw deleteRecordError;
       if (role === "admin") {
         const { error: deleteFileError } = await supabase.storage
@@ -137,8 +167,12 @@ export function ProjectTaskEvidence({
       }
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["project-task-evidence", taskId] });
-      await queryClient.invalidateQueries({ queryKey: ["project-detail", projectId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-task-evidence", taskId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["project-detail", projectId],
+      });
       toast.success("Kanıt dosyası silindi");
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -151,13 +185,16 @@ export function ProjectTaskEvidence({
   };
 
   const evidence = evidenceQuery.data ?? [];
-  const shouldShow = requiresPhoto || requiresDocument || evidence.length > 0 || canUpload;
+  const shouldShow =
+    requiresPhoto || requiresDocument || evidence.length > 0 || canUpload;
   if (!shouldShow) return null;
 
   return (
     <div
       className={
-        compact ? "mt-3" : "mt-4 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-3"
+        compact
+          ? "mt-3"
+          : "mt-4 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-3"
       }
     >
       <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-highlight">
@@ -173,7 +210,11 @@ export function ProjectTaskEvidence({
               confirmLabel="Fotoğraf Ekle"
               disabled={uploadEvidence.isPending}
               onConfirm={(file, caption) =>
-                uploadEvidence.mutateAsync({ file, evidenceType: "photo", description: caption })
+                uploadEvidence.mutateAsync({
+                  file,
+                  evidenceType: "photo",
+                  description: caption,
+                })
               }
             />
           ) : null}
@@ -208,7 +249,8 @@ export function ProjectTaskEvidence({
         <div className="mt-2 space-y-1.5">
           {evidence.map((item) => {
             const canDelete =
-              !item.submission_id && (role === "admin" || item.uploaded_by === user?.id);
+              !item.submission_id &&
+              (role === "admin" || item.uploaded_by === user?.id);
             return (
               <div
                 key={item.id}
@@ -247,7 +289,12 @@ export function ProjectTaskEvidence({
                     size="icon"
                     variant="ghost"
                     className="h-7 w-7 text-destructive hover:text-destructive"
-                    onClick={() => deleteEvidence.mutate({ id: item.id, storagePath: item.storage_path })}
+                    onClick={() =>
+                      deleteEvidence.mutate({
+                        id: item.id,
+                        storagePath: item.storage_path,
+                      })
+                    }
                     disabled={deleteEvidence.isPending}
                     aria-label="Kanıtı sil"
                   >

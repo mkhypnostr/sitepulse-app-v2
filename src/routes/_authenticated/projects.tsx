@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -26,7 +32,12 @@ import {
   type ProjectStatus,
   type ProjectType,
 } from "@/lib/projects";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { MapPreview } from "@/components/map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,23 +102,35 @@ function ProjectsPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | ProjectStatus>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | ProjectStatus>(
+    "all",
+  );
   const [form, setForm] = useState(initialForm);
 
   const pageQuery = useQuery({
     queryKey: ["projects-page"],
     enabled: canManageProjects,
     queryFn: async () => {
-      const [projectsResult, customersResult, assigneesResult, processesResult, tasksResult] =
-        await Promise.all([
-          supabase.from("projects").select("*").order("created_at", { ascending: false }),
-          supabase.rpc("list_project_customers"),
-          supabase.rpc("list_project_assignees"),
-          supabase.from("project_processes").select("id, project_id, process_type, position"),
-          supabase
-            .from("project_tasks")
-            .select("project_id, process_id, status, approved_progress_pct"),
-        ]);
+      const [
+        projectsResult,
+        customersResult,
+        assigneesResult,
+        processesResult,
+        tasksResult,
+      ] = await Promise.all([
+        supabase
+          .from("projects")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase.rpc("list_project_customers"),
+        supabase.rpc("list_project_assignees"),
+        supabase
+          .from("project_processes")
+          .select("id, project_id, process_type, position"),
+        supabase
+          .from("project_tasks")
+          .select("project_id, process_id, status, approved_progress_pct"),
+      ]);
 
       if (projectsResult.error) throw projectsResult.error;
       if (customersResult.error) throw customersResult.error;
@@ -129,36 +152,48 @@ function ProjectsPage() {
 
   const createProject = useMutation({
     mutationFn: async () => {
-      const parsedArea = form.area.trim() ? Number(form.area.trim().replace(",", ".")) : undefined;
-      if (parsedArea !== undefined && (!Number.isFinite(parsedArea) || parsedArea <= 0)) {
+      const parsedArea = form.area.trim()
+        ? Number(form.area.trim().replace(",", "."))
+        : undefined;
+      if (
+        parsedArea !== undefined &&
+        (!Number.isFinite(parsedArea) || parsedArea <= 0)
+      ) {
         throw new Error("Alan bilgisini sıfırdan büyük bir sayı olarak girin");
       }
       if (!safeHttpsMapUrl(form.locationUrl)) {
-        throw new Error("Google Maps'ten kopyaladığınız güvenli konum bağlantısını girin");
+        throw new Error(
+          "Google Maps'ten kopyaladığınız güvenli konum bağlantısını girin",
+        );
       }
 
-      const { data, error } = await supabase.rpc("create_project_with_workflow", {
-        // target_customer_id has no SQL default (must be sent even when empty);
-        // the RPC accepts NULL for a customer-less project.
-        target_customer_id: (form.customerId || null) as string,
-        project_name: form.name.trim(),
-        selected_processes: form.processes,
-        project_external_reference_no: form.externalReference.trim() || undefined,
-        project_location_url: form.locationUrl.trim() || undefined,
-        project_province: form.province.trim() || undefined,
-        project_district: form.district.trim() || undefined,
-        project_neighborhood: form.neighborhood.trim() || undefined,
-        project_block_no: form.blockNo.trim() || undefined,
-        project_parcel_no: form.parcelNo.trim() || undefined,
-        project_area: parsedArea,
-        target_manager_id: form.managerId === "none" ? undefined : form.managerId,
-        project_start_date: form.startDate || undefined,
-        project_target_end_date: form.targetEndDate || undefined,
-        project_state: form.status,
-        visible_to_customer: form.showToCustomer,
-        project_description: form.description.trim() || undefined,
-        project_admin_notes: form.adminNotes.trim() || undefined,
-      });
+      const { data, error } = await supabase.rpc(
+        "create_project_with_workflow",
+        {
+          // target_customer_id has no SQL default (must be sent even when empty);
+          // the RPC accepts NULL for a customer-less project.
+          target_customer_id: (form.customerId || null) as string,
+          project_name: form.name.trim(),
+          selected_processes: form.processes,
+          project_external_reference_no:
+            form.externalReference.trim() || undefined,
+          project_location_url: form.locationUrl.trim() || undefined,
+          project_province: form.province.trim() || undefined,
+          project_district: form.district.trim() || undefined,
+          project_neighborhood: form.neighborhood.trim() || undefined,
+          project_block_no: form.blockNo.trim() || undefined,
+          project_parcel_no: form.parcelNo.trim() || undefined,
+          project_area: parsedArea,
+          target_manager_id:
+            form.managerId === "none" ? undefined : form.managerId,
+          project_start_date: form.startDate || undefined,
+          project_target_end_date: form.targetEndDate || undefined,
+          project_state: form.status,
+          visible_to_customer: form.showToCustomer,
+          project_description: form.description.trim() || undefined,
+          project_admin_notes: form.adminNotes.trim() || undefined,
+        },
+      );
       if (error) throw error;
       return data;
     },
@@ -190,7 +225,8 @@ function ProjectsPage() {
   };
 
   if (!canManageProjects) return <AccessDenied />;
-  if (pageQuery.isLoading) return <LoadingState label="Projeler yükleniyor..." />;
+  if (pageQuery.isLoading)
+    return <LoadingState label="Projeler yükleniyor..." />;
 
   const data = pageQuery.data ?? {
     projects: [],
@@ -199,8 +235,12 @@ function ProjectsPage() {
     processes: [],
     tasks: [],
   };
-  const customerById = new Map(data.customers.map((item) => [item.id, item.name]));
-  const managerById = new Map(data.managers.map((item) => [item.id, item.full_name]));
+  const customerById = new Map(
+    data.customers.map((item) => [item.id, item.name]),
+  );
+  const managerById = new Map(
+    data.managers.map((item) => [item.id, item.full_name]),
+  );
   const processesByProject = new Map<string, typeof data.processes>();
   data.processes
     .sort((a, b) => a.position - b.position)
@@ -219,7 +259,8 @@ function ProjectsPage() {
   const filteredProjects = (() => {
     const needle = searchText.trim().toLocaleLowerCase("tr-TR");
     return data.projects.filter((project) => {
-      if (statusFilter !== "all" && project.status !== statusFilter) return false;
+      if (statusFilter !== "all" && project.status !== statusFilter)
+        return false;
       if (!needle) return true;
       return [
         project.project_no,
@@ -247,8 +288,8 @@ function ProjectsPage() {
         <DialogHeader>
           <DialogTitle>Yeni proje / şantiye oluştur</DialogTitle>
           <DialogDescription>
-            Projeye bir veya birden fazla süreç ekleyin. Proje numarası ve görev listeleri otomatik
-            hazırlanır.
+            Projeye bir veya birden fazla süreç ekleyin. Proje numarası ve görev
+            listeleri otomatik hazırlanır.
           </DialogDescription>
         </DialogHeader>
 
@@ -262,7 +303,8 @@ function ProjectsPage() {
                   setForm({
                     ...form,
                     customerId: customerId === "none" ? "" : customerId,
-                    showToCustomer: customerId === "none" ? false : form.showToCustomer,
+                    showToCustomer:
+                      customerId === "none" ? false : form.showToCustomer,
                   })
                 }
               >
@@ -283,7 +325,9 @@ function ProjectsPage() {
               Proje Adı <span className="text-destructive">*</span>
               <Input
                 value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, name: event.target.value })
+                }
                 placeholder="Örn. Denizli Fabrika Elektrik Projesi"
               />
             </label>
@@ -300,17 +344,23 @@ function ProjectsPage() {
                   <label
                     key={option.value}
                     className={`cursor-pointer rounded-[14px] border p-3 transition-colors ${
-                      checked ? "border-primary bg-primary/10" : "border-border bg-muted/20"
+                      checked
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-muted/20"
                     }`}
                   >
                     <div className="flex items-start gap-3">
                       <Checkbox
                         checked={checked}
-                        onCheckedChange={(value) => toggleProcess(option.value, value === true)}
+                        onCheckedChange={(value) =>
+                          toggleProcess(option.value, value === true)
+                        }
                       />
                       <div>
                         <p className="text-sm font-bold">{option.label}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {option.description}
+                        </p>
                       </div>
                     </div>
                   </label>
@@ -324,18 +374,23 @@ function ProjectsPage() {
               Google Maps Konumu <span className="text-destructive">*</span>
               <Input
                 value={form.locationUrl}
-                onChange={(event) => setForm({ ...form, locationUrl: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, locationUrl: event.target.value })
+                }
                 placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
               />
               <span className="text-xs font-normal text-muted-foreground">
-                Haritadaki yeri paylaşın; proje kartında görsel olarak gösterilecektir.
+                Haritadaki yeri paylaşın; proje kartında görsel olarak
+                gösterilecektir.
               </span>
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Dış Referans Numarası
               <Input
                 value={form.externalReference}
-                onChange={(event) => setForm({ ...form, externalReference: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, externalReference: event.target.value })
+                }
                 placeholder="Varsa kurum / müşteri numarası"
               />
             </label>
@@ -343,21 +398,27 @@ function ProjectsPage() {
               İl
               <Input
                 value={form.province}
-                onChange={(event) => setForm({ ...form, province: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, province: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               İlçe
               <Input
                 value={form.district}
-                onChange={(event) => setForm({ ...form, district: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, district: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Mahalle
               <Input
                 value={form.neighborhood}
-                onChange={(event) => setForm({ ...form, neighborhood: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, neighborhood: event.target.value })
+                }
               />
             </label>
             {safeHttpsMapUrl(form.locationUrl) ? (
@@ -374,14 +435,18 @@ function ProjectsPage() {
               Ada
               <Input
                 value={form.blockNo}
-                onChange={(event) => setForm({ ...form, blockNo: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, blockNo: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Parsel
               <Input
                 value={form.parcelNo}
-                onChange={(event) => setForm({ ...form, parcelNo: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, parcelNo: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
@@ -389,7 +454,9 @@ function ProjectsPage() {
               <Input
                 inputMode="decimal"
                 value={form.area}
-                onChange={(event) => setForm({ ...form, area: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, area: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
@@ -416,7 +483,9 @@ function ProjectsPage() {
               <Input
                 type="date"
                 value={form.startDate}
-                onChange={(event) => setForm({ ...form, startDate: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, startDate: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
@@ -424,14 +493,18 @@ function ProjectsPage() {
               <Input
                 type="date"
                 value={form.targetEndDate}
-                onChange={(event) => setForm({ ...form, targetEndDate: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, targetEndDate: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Proje Durumu
               <Select
                 value={form.status}
-                onValueChange={(status: ProjectStatus) => setForm({ ...form, status })}
+                onValueChange={(status: ProjectStatus) =>
+                  setForm({ ...form, status })
+                }
               >
                 <SelectTrigger className="h-11">
                   <SelectValue />
@@ -452,7 +525,9 @@ function ProjectsPage() {
               Proje Açıklaması
               <Textarea
                 value={form.description}
-                onChange={(event) => setForm({ ...form, description: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, description: event.target.value })
+                }
                 placeholder="Projenin kapsamı ve önemli bilgiler"
               />
             </label>
@@ -460,7 +535,9 @@ function ProjectsPage() {
               Yönetici Notu
               <Textarea
                 value={form.adminNotes}
-                onChange={(event) => setForm({ ...form, adminNotes: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, adminNotes: event.target.value })
+                }
                 placeholder="Yalnızca yöneticilerin göreceği not"
               />
             </label>
@@ -468,13 +545,16 @@ function ProjectsPage() {
               <div>
                 <p className="text-sm font-bold">Müşteri panelinde göster</p>
                 <p className="text-xs text-muted-foreground">
-                  Müşteri erişimi sonraki aşamada açılacak; seçim şimdiden kayıt edilir.
+                  Müşteri erişimi sonraki aşamada açılacak; seçim şimdiden kayıt
+                  edilir.
                 </p>
               </div>
               <Switch
                 checked={form.showToCustomer}
                 disabled={!form.customerId}
-                onCheckedChange={(showToCustomer) => setForm({ ...form, showToCustomer })}
+                onCheckedChange={(showToCustomer) =>
+                  setForm({ ...form, showToCustomer })
+                }
               />
             </div>
           </section>
@@ -509,7 +589,9 @@ function ProjectsPage() {
         <section className="surface-panel mb-5 space-y-3 p-4 sm:p-5">
           <div>
             <h2 className="font-black">Proje Portföyü</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Taslak, aktif ve tamamlanan proje/şantiye kayıtlarını filtreleyin.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Taslak, aktif ve tamamlanan proje/şantiye kayıtlarını filtreleyin.
+            </p>
           </div>
           <div className="flex items-center gap-3 rounded-[14px] border border-border bg-card px-4 py-3">
             <Search className="h-5 w-5 text-muted-foreground" />
@@ -538,7 +620,9 @@ function ProjectsPage() {
                   key={option.value}
                   type="button"
                   size="sm"
-                  variant={statusFilter === option.value ? "default" : "outline"}
+                  variant={
+                    statusFilter === option.value ? "default" : "outline"
+                  }
                   onClick={() => setStatusFilter(option.value)}
                 >
                   {option.label} ({count})
@@ -559,108 +643,132 @@ function ProjectsPage() {
         <EmptyState title="Seçtiğiniz filtreyle eşleşen proje bulunamadı" />
       ) : (
         <section className="surface-panel p-4 sm:p-5">
-          <div className="mb-4"><h2 className="font-black">Proje ve Şantiye Kayıtları</h2><p className="mt-1 text-sm text-muted-foreground">Bir projeyi açarak süreçlerini, görevlerini ve belgelerini yönetin.</p></div>
-        <div className="grid gap-4 xl:grid-cols-2">
-          {filteredProjects.map((project) => {
-            const projectProcesses = processesByProject.get(project.id) ?? [];
-            const projectTasks = tasksByProject.get(project.id) ?? [];
-            const processProgresses = projectProcesses.map((process) => ({
-              ...process,
-              progress: projectApprovedProgress(
-                projectTasks
-                  .filter((task) => task.process_id === process.id),
-              ),
-            }));
-            const location = [project.province, project.district, project.neighborhood]
-              .filter(Boolean)
-              .join(" / ");
-            return (
-              <Link
-                key={project.id}
-                to="/projects/$projectId"
-                params={{ projectId: project.id }}
-                className="surface-panel group block p-5 transition-colors hover:border-primary/60 hover:bg-accent/25"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="rounded-lg bg-primary/15 p-2.5 text-highlight">
-                      <FolderKanban className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-black tracking-wider text-highlight">
-                        {project.project_no}
-                      </p>
-                      <h2 className="mt-1 truncate text-lg font-black">{project.name}</h2>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="shrink-0">
-                    {projectStatusLabel[project.status]}
-                  </Badge>
-                </div>
-
-                <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-highlight" />
-                    <span className="truncate">
-                      {project.customer_id
-                        ? customerById.get(project.customer_id) || "Müşteri"
-                        : "Müşterisiz proje"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CalendarDays className="h-4 w-4 text-highlight" />
-                    <span>{formatProjectDate(project.target_end_date)} hedef</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-highlight" />
-                    <span className="truncate">{location || "Konum girilmedi"}</span>
-                  </div>
-                  <div className="truncate text-xs">
-                    Sorumlu: {managerById.get(project.manager_id ?? "") || "Atanmadı"}
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {projectProcesses.map((process) => (
-                    <Badge key={process.id} variant="secondary">
-                      {projectTypeLabel[process.process_type]}
-                    </Badge>
-                  ))}
-                </div>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  {processProgresses.map((process) => (
-                    <div
-                      key={process.id}
-                      className="rounded-lg border border-border/60 bg-background/30 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-2 text-xs">
-                        <span className="font-bold">{projectTypeLabel[process.process_type]}</span>
-                        <span className="shrink-0 font-black text-highlight">
-                          %{process.progress.percentage}
-                        </span>
+          <div className="mb-4">
+            <h2 className="font-black">Proje ve Şantiye Kayıtları</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Bir projeyi açarak süreçlerini, görevlerini ve belgelerini
+              yönetin.
+            </p>
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {filteredProjects.map((project) => {
+              const projectProcesses = processesByProject.get(project.id) ?? [];
+              const projectTasks = tasksByProject.get(project.id) ?? [];
+              const processProgresses = projectProcesses.map((process) => ({
+                ...process,
+                progress: projectApprovedProgress(
+                  projectTasks.filter((task) => task.process_id === process.id),
+                ),
+              }));
+              const location = [
+                project.province,
+                project.district,
+                project.neighborhood,
+              ]
+                .filter(Boolean)
+                .join(" / ");
+              return (
+                <Link
+                  key={project.id}
+                  to="/projects/$projectId"
+                  params={{ projectId: project.id }}
+                  className="surface-panel group block p-5 transition-colors hover:border-primary/60 hover:bg-accent/25"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="rounded-lg bg-primary/15 p-2.5 text-highlight">
+                        <FolderKanban className="h-5 w-5" />
                       </div>
-                      <Progress value={process.progress.percentage} className="mt-2 h-2" />
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {process.progress.completed}/{process.progress.total} görev
-                      </p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-black tracking-wider text-highlight">
+                          {project.project_no}
+                        </p>
+                        <h2 className="mt-1 truncate text-lg font-black">
+                          {project.name}
+                        </h2>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                    <Badge variant="outline" className="shrink-0">
+                      {projectStatusLabel[project.status]}
+                    </Badge>
+                  </div>
 
-                <div className="mt-4 flex items-center justify-end gap-1 text-sm font-bold text-highlight">
-                  Projeyi aç
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+                  <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-highlight" />
+                      <span className="truncate">
+                        {project.customer_id
+                          ? customerById.get(project.customer_id) || "Müşteri"
+                          : "Müşterisiz proje"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-highlight" />
+                      <span>
+                        {formatProjectDate(project.target_end_date)} hedef
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-highlight" />
+                      <span className="truncate">
+                        {location || "Konum girilmedi"}
+                      </span>
+                    </div>
+                    <div className="truncate text-xs">
+                      Sorumlu:{" "}
+                      {managerById.get(project.manager_id ?? "") || "Atanmadı"}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {projectProcesses.map((process) => (
+                      <Badge key={process.id} variant="secondary">
+                        {projectTypeLabel[process.process_type]}
+                      </Badge>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    {processProgresses.map((process) => (
+                      <div
+                        key={process.id}
+                        className="rounded-lg border border-border/60 bg-background/30 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-2 text-xs">
+                          <span className="font-bold">
+                            {projectTypeLabel[process.process_type]}
+                          </span>
+                          <span className="shrink-0 font-black text-highlight">
+                            %{process.progress.percentage}
+                          </span>
+                        </div>
+                        <Progress
+                          value={process.progress.percentage}
+                          className="mt-2 h-2"
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {process.progress.completed}/{process.progress.total}{" "}
+                          görev
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-end gap-1 text-sm font-bold text-highlight">
+                    Projeyi aç
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
         </section>
       )}
 
       {pageQuery.error ? (
-        <p className="mt-4 text-sm text-destructive">{errorMessage(pageQuery.error)}</p>
+        <p className="mt-4 text-sm text-destructive">
+          {errorMessage(pageQuery.error)}
+        </p>
       ) : null}
     </>
   );

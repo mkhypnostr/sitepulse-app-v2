@@ -12,7 +12,8 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 // ayarlanmamışken) gönderici Resend'in kendi doğrulanmış test adresidir;
 // bildirim@nesgrup.com yalnızca RESEND_FROM_EMAIL secret'ı Supabase'de
 // gerçekten ayarlandığında kullanılır (domain doğrulandıktan sonra).
-const RESEND_FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "NES Enerji <onboarding@resend.dev>";
+const RESEND_FROM_EMAIL =
+  Deno.env.get("RESEND_FROM_EMAIL") || "NES Enerji <onboarding@resend.dev>";
 const RESEND_REPLY_TO = Deno.env.get("RESEND_REPLY_TO") || "info@nesgrup.com";
 // Kalıcı, herkese açık HTTPS logo URL'i — projenin kendi Supabase Storage
 // public bucket'ında barındırılıyor (bkz.
@@ -170,9 +171,14 @@ function buildEmail(
   data: Record<string, unknown>,
 ): { subject: string; html: string } {
   const greetingName = recipient.name?.trim();
-  const greeting = greetingName ? `Merhaba ${escapeHtml(greetingName)},` : "Merhaba,";
-  const isWorkOrderEvent = eventType === "work_order_assigned" || eventType === "work_order_overdue";
-  const taskName = String(data.taskName ?? (isWorkOrderEvent ? "İş Emri" : "Görev"));
+  const greeting = greetingName
+    ? `Merhaba ${escapeHtml(greetingName)},`
+    : "Merhaba,";
+  const isWorkOrderEvent =
+    eventType === "work_order_assigned" || eventType === "work_order_overdue";
+  const taskName = String(
+    data.taskName ?? (isWorkOrderEvent ? "İş Emri" : "Görev"),
+  );
 
   switch (eventType) {
     case "task_assigned": {
@@ -214,14 +220,23 @@ function buildEmail(
       // dili. Aynı kişi hem admin hem atanansa (recipients listesi çağıran
       // tarafta zaten tekilleştirilmiş olur, bkz. Deno.serve) bu karşılaştırma
       // isAssignee=true verir ve atanan kişi metni kullanılır.
-      const assigneeEmail = typeof data.assigneeEmail === "string" ? data.assigneeEmail.trim().toLowerCase() : "";
-      const isAssignee = assigneeEmail !== "" && recipient.email.trim().toLowerCase() === assigneeEmail;
-      const assigneeName = data.assigneeName ? String(data.assigneeName) : "İlgili kullanıcı";
+      const assigneeEmail =
+        typeof data.assigneeEmail === "string"
+          ? data.assigneeEmail.trim().toLowerCase()
+          : "";
+      const isAssignee =
+        assigneeEmail !== "" &&
+        recipient.email.trim().toLowerCase() === assigneeEmail;
+      const assigneeName = data.assigneeName
+        ? String(data.assigneeName)
+        : "İlgili kullanıcı";
       const assignedAt = formatIstanbul(data.assignedAt);
       const plannedStart = formatIstanbul(data.plannedStart);
       const plannedEnd = formatIstanbul(data.plannedEnd);
       const location = data.location ? String(data.location) : null;
-      const subject = isAssignee ? `Size yeni iş emri atandı: ${taskName}` : `Yeni iş emri atandı: ${taskName}`;
+      const subject = isAssignee
+        ? `Size yeni iş emri atandı: ${taskName}`
+        : `Yeni iş emri atandı: ${taskName}`;
       const description = isAssignee
         ? `Size yeni bir iş emri atandı: <strong>${escapeHtml(taskName)}</strong>.`
         : `<strong>${escapeHtml(assigneeName)}</strong> adlı kullanıcıya yeni bir iş emri atandı: <strong>${escapeHtml(taskName)}</strong>.`;
@@ -263,7 +278,9 @@ function buildEmail(
     case "approval_decision": {
       const approved = data.decision === "approved";
       const note = data.note ? String(data.note) : null;
-      const subject = approved ? `Kaydınız onaylandı: ${taskName}` : `Revizyon istendi: ${taskName}`;
+      const subject = approved
+        ? `Kaydınız onaylandı: ${taskName}`
+        : `Revizyon istendi: ${taskName}`;
       const html = renderShell(
         approved ? "Kaydınız onaylandı" : "Revizyon istendi",
         `${paragraph(greeting)}${paragraph(
@@ -275,7 +292,10 @@ function buildEmail(
       return { subject, html };
     }
     default:
-      return { subject: taskName, html: renderShell(taskName, paragraph(greeting)) };
+      return {
+        subject: taskName,
+        html: renderShell(taskName, paragraph(greeting)),
+      };
   }
 }
 
@@ -286,7 +306,13 @@ async function sendViaResend(to: string, subject: string, html: string) {
       Authorization: `Bearer ${RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: RESEND_FROM_EMAIL, to, subject, html, reply_to: RESEND_REPLY_TO }),
+    body: JSON.stringify({
+      from: RESEND_FROM_EMAIL,
+      to,
+      subject,
+      html,
+      reply_to: RESEND_REPLY_TO,
+    }),
   });
   if (!response.ok) {
     const body = await response.text();
@@ -297,7 +323,10 @@ async function sendViaResend(to: string, subject: string, html: string) {
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST kullanın." }, 405);
 
-  if (!WEBHOOK_SECRET || req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
+  if (
+    !WEBHOOK_SECRET ||
+    req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET
+  ) {
     return json({ error: "Yetkisiz." }, 401);
   }
   if (!RESEND_API_KEY) {
@@ -312,13 +341,16 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Geçersiz istek gövdesi." }, 400);
   }
 
-  const recipients = Array.isArray(payload.recipients) ? payload.recipients : [];
+  const recipients = Array.isArray(payload.recipients)
+    ? payload.recipients
+    : [];
   // Aynı kullanıcıya (aynı e-posta) çift bildirim gitmemesi için, çağıran
   // taraf farklı roller nedeniyle aynı adresi birden fazla kez eklemiş olsa
   // bile burada büyük/küçük harf duyarsız şekilde tekilleştirilir.
   const seenEmails = new Set<string>();
   const validRecipients = recipients.filter((item): item is Recipient => {
-    if (typeof item?.email !== "string" || !item.email.includes("@")) return false;
+    if (typeof item?.email !== "string" || !item.email.includes("@"))
+      return false;
     const key = item.email.trim().toLowerCase();
     if (seenEmails.has(key)) return false;
     seenEmails.add(key);
@@ -328,12 +360,18 @@ Deno.serve(async (req: Request) => {
 
   const results = await Promise.allSettled(
     validRecipients.map(async (recipient) => {
-      const { subject, html } = buildEmail(payload.event_type, recipient, payload.data ?? {});
+      const { subject, html } = buildEmail(
+        payload.event_type,
+        recipient,
+        payload.data ?? {},
+      );
       await sendViaResend(recipient.email, subject, html);
     }),
   );
 
-  const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+  const failures = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
   if (failures.length > 0) {
     for (const failure of failures) {
       console.error("Bildirim e-postası gönderilemedi:", failure.reason);

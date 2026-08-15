@@ -3,7 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
-import { AccessDenied, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { JobList } from "@/components/job-list";
 
 export const Route = createFileRoute("/_authenticated/my-projects")({
@@ -27,7 +31,8 @@ function MyProjectsPage() {
 
   if (role !== "customer") return <AccessDenied />;
   if (query.isLoading) return <LoadingState />;
-  if (query.error) return <p className="text-destructive">{errorMessage(query.error)}</p>;
+  if (query.error)
+    return <p className="text-destructive">{errorMessage(query.error)}</p>;
 
   return (
     <>
@@ -35,7 +40,10 @@ function MyProjectsPage() {
         title="Projelerim"
         description="Yönetici tarafından paylaşılmış proje ilerlemeleri ve saha fotoğrafları."
       />
-      <JobList orders={query.data ?? []} emptyLabel="Size açılmış proje bulunmuyor" />
+      <JobList
+        orders={query.data ?? []}
+        emptyLabel="Size açılmış proje bulunmuyor"
+      />
     </>
   );
 }

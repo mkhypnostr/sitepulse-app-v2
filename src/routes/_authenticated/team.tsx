@@ -1,12 +1,25 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Eye, EyeOff, KeyRound, Mail, Plus, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Mail,
+  Plus,
+  ShieldCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage, roleLabels, type AppRole } from "@/lib/domain";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -58,10 +71,17 @@ type CreateUserRpcResponse = {
 type EditableRole = Exclude<AppRole, "admin">;
 const editableRoles: EditableRole[] = ["contractor", "customer"];
 // Yönetici rolü giriş e-postası değiştirme ekranından asla verilemez veya kaldırılamaz.
-const assignableNonAdminRoles: EditableRole[] = ["technical_office", "contractor", "customer"];
+const assignableNonAdminRoles: EditableRole[] = [
+  "technical_office",
+  "contractor",
+  "customer",
+];
 
 function emailIsValid(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) && value.trim().length <= 254;
+  return (
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) &&
+    value.trim().length <= 254
+  );
 }
 
 function passwordIsValid(value: string) {
@@ -88,7 +108,10 @@ function TeamPage() {
   const [confirming, setConfirming] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [contractorForm, setContractorForm] = useState(emptyContractorForm);
-  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [resetTarget, setResetTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [emailChangeTarget, setEmailChangeTarget] = useState<{
@@ -104,14 +127,22 @@ function TeamPage() {
     queryKey: ["team"],
     enabled: canManageContractors,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("list_operational_team_members");
+      const { data, error } = await supabase.rpc(
+        "list_operational_team_members",
+      );
       if (error) throw error;
       return data;
     },
   });
 
   const roleMutation = useMutation({
-    mutationFn: async ({ userId, newRole }: { userId: string; newRole: EditableRole }) => {
+    mutationFn: async ({
+      userId,
+      newRole,
+    }: {
+      userId: string;
+      newRole: EditableRole;
+    }) => {
       const { error } = await supabase.rpc("set_user_role", {
         target_user_id: userId,
         new_role: newRole,
@@ -127,25 +158,28 @@ function TeamPage() {
 
   const createContractorMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("nes-user-management", {
-        body: {
-          jsonrpc: "2.0",
-          id: crypto.randomUUID(),
-          method: "tools/call",
-          params: {
-            name: "create_nes_user",
-            arguments: {
-              username: contractorForm.username.trim().toLowerCase(),
-              email: contractorForm.email.trim().toLowerCase() || null,
-              full_name: contractorForm.fullName.trim(),
-              company_name: contractorForm.companyName.trim() || null,
-              phone: contractorForm.phone.trim() || null,
-              role: "contractor",
-              temporary_password: contractorForm.temporaryPassword,
+      const { data, error } = await supabase.functions.invoke(
+        "nes-user-management",
+        {
+          body: {
+            jsonrpc: "2.0",
+            id: crypto.randomUUID(),
+            method: "tools/call",
+            params: {
+              name: "create_nes_user",
+              arguments: {
+                username: contractorForm.username.trim().toLowerCase(),
+                email: contractorForm.email.trim().toLowerCase() || null,
+                full_name: contractorForm.fullName.trim(),
+                company_name: contractorForm.companyName.trim() || null,
+                phone: contractorForm.phone.trim() || null,
+                role: "contractor",
+                temporary_password: contractorForm.temporaryPassword,
+              },
             },
           },
         },
-      });
+      );
 
       if (error) throw error;
       const response = data as CreateUserRpcResponse | null;
@@ -171,18 +205,25 @@ function TeamPage() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async () => {
-      if (!resetTarget) throw new Error("Şifresi yenilenecek kullanıcı seçilmedi.");
-      const { data, error } = await supabase.functions.invoke("nes-user-management", {
-        body: {
-          jsonrpc: "2.0",
-          id: crypto.randomUUID(),
-          method: "tools/call",
-          params: {
-            name: "reset_nes_user_password",
-            arguments: { target_user_id: resetTarget.id, temporary_password: resetPassword },
+      if (!resetTarget)
+        throw new Error("Şifresi yenilenecek kullanıcı seçilmedi.");
+      const { data, error } = await supabase.functions.invoke(
+        "nes-user-management",
+        {
+          body: {
+            jsonrpc: "2.0",
+            id: crypto.randomUUID(),
+            method: "tools/call",
+            params: {
+              name: "reset_nes_user_password",
+              arguments: {
+                target_user_id: resetTarget.id,
+                temporary_password: resetPassword,
+              },
+            },
           },
         },
-      });
+      );
       if (error) throw error;
       const response = data as CreateUserRpcResponse | null;
       const result = response?.result?.structuredContent;
@@ -228,21 +269,24 @@ function TeamPage() {
       if (!emailChangeTarget) throw new Error("Kullanıcı seçilmedi.");
       const trimmedEmail = newLoginEmail.trim().toLowerCase();
       const roleChanged = newLoginRole !== emailChangeTarget.currentRole;
-      const { data, error } = await supabase.functions.invoke("nes-user-management", {
-        body: {
-          jsonrpc: "2.0",
-          id: crypto.randomUUID(),
-          method: "tools/call",
-          params: {
-            name: "update_nes_user_email",
-            arguments: {
-              target_user_id: emailChangeTarget.id,
-              new_email: trimmedEmail,
-              ...(roleChanged ? { new_role: newLoginRole } : {}),
+      const { data, error } = await supabase.functions.invoke(
+        "nes-user-management",
+        {
+          body: {
+            jsonrpc: "2.0",
+            id: crypto.randomUUID(),
+            method: "tools/call",
+            params: {
+              name: "update_nes_user_email",
+              arguments: {
+                target_user_id: emailChangeTarget.id,
+                new_email: trimmedEmail,
+                ...(roleChanged ? { new_role: newLoginRole } : {}),
+              },
             },
           },
         },
-      });
+      );
 
       if (error) throw error;
       const response = data as CreateUserRpcResponse | null;
@@ -263,12 +307,14 @@ function TeamPage() {
   const emailChangeFormValid =
     Boolean(emailChangeTarget) &&
     emailIsValid(newLoginEmail) &&
-    newLoginEmail.trim().toLowerCase() !== (emailChangeTarget?.currentEmail ?? "").toLowerCase();
+    newLoginEmail.trim().toLowerCase() !==
+      (emailChangeTarget?.currentEmail ?? "").toLowerCase();
 
   const formIsValid =
     contractorForm.fullName.trim().length >= 2 &&
     usernameIsValid(contractorForm.username.trim().toLowerCase()) &&
-    (!contractorForm.email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contractorForm.email.trim())) &&
+    (!contractorForm.email.trim() ||
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contractorForm.email.trim())) &&
     passwordIsValid(contractorForm.temporaryPassword);
 
   const handleCreateOpenChange = (open: boolean) => {
@@ -301,7 +347,8 @@ function TeamPage() {
               </div>
               <DialogTitle>Taşeron hesabını oluşturun mu?</DialogTitle>
               <DialogDescription>
-                Bu işlem gerçek bir giriş hesabı oluşturur. Bilgileri son kez kontrol edin.
+                Bu işlem gerçek bir giriş hesabı oluşturur. Bilgileri son kez
+                kontrol edin.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-4 text-sm">
@@ -312,20 +359,28 @@ function TeamPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <p className="text-xs text-muted-foreground">Firma</p>
-                  <p className="font-semibold">{contractorForm.companyName.trim() || "—"}</p>
+                  <p className="font-semibold">
+                    {contractorForm.companyName.trim() || "—"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Telefon</p>
-                  <p className="font-semibold">{contractorForm.phone.trim() || "—"}</p>
+                  <p className="font-semibold">
+                    {contractorForm.phone.trim() || "—"}
+                  </p>
                 </div>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Kullanıcı adı</p>
-                <p className="font-semibold">{contractorForm.username.trim().toLowerCase()}</p>
+                <p className="font-semibold">
+                  {contractorForm.username.trim().toLowerCase()}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">E-posta</p>
-                <p className="break-all font-semibold">{contractorForm.email.trim() || "Sonra eklenecek"}</p>
+                <p className="break-all font-semibold">
+                  {contractorForm.email.trim() || "Sonra eklenecek"}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Rol</p>
@@ -333,8 +388,8 @@ function TeamPage() {
               </div>
             </div>
             <p className="text-xs leading-5 text-muted-foreground">
-              Geçici şifre ekranda tekrar gösterilmez ve sistem kayıtlarına yazılmaz. Şifreyi
-              taşerona güvenli bir kanaldan iletin.
+              Geçici şifre ekranda tekrar gösterilmez ve sistem kayıtlarına
+              yazılmaz. Şifreyi taşerona güvenli bir kanaldan iletin.
             </p>
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
@@ -350,7 +405,9 @@ function TeamPage() {
                 onClick={() => createContractorMutation.mutate()}
                 disabled={createContractorMutation.isPending}
               >
-                {createContractorMutation.isPending ? "Oluşturuluyor..." : "Taşeronu Oluştur"}
+                {createContractorMutation.isPending
+                  ? "Oluşturuluyor..."
+                  : "Taşeronu Oluştur"}
               </Button>
             </DialogFooter>
           </>
@@ -359,8 +416,8 @@ function TeamPage() {
             <DialogHeader>
               <DialogTitle>Yeni taşeron hesabı</DialogTitle>
               <DialogDescription>
-                Taşeron kullanıcı adı veya e-posta ile, geçici şifresini kullanarak yalnızca kendisine
-                atanan işleri görür.
+                Taşeron kullanıcı adı veya e-posta ile, geçici şifresini
+                kullanarak yalnızca kendisine atanan işleri görür.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4">
@@ -371,7 +428,10 @@ function TeamPage() {
                 <Input
                   value={contractorForm.fullName}
                   onChange={(event) =>
-                    setContractorForm({ ...contractorForm, fullName: event.target.value })
+                    setContractorForm({
+                      ...contractorForm,
+                      fullName: event.target.value,
+                    })
                   }
                   maxLength={120}
                   autoComplete="name"
@@ -384,7 +444,10 @@ function TeamPage() {
                   <Input
                     value={contractorForm.companyName}
                     onChange={(event) =>
-                      setContractorForm({ ...contractorForm, companyName: event.target.value })
+                      setContractorForm({
+                        ...contractorForm,
+                        companyName: event.target.value,
+                      })
                     }
                     maxLength={160}
                     autoComplete="organization"
@@ -395,7 +458,10 @@ function TeamPage() {
                   <Input
                     value={contractorForm.phone}
                     onChange={(event) =>
-                      setContractorForm({ ...contractorForm, phone: event.target.value })
+                      setContractorForm({
+                        ...contractorForm,
+                        phone: event.target.value,
+                      })
                     }
                     maxLength={40}
                     autoComplete="tel"
@@ -420,16 +486,23 @@ function TeamPage() {
                   placeholder="ornek: ahmet.yilmaz"
                 />
                 <span className="text-xs font-normal leading-5 text-muted-foreground">
-                  3-32 karakter; yalnızca küçük harf, rakam, nokta, tire ve alt çizgi kullanın.
+                  3-32 karakter; yalnızca küçük harf, rakam, nokta, tire ve alt
+                  çizgi kullanın.
                 </span>
               </label>
               <label className="grid gap-1.5 text-sm font-medium">
-                E-posta <span className="text-xs font-normal text-muted-foreground">(isteğe bağlı)</span>
+                E-posta{" "}
+                <span className="text-xs font-normal text-muted-foreground">
+                  (isteğe bağlı)
+                </span>
                 <Input
                   type="email"
                   value={contractorForm.email}
                   onChange={(event) =>
-                    setContractorForm({ ...contractorForm, email: event.target.value })
+                    setContractorForm({
+                      ...contractorForm,
+                      email: event.target.value,
+                    })
                   }
                   maxLength={254}
                   autoComplete="email"
@@ -459,18 +532,29 @@ function TeamPage() {
                     type="button"
                     onClick={() => setShowPassword((value) => !value)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-highlight"
-                    aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
+                    aria-label={
+                      showPassword ? "Şifreyi gizle" : "Şifreyi göster"
+                    }
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
                 <span className="text-xs font-normal leading-5 text-muted-foreground">
-                  En az 12 karakter; büyük harf, küçük harf, rakam ve özel karakter içermelidir.
+                  En az 12 karakter; büyük harf, küçük harf, rakam ve özel
+                  karakter içermelidir.
                 </span>
               </label>
             </div>
             <DialogFooter>
-              <Button type="button" onClick={() => setConfirming(true)} disabled={!formIsValid}>
+              <Button
+                type="button"
+                onClick={() => setConfirming(true)}
+                disabled={!formIsValid}
+              >
                 Bilgileri Kontrol Et
               </Button>
             </DialogFooter>
@@ -484,9 +568,11 @@ function TeamPage() {
     <>
       <PageHeader
         title={isAdmin ? "Ekip ve Yetkiler" : "Taşeronlar"}
-        description={isAdmin
-          ? "Taşeron ve müşteri rollerini yönetin. Yönetici ve teknik ofis hesapları güvenlik nedeniyle bu ekranda kilitlidir."
-          : "Taşeron hesapları oluşturun ve iletişim bilgilerini görüntüleyin. Rol ve şifre işlemleri yöneticidedir."}
+        description={
+          isAdmin
+            ? "Taşeron ve müşteri rollerini yönetin. Yönetici ve teknik ofis hesapları güvenlik nedeniyle bu ekranda kilitlidir."
+            : "Taşeron hesapları oluşturun ve iletişim bilgilerini görüntüleyin. Rol ve şifre işlemleri yöneticidedir."
+        }
         actions={createButton}
       />
       {members.length === 0 ? (
@@ -499,7 +585,9 @@ function TeamPage() {
         <section className="surface-panel overflow-hidden">
           <div className="border-b border-border px-5 py-4">
             <h2 className="font-black">Ekip Kayıtları</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Kullanıcı, firma ve rol bilgilerini tek listede takip edin.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Kullanıcı, firma ve rol bilgilerini tek listede takip edin.
+            </p>
           </div>
           <Table>
             <TableHeader>
@@ -508,7 +596,9 @@ function TeamPage() {
                 <TableHead>Firma</TableHead>
                 <TableHead>Telefon</TableHead>
                 <TableHead className="w-56">Rol</TableHead>
-                {isAdmin ? <TableHead className="w-64">İşlemler</TableHead> : null}
+                {isAdmin ? (
+                  <TableHead className="w-64">İşlemler</TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -517,16 +607,22 @@ function TeamPage() {
                   <TableCell className="font-bold">
                     {member.full_name || "İsimsiz kullanıcı"}
                     {isAdmin && member.email ? (
-                      <p className="mt-0.5 text-xs font-normal text-muted-foreground">{member.email}</p>
+                      <p className="mt-0.5 text-xs font-normal text-muted-foreground">
+                        {member.email}
+                      </p>
                     ) : null}
                   </TableCell>
                   <TableCell>{member.company_name || "—"}</TableCell>
                   <TableCell>{member.phone || "—"}</TableCell>
                   <TableCell>
-                    {member.role === "admin" || member.role === "technical_office" ? (
+                    {member.role === "admin" ||
+                    member.role === "technical_office" ? (
                       <div className="inline-flex h-11 min-w-48 items-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 font-bold text-highlight">
                         <ShieldCheck className="h-4 w-4" />
-                        <span>{member.role === "admin" ? "Yönetici" : "Teknik Ofis"} — Korumalı</span>
+                        <span>
+                          {member.role === "admin" ? "Yönetici" : "Teknik Ofis"}{" "}
+                          — Korumalı
+                        </span>
                       </div>
                     ) : isAdmin ? (
                       <Select
@@ -564,12 +660,18 @@ function TeamPage() {
                         >
                           <Mail className="mr-2 h-4 w-4" /> E-postayı Değiştir
                         </Button>
-                        {member.role === "admin" || member.role === "technical_office" ? null : (
+                        {member.role === "admin" ||
+                        member.role === "technical_office" ? null : (
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setResetTarget({ id: member.id, name: member.full_name || "Bu kullanıcı" })}
+                            onClick={() =>
+                              setResetTarget({
+                                id: member.id,
+                                name: member.full_name || "Bu kullanıcı",
+                              })
+                            }
                           >
                             <KeyRound className="mr-2 h-4 w-4" /> Şifre Yenile
                           </Button>
@@ -584,7 +686,8 @@ function TeamPage() {
         </section>
       )}
       <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
-        <ShieldCheck className="h-4 w-4 text-highlight" /> {isAdmin
+        <ShieldCheck className="h-4 w-4 text-highlight" />{" "}
+        {isAdmin
           ? "Yönetici ve teknik ofis rolleri korumalıdır. Bu ekrandan yalnızca taşeron ve müşteri rolleri değiştirilebilir; geçici şifreler kaydedilmez."
           : "Bu ekran yalnızca taşeron oluşturma ve iletişim bilgisini görüntüleme içindir; rol ve şifre değiştirilemez."}
       </div>
@@ -602,7 +705,8 @@ function TeamPage() {
           <DialogHeader>
             <DialogTitle>Geçici şifreyi yenile</DialogTitle>
             <DialogDescription>
-              {resetTarget?.name} için yeni geçici şifre belirleyin. Bu işlem kullanıcının mevcut şifresini hemen değiştirir.
+              {resetTarget?.name} için yeni geçici şifre belirleyin. Bu işlem
+              kullanıcının mevcut şifresini hemen değiştirir.
             </DialogDescription>
           </DialogHeader>
           <label className="grid gap-1.5 text-sm font-medium">
@@ -621,17 +725,42 @@ function TeamPage() {
                 type="button"
                 onClick={() => setShowResetPassword((value) => !value)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                aria-label={showResetPassword ? "Şifreyi gizle" : "Şifreyi göster"}
+                aria-label={
+                  showResetPassword ? "Şifreyi gizle" : "Şifreyi göster"
+                }
               >
-                {showResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {showResetPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
               </button>
             </div>
-            <span className="text-xs font-normal text-muted-foreground">En az 12 karakter; büyük/küçük harf, rakam ve özel karakter içermelidir.</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              En az 12 karakter; büyük/küçük harf, rakam ve özel karakter
+              içermelidir.
+            </span>
           </label>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setResetTarget(null)} disabled={resetPasswordMutation.isPending}>Vazgeç</Button>
-            <Button type="button" onClick={() => resetPasswordMutation.mutate()} disabled={!passwordIsValid(resetPassword) || resetPasswordMutation.isPending}>
-              {resetPasswordMutation.isPending ? "Yenileniyor..." : "Şifreyi Yenile"}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetTarget(null)}
+              disabled={resetPasswordMutation.isPending}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              onClick={() => resetPasswordMutation.mutate()}
+              disabled={
+                !passwordIsValid(resetPassword) ||
+                resetPasswordMutation.isPending
+              }
+            >
+              {resetPasswordMutation.isPending
+                ? "Yenileniyor..."
+                : "Şifreyi Yenile"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -651,7 +780,8 @@ function TeamPage() {
                 </div>
                 <DialogTitle>Giriş e-postasını değiştirin mi?</DialogTitle>
                 <DialogDescription>
-                  Bu işlem hemen uygulanır. Eski e-posta ile giriş kesilir; şifre ve kullanıcı kimliği korunur.
+                  Bu işlem hemen uygulanır. Eski e-posta ile giriş kesilir;
+                  şifre ve kullanıcı kimliği korunur.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-4 text-sm">
@@ -660,20 +790,29 @@ function TeamPage() {
                   <p className="font-bold">{emailChangeTarget.name}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Mevcut e-posta</p>
-                  <p className="break-all font-semibold">{emailChangeTarget.currentEmail || "—"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Mevcut e-posta
+                  </p>
+                  <p className="break-all font-semibold">
+                    {emailChangeTarget.currentEmail || "—"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Yeni e-posta</p>
-                  <p className="break-all font-bold text-highlight">{newLoginEmail.trim().toLowerCase()}</p>
+                  <p className="break-all font-bold text-highlight">
+                    {newLoginEmail.trim().toLowerCase()}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Rol</p>
                   {newLoginRole === emailChangeTarget.currentRole ? (
-                    <p className="font-semibold">{roleLabels[emailChangeTarget.currentRole]} (değişmeyecek)</p>
+                    <p className="font-semibold">
+                      {roleLabels[emailChangeTarget.currentRole]} (değişmeyecek)
+                    </p>
                   ) : (
                     <p className="font-bold text-highlight">
-                      {roleLabels[emailChangeTarget.currentRole]} → {roleLabels[newLoginRole]}
+                      {roleLabels[emailChangeTarget.currentRole]} →{" "}
+                      {roleLabels[newLoginRole]}
                     </p>
                   )}
                 </div>
@@ -692,7 +831,9 @@ function TeamPage() {
                   onClick={() => updateEmailMutation.mutate()}
                   disabled={updateEmailMutation.isPending}
                 >
-                  {updateEmailMutation.isPending ? "Güncelleniyor..." : "E-postayı Değiştir"}
+                  {updateEmailMutation.isPending
+                    ? "Güncelleniyor..."
+                    : "E-postayı Değiştir"}
                 </Button>
               </DialogFooter>
             </>
@@ -701,18 +842,24 @@ function TeamPage() {
               <DialogHeader>
                 <DialogTitle>Giriş e-postasını değiştir</DialogTitle>
                 <DialogDescription>
-                  {emailChangeTarget?.name} için yeni kurumsal giriş e-postası belirleyin. İsteğe bağlı olarak rolü de
-                  güncelleyebilirsiniz. Bu işlem yalnızca yöneticiler tarafından yapılabilir.
+                  {emailChangeTarget?.name} için yeni kurumsal giriş e-postası
+                  belirleyin. İsteğe bağlı olarak rolü de güncelleyebilirsiniz.
+                  Bu işlem yalnızca yöneticiler tarafından yapılabilir.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4">
                 <label className="grid gap-1.5 text-sm font-medium">
                   Mevcut e-posta
-                  <Input value={emailChangeTarget?.currentEmail || "—"} disabled readOnly />
+                  <Input
+                    value={emailChangeTarget?.currentEmail || "—"}
+                    disabled
+                    readOnly
+                  />
                 </label>
                 <label className="grid gap-1.5 text-sm font-medium">
                   <span>
-                    Yeni giriş e-postası <span className="text-destructive">*</span>
+                    Yeni giriş e-postası{" "}
+                    <span className="text-destructive">*</span>
                   </span>
                   <Input
                     type="email"
@@ -731,7 +878,8 @@ function TeamPage() {
                       <span>Yönetici — Korumalı</span>
                     </div>
                     <span className="text-xs font-normal leading-5 text-muted-foreground">
-                      Yönetici hesabının rolü bu ekrandan değiştirilemez; yalnızca e-posta güncellenir.
+                      Yönetici hesabının rolü bu ekrandan değiştirilemez;
+                      yalnızca e-posta güncellenir.
                     </span>
                   </div>
                 ) : (
@@ -739,7 +887,9 @@ function TeamPage() {
                     Rol
                     <Select
                       value={newLoginRole}
-                      onValueChange={(value: EditableRole) => setNewLoginRole(value)}
+                      onValueChange={(value: EditableRole) =>
+                        setNewLoginRole(value)
+                      }
                     >
                       <SelectTrigger className="h-11">
                         <SelectValue />

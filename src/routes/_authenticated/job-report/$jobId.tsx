@@ -46,20 +46,29 @@ function JobReportPage() {
   const reportQuery = useQuery({
     queryKey: ["job-photo-report", jobId],
     queryFn: async () => {
-      const [orderResult, photosResult, materialsResult, submissionsResult] = await Promise.all([
-        supabase.from("work_orders").select("*, customers(name, contact)").eq("id", jobId).single(),
-        supabase.from("photos").select("*").eq("work_order_id", jobId).order("created_at"),
-        supabase
-          .from("work_order_materials")
-          .select("*, stock_items(code, name)")
-          .eq("work_order_id", jobId)
-          .order("created_at"),
-        supabase
-          .from("work_completion_submissions")
-          .select("*")
-          .eq("work_order_id", jobId)
-          .order("submitted_at", { ascending: false }),
-      ]);
+      const [orderResult, photosResult, materialsResult, submissionsResult] =
+        await Promise.all([
+          supabase
+            .from("work_orders")
+            .select("*, customers(name, contact)")
+            .eq("id", jobId)
+            .single(),
+          supabase
+            .from("photos")
+            .select("*")
+            .eq("work_order_id", jobId)
+            .order("created_at"),
+          supabase
+            .from("work_order_materials")
+            .select("*, stock_items(code, name)")
+            .eq("work_order_id", jobId)
+            .order("created_at"),
+          supabase
+            .from("work_completion_submissions")
+            .select("*")
+            .eq("work_order_id", jobId)
+            .order("submitted_at", { ascending: false }),
+        ]);
       if (orderResult.error) throw orderResult.error;
       if (photosResult.error) throw photosResult.error;
       if (materialsResult.error) throw materialsResult.error;
@@ -69,7 +78,10 @@ function JobReportPage() {
           const signed = await supabase.storage
             .from("work-photos")
             .createSignedUrl(photo.storage_path, 3600);
-          return { ...photo, signedUrl: signed.error ? null : signed.data.signedUrl };
+          return {
+            ...photo,
+            signedUrl: signed.error ? null : signed.data.signedUrl,
+          };
         }),
       );
 
@@ -78,12 +90,17 @@ function JobReportPage() {
         ...new Set(
           submissions.flatMap(
             (submission) =>
-              [submission.submitted_by, submission.reviewed_by].filter(Boolean) as string[],
+              [submission.submitted_by, submission.reviewed_by].filter(
+                Boolean,
+              ) as string[],
           ),
         ),
       ];
       const profilesResult = profileIds.length
-        ? await supabase.from("profiles").select("id, full_name").in("id", profileIds)
+        ? await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", profileIds)
         : { data: [], error: null };
       if (profilesResult.error) throw profilesResult.error;
 
@@ -102,14 +119,22 @@ function JobReportPage() {
     return (
       <EmptyState
         title="Rapor açılamadı"
-        description={reportQuery.error ? errorMessage(reportQuery.error) : "Görev bulunamadı."}
+        description={
+          reportQuery.error
+            ? errorMessage(reportQuery.error)
+            : "Görev bulunamadı."
+        }
       />
     );
   }
 
   const { order, photos, materials, submissions, profiles } = reportQuery.data;
-  const profileById = new Map(profiles.map((profile) => [profile.id, profile.full_name]));
-  const approvedSubmission = submissions.find((submission) => submission.status === "approved");
+  const profileById = new Map(
+    profiles.map((profile) => [profile.id, profile.full_name]),
+  );
+  const approvedSubmission = submissions.find(
+    (submission) => submission.status === "approved",
+  );
 
   async function downloadWordReport() {
     const logoDataUrl = await imageAsDataUrl(NES_LOGO_URL);
@@ -230,7 +255,8 @@ function JobReportPage() {
             <strong>Planlanan tarih:</strong> {formatDate(order.scheduled_at)}
           </p>
           <p className="sm:col-span-2">
-            <strong>Konum:</strong> {order.location || order.location_url || "-"}
+            <strong>Konum:</strong>{" "}
+            {order.location || order.location_url || "-"}
           </p>
         </section>
 
@@ -247,10 +273,13 @@ function JobReportPage() {
           {approvedSubmission ? (
             <div className="mt-3 flex flex-wrap gap-2 text-xs">
               <Badge variant="outline">
-                Gönderen: {profileById.get(approvedSubmission.submitted_by) || "Taşeron"}
+                Gönderen:{" "}
+                {profileById.get(approvedSubmission.submitted_by) || "Taşeron"}
               </Badge>
               <Badge variant="outline">
-                Onaylayan: {profileById.get(approvedSubmission.reviewed_by ?? "") || "Yönetici"}
+                Onaylayan:{" "}
+                {profileById.get(approvedSubmission.reviewed_by ?? "") ||
+                  "Yönetici"}
               </Badge>
               {approvedSubmission.reviewed_at ? (
                 <Badge variant="outline">
@@ -294,7 +323,8 @@ function JobReportPage() {
 
         <section className="mt-7">
           <h2 className="flex items-center gap-2 text-xl font-black">
-            <FileText className="h-5 w-5 text-blue-700" /> Saha Fotoğrafları ve Belgeleri
+            <FileText className="h-5 w-5 text-blue-700" /> Saha Fotoğrafları ve
+            Belgeleri
           </h2>
           <div className="mt-3 grid gap-5 sm:grid-cols-2">
             {photos.map((photo) => (
@@ -320,7 +350,9 @@ function JobReportPage() {
                   />
                 ) : null}
                 <figcaption className="p-3">
-                  <strong className="text-sm">{photoTypeLabels[photo.photo_type]}</strong>
+                  <strong className="text-sm">
+                    {photoTypeLabels[photo.photo_type]}
+                  </strong>
                   <p className="mt-1 text-xs text-slate-600">
                     {photo.caption || "Açıklama eklenmemiş"}
                   </p>
