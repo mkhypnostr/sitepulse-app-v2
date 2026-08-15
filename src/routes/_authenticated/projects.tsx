@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
+import { createProjectDriveWorkspace } from "@/lib/google-workspace";
 import { safeHttpsMapUrl } from "@/lib/map-location";
 import {
   formatProjectDate,
@@ -165,8 +166,16 @@ function ProjectsPage() {
       await queryClient.invalidateQueries({ queryKey: ["projects-page"] });
       setOpen(false);
       setForm(initialForm);
-      toast.success("Proje ve görev adımları oluşturuldu");
       navigate({ to: "/projects/$projectId", params: { projectId } });
+      toast.success("Proje oluşturuldu; Drive klasörleri hazırlanıyor");
+      try {
+        await createProjectDriveWorkspace(projectId);
+        toast.success("Proje Drive klasörleri hazır");
+      } catch (driveError) {
+        toast.warning(
+          `Proje oluşturuldu, Drive hazırlanamadı: ${errorMessage(driveError)}`,
+        );
+      }
     },
     onError: (error) => toast.error(errorMessage(error)),
   });

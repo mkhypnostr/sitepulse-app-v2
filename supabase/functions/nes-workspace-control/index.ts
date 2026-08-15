@@ -11,6 +11,7 @@ type JsonRpcRequest = {
 type Actor = {
   user: { id: string; email?: string };
   isAdmin: boolean;
+  canManageProjects: boolean;
 };
 
 type GoogleCredentials = {
@@ -37,6 +38,9 @@ const GOOGLE_REDIRECT_URI_FALLBACK =
 let googleOAuthClientConfigCache: GoogleOAuthClientConfig | null = null;
 const OPERATIONS_DRIVE_ID =
   Deno.env.get("NES_OPERATIONS_DRIVE_ID") || "0ANT5zef2P9oDUk9PVA";
+const WORKSPACE_OWNER_EMAIL = (
+  Deno.env.get("NES_WORKSPACE_OWNER_EMAIL") || "mehmet.kilinckaya@nesgrup.com"
+).toLowerCase();
 const GOOGLE_SCOPES = [
   "openid",
   "email",
@@ -46,63 +50,30 @@ const GOOGLE_SCOPES = [
 ];
 
 const OPERATIONS_ROOT_FOLDERS = [
-  "00 Şablonlar",
-  "01 Aktif Projeler",
-  "02 Tamamlanan Projeler",
-  "03 Ortak Teknik Kütüphane",
-  "04 Toplantılar ve Tutanaklar",
-  "05 Genel Operasyon",
-  "06 İSG ve Kalite",
-  "07 Planlama ve Kaynak Yönetimi",
-  "08 Satın Alma ve Lojistik",
-  "09 Ekipman, Takım ve Kalibrasyon",
-  "10 Raporlama ve KPI",
-  "11 Arşiv",
+  "01 Projeler",
+  "02 Merkezi Stok, Ekipman ve Lojistik",
+  "03 Ortak Teknik Kütüphane ve Şablonlar",
+  "04 Genel Operasyon ve Toplantılar",
+  "99 Operasyon Arşivi",
 ];
 
 const FINANCE_ROOT_FOLDERS = [
-  "00_Gelen Kutusu & Sınıflandırılacaklar",
-  "01_Şirket & Hukuk",
-  "02_Teklifler",
-  "03_Sözleşmeler",
-  "04_Finans & Muhasebe",
-  "05_Maliyet & Bütçe",
-  "06_Hakedişler",
-  "07_Satın Alma & Tedarik",
-  "08_İnsan Kaynakları",
-  "09_Operasyon & Proje Yönetimi",
-  "10_Raporlama & KPI",
-  "11_Marka & Kurumsal İletişim",
-  "12_Bilgi Teknolojileri & Sistemler",
-  "13_Arşiv",
+  "01 Faturalar ve Muhasebe",
+  "02 Ödeme, Tahsilat ve Banka",
+  "03 Bütçe, Maliyet ve Hakediş",
+  "99 Mali Arşiv",
 ];
 
 const PROJECT_OPERATIONS_FOLDERS = [
   "01 Teklif ve Sözleşme",
   "02 Teknik Dokümanlar",
-  "03 Planlama ve İş Programı",
-  "04 Saha Fotoğrafları",
-  "05 Günlük Raporlar",
-  "06 İSG ve Kalite",
-  "07 Personel ve Puantaj",
-  "08 Satın Alma ve Lojistik",
-  "09 Toplantılar ve Tutanaklar",
-  "10 Hakediş ve Maliyet Takibi",
-  "11 Teslim ve Kabul",
-  "12 Arşiv",
+  "03 Saha Raporları ve Tutanaklar",
+  "04 Fotoğraf ve Videolar",
+  "05 Satın Alma ve Sevkiyat",
+  "06 Proje Kapanışı",
 ];
 
-const PROJECT_FINANCE_FOLDERS = [
-  "01 Bütçe ve Maliyet",
-  "02 Teklif ve Sözleşmeler",
-  "03 Satın Alma ve Tedarik",
-  "04 Faturalar",
-  "05 Hakedişler",
-  "06 Ödemeler ve Tahsilatlar",
-  "07 Yönetim ve Finans",
-  "08 Raporlama",
-  "09 Arşiv",
-];
+const PROJECT_FINANCE_FOLDERS = ["01 Bütçe", "02 Maliyet", "03 Hakediş"];
 
 function readAdminKey() {
   const secretKeysJson = Deno.env.get("SUPABASE_SECRET_KEYS");
@@ -268,15 +239,43 @@ async function authenticate(req: Request): Promise<Actor | null> {
   if (error || !data.user) return null;
   const email = data.user.email?.trim().toLowerCase() ?? "";
   if (!email.endsWith("@nesgrup.com"))
-    return { user: data.user, isAdmin: false };
+    return { user: data.user, isAdmin: false, canManageProjects: false };
 
   const { data: roles, error: roleError } = await admin
     .from("user_roles")
     .select("role")
     .eq("user_id", data.user.id)
-    .eq("role", "admin");
+    .in("role", ["admin", "technical_office"]);
 
-  return { user: data.user, isAdmin: !roleError && Boolean(roles?.length) };
+  const roleNames = new Set((roles ?? []).map((item) => item.role));
+  return {
+    user: data.user,
+    isAdmin: !roleError && roleNames.has("admin"),
+    canManageProjects:
+      !roleError &&
+      (roleNames.has("admin") || roleNames.has("technical_office")),
+  };
+}
+
+async function getWorkspaceOwnerUserId(actorUserId: string) {
+  const { data: ownConnection } = await admin
+    .from("google_workspace_connections")
+    .select("owner_user_id")
+    .eq("owner_user_id", actorUserId)
+    .maybeSingle();
+  if (ownConnection?.owner_user_id) return ownConnection.owner_user_id;
+
+  const { data: sharedConnection, error } = await admin
+    .from("google_workspace_connections")
+    .select("owner_user_id")
+    .eq("google_email", WORKSPACE_OWNER_EMAIL)
+    .maybeSingle();
+  if (error || !sharedConnection?.owner_user_id) {
+    throw new Error(
+      "Kurumsal Google Workspace bağlantısı bulunamadı. Mehmet hesabının bağlantısını kontrol edin.",
+    );
+  }
+  return sharedConnection.owner_user_id;
 }
 
 async function getCredentials(
@@ -703,7 +702,9 @@ async function workspaceStatus(actor: Actor) {
   ]);
   return {
     connected: Boolean(connection),
-    oauth_server_configured: Boolean(googleOAuth.client_id && googleOAuth.client_secret),
+    oauth_server_configured: Boolean(
+      googleOAuth.client_id && googleOAuth.client_secret,
+    ),
     google_account: connection?.google_email ?? null,
     scopes: connection?.scopes ?? [],
     token_expires_at: connection?.expires_at ?? null,
@@ -930,7 +931,17 @@ async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
     .select("operations_folder_id,finance_folder_id")
     .eq("project_id", projectId)
     .maybeSingle();
-  if (existingLink) return { success: true, created: false, ...existingLink };
+  if (existingLink) {
+    return {
+      success: true,
+      created: false,
+      ...existingLink,
+      operations_folder_url: `https://drive.google.com/drive/folders/${existingLink.operations_folder_id}`,
+      finance_folder_url: existingLink.finance_folder_id
+        ? `https://drive.google.com/drive/folders/${existingLink.finance_folder_id}`
+        : null,
+    };
+  }
 
   const { data: project, error } = await admin
     .from("projects")
@@ -939,52 +950,51 @@ async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
     .maybeSingle();
   if (error || !project) throw new Error("Proje bulunamadı.");
 
-  const activeRoot = await ensureFolder(
-    actor.user.id,
+  const workspaceOwnerUserId = await getWorkspaceOwnerUserId(actor.user.id);
+
+  const projectsRoot = await ensureFolder(
+    workspaceOwnerUserId,
     OPERATIONS_DRIVE_ID,
-    "01 Aktif Projeler",
+    "01 Projeler",
   );
   const finance = await ensureDrive(
-    actor.user.id,
+    workspaceOwnerUserId,
     "finance_drive",
     "NES Yönetim ve Finans",
   );
   const financeRoot = await ensureFolder(
-    actor.user.id,
+    workspaceOwnerUserId,
     finance.id,
-    "09_Operasyon & Proje Yönetimi",
+    "03 Bütçe, Maliyet ve Hakediş",
   );
   const projectName = `${project.project_no} - ${project.name}`.slice(0, 180);
   const operationsProject = await ensureFolder(
-    actor.user.id,
-    activeRoot.id,
+    workspaceOwnerUserId,
+    projectsRoot.id,
     projectName,
   );
   const financeProject = await ensureFolder(
-    actor.user.id,
+    workspaceOwnerUserId,
     financeRoot.id,
     projectName,
   );
   const operationsFolders = await ensureFolders(
-    actor.user.id,
+    workspaceOwnerUserId,
     operationsProject.id,
     PROJECT_OPERATIONS_FOLDERS,
   );
   const financeFolders = await ensureFolders(
-    actor.user.id,
+    workspaceOwnerUserId,
     financeProject.id,
     PROJECT_FINANCE_FOLDERS,
   );
-  const financeFolder =
-    financeFolders.find((folder) => folder.name === "07 Yönetim ve Finans") ??
-    financeFolders[0];
 
   const { error: linkError } = await admin
     .from("project_workspace_links")
     .upsert(
       {
         project_id: projectId,
-        owner_user_id: actor.user.id,
+        owner_user_id: workspaceOwnerUserId,
         operations_folder_id: operationsProject.id,
         finance_folder_id: financeProject.id,
         updated_at: new Date().toISOString(),
@@ -1000,11 +1010,12 @@ async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
     project_name: projectName,
     operations_folder_id: operationsProject.id,
     finance_folder_id: financeProject.id,
+    operations_folder_url: `https://drive.google.com/drive/folders/${operationsProject.id}`,
+    finance_folder_url: `https://drive.google.com/drive/folders/${financeProject.id}`,
     operations_subfolders: operationsFolders.map((folder) => ({
       id: folder.id,
       name: folder.name,
     })),
-    finance_subfolder: { id: financeFolder.id, name: financeFolder.name },
     finance_subfolders: financeFolders.map((folder) => ({
       id: folder.id,
       name: folder.name,
@@ -1148,7 +1159,7 @@ const tools = [
     name: "initialize_nes_workspace",
     title: "NES Drive yapısını kur",
     description:
-      "NES Operasyon ve NES Yönetim ve Finans Ortak Drive yapılarını ve rol tabanlı erişimleri idempotent biçimde kurar. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
+      "NES Operasyon'da 5, NES Yönetim ve Finans'ta yalnız parasal kayıtlar için 4 ana klasörü ve rol tabanlı erişimleri idempotent biçimde kurar. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1179,7 +1190,7 @@ const tools = [
     name: "create_project_workspace",
     title: "Proje Drive klasörlerini oluştur",
     description:
-      "NES uygulamasındaki bir proje için Operasyon ve Finans Drive'larında standart klasörleri idempotent biçimde oluşturur. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
+      "NES uygulamasındaki proje için Operasyon merkezli standart klasörleri ve Finans Drive'ında yalnız bütçe, maliyet ve hakediş klasörlerini idempotent biçimde oluşturur. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1296,7 +1307,7 @@ Deno.serve(async (req: Request) => {
     return rpcResult(request.id, {
       protocolVersion: "2025-06-18",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.0.3" },
+      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.1.0" },
     });
   }
   if (request.method === "notifications/initialized") {
@@ -1315,7 +1326,9 @@ Deno.serve(async (req: Request) => {
   const actor = await authenticate(req);
   if (!actor) {
     return rpcResult(request.id, {
-      content: [{ type: "text", text: "Bu işlem için NES hesabınızı bağlayın." }],
+      content: [
+        { type: "text", text: "Bu işlem için NES hesabınızı bağlayın." },
+      ],
       _meta: {
         "mcp/www_authenticate": [
           `Bearer resource_metadata="${RESOURCE_METADATA_URL}", error="invalid_token", error_description="NES hesabıyla oturum açmanız gerekiyor"`,
@@ -1324,17 +1337,20 @@ Deno.serve(async (req: Request) => {
       isError: true,
     });
   }
-  if (!actor.isAdmin) {
+  const canCallTool =
+    actor.isAdmin ||
+    (toolName === "create_project_workspace" && actor.canManageProjects);
+  if (!canCallTool) {
     return rpcResult(request.id, {
       content: [
         {
           type: "text",
-          text: "Bu bağlantı yalnızca NES yöneticileri içindir.",
+          text: "Bu işlem için NES yönetici yetkisi gerekir.",
         },
       ],
       structuredContent: {
         success: false,
-        error: "Bu bağlantı yalnızca NES yöneticileri içindir.",
+        error: "Bu işlem için NES yönetici yetkisi gerekir.",
       },
       isError: true,
     });
