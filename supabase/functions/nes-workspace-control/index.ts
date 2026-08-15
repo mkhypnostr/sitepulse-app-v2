@@ -257,14 +257,7 @@ async function authenticate(req: Request): Promise<Actor | null> {
   };
 }
 
-async function getWorkspaceOwnerUserId(actorUserId: string) {
-  const { data: ownConnection } = await admin
-    .from("google_workspace_connections")
-    .select("owner_user_id")
-    .eq("owner_user_id", actorUserId)
-    .maybeSingle();
-  if (ownConnection?.owner_user_id) return ownConnection.owner_user_id;
-
+async function getWorkspaceOwnerUserId() {
   const { data: sharedConnection, error } = await admin
     .from("google_workspace_connections")
     .select("owner_user_id")
@@ -920,7 +913,7 @@ async function ensureWorkspaceMember(actor: Actor, rawArguments: unknown) {
   };
 }
 
-async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
+async function createProjectWorkspace(rawArguments: unknown) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const projectId = requireText(args.project_id, "Proje kimliği", 36);
   if (!/^[0-9a-f-]{36}$/i.test(projectId))
@@ -950,7 +943,7 @@ async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
     .maybeSingle();
   if (error || !project) throw new Error("Proje bulunamadı.");
 
-  const workspaceOwnerUserId = await getWorkspaceOwnerUserId(actor.user.id);
+  const workspaceOwnerUserId = await getWorkspaceOwnerUserId();
 
   const projectsRoot = await ensureFolder(
     workspaceOwnerUserId,
@@ -1377,7 +1370,7 @@ Deno.serve(async (req: Request) => {
               : toolName === "ensure_nes_workspace_member"
                 ? await ensureWorkspaceMember(actor, params.arguments)
                 : toolName === "create_project_workspace"
-                  ? await createProjectWorkspace(actor, params.arguments)
+                  ? await createProjectWorkspace(params.arguments)
                   : await createCalendarEvent(actor, params.arguments);
     if (!(
       toolName === "get_google_workspace_status" ||
