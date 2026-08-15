@@ -5,8 +5,9 @@ Google Drive ve Calendar işlemlerini kontrollü araç çağrılarıyla yürütm
 
 ## Güvenlik sınırları
 
-- MCP uç noktası yalnızca NES uygulamasında `admin` rolü bulunan
-  `@nesgrup.com` hesaplarını kabul eder.
+- MCP yönetim araçları yalnızca NES uygulamasında `admin` rolü bulunan
+  `@nesgrup.com` hesaplarını kabul eder. `technical_office` rolü yalnızca
+  uygulamadaki proje akışından idempotent proje klasörü oluşturabilir.
 - Edge gateway JWT doğrulaması Google callback nedeniyle kapalıdır; MCP istekleri
   fonksiyon içinde Supabase Auth ve NES admin rolüyle yeniden doğrulanır.
 - Google access/refresh tokenları yalnızca Supabase Vault'ta tutulur.
@@ -53,3 +54,20 @@ Bu adımlar PR incelemesi ve açık canlıya alma onayından sonra uygulanır:
 - Finans Drive'ına operasyon yöneticisi eklenmez.
 - İşlemler `google_workspace_operation_audit` tablosunda, token veya gizli değer
   içermeyen özetlerle kaydedilir.
+
+## v8 klasör modeli
+
+Ana klasörler yalnız bir kez oluşturulur:
+
+- `NES Operasyon`: Projeler; Merkezi Stok, Ekipman ve Lojistik; Ortak Teknik
+  Kütüphane ve Şablonlar; Genel Operasyon ve Toplantılar; Operasyon Arşivi.
+- `NES Yönetim ve Finans`: Faturalar ve Muhasebe; Ödeme, Tahsilat ve Banka;
+  Bütçe, Maliyet ve Hakediş; Mali Arşiv.
+
+Her yeni proje kaydedildiğinde uygulama `create_project_workspace` aracını
+otomatik çağırır. Operasyon projesinde Teklif ve Sözleşme, Teknik Dokümanlar,
+Saha Raporları ve Tutanaklar, Fotoğraf ve Videolar, Satın Alma ve Sevkiyat,
+Proje Kapanışı klasörleri oluşur. Finans tarafında aynı proje için yalnız Bütçe,
+Maliyet ve Hakediş klasörleri açılır. Proje detayındaki **Drive Klasörlerini
+Hazırla** düğmesi güvenli tekrar/iyileştirme yoludur; çağrı idempotent olduğu için
+mükerrer klasör üretmez.

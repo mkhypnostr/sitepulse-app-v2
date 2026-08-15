@@ -7,7 +7,9 @@ import {
   CalendarDays,
   Camera,
   Clock3,
+  ExternalLink,
   FileText,
+  FolderPlus,
   MapPin,
   Plus,
   Save,
@@ -19,6 +21,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
+import { createProjectDriveWorkspace } from "@/lib/google-workspace";
 import {
   formatProjectDate,
   formatProjectDateTime,
@@ -77,6 +80,21 @@ function ProjectDetailPage() {
   const canEditTasks = role === "admin" || role === "technical_office";
   const canAssignTasks = role === "admin";
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
+  const [driveFolderUrl, setDriveFolderUrl] = useState<string | null>(null);
+
+  const prepareDriveWorkspace = useMutation({
+    mutationFn: () => createProjectDriveWorkspace(projectId),
+    onSuccess: (result) => {
+      setDriveFolderUrl(result.operations_folder_url);
+      toast.success(
+        result.created
+          ? "Proje Drive klasörleri oluşturuldu"
+          : "Proje Drive klasörleri zaten hazır",
+      );
+    },
+    onError: (error) =>
+      toast.error(`Drive klasörleri hazırlanamadı: ${errorMessage(error)}`),
+  });
 
   const projectQuery = useQuery({
     queryKey: ["project-detail", projectId],
@@ -178,6 +196,24 @@ function ProjectDetailPage() {
         description={`${project.project_no} · ${customer?.name || "Müşteri"}`}
         actions={
           <div className="flex flex-wrap gap-2">
+            {driveFolderUrl ? (
+              <Button asChild variant="outline">
+                <a href={driveFolderUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink className="mr-2 h-4 w-4" /> Drive Klasörünü Aç
+                </a>
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => prepareDriveWorkspace.mutate()}
+                disabled={prepareDriveWorkspace.isPending}
+              >
+                <FolderPlus className="mr-2 h-4 w-4" />
+                {prepareDriveWorkspace.isPending
+                  ? "Drive Hazırlanıyor..."
+                  : "Drive Klasörlerini Hazırla"}
+              </Button>
+            )}
             {canEditTasks && project.status !== "completed" && project.status !== "cancelled" ? (
               <Button onClick={() => setCreateTaskOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" /> Yeni Proje Görevi

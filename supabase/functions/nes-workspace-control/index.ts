@@ -11,6 +11,7 @@ type JsonRpcRequest = {
 type Actor = {
   user: { id: string; email?: string };
   isAdmin: boolean;
+  canManageProjects: boolean;
 };
 
 type GoogleCredentials = {
@@ -25,14 +26,21 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/nes-workspace-control`;
 const RESOURCE_METADATA_URL = `${FUNCTION_URL}/.well-known/oauth-protected-resource`;
 const AUTH_SERVER_URL = `${SUPABASE_URL}/auth/v1`;
-const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_WORKSPACE_CLIENT_ID") ?? "";
-const GOOGLE_CLIENT_SECRET =
-  Deno.env.get("GOOGLE_WORKSPACE_CLIENT_SECRET") ?? "";
-const GOOGLE_REDIRECT_URI =
+type GoogleOAuthClientConfig = {
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+};
+
+const GOOGLE_REDIRECT_URI_FALLBACK =
   Deno.env.get("GOOGLE_WORKSPACE_REDIRECT_URI") ||
   `${FUNCTION_URL}/google/callback`;
+let googleOAuthClientConfigCache: GoogleOAuthClientConfig | null = null;
 const OPERATIONS_DRIVE_ID =
   Deno.env.get("NES_OPERATIONS_DRIVE_ID") || "0ANT5zef2P9oDUk9PVA";
+const WORKSPACE_OWNER_EMAIL = (
+  Deno.env.get("NES_WORKSPACE_OWNER_EMAIL") || "mehmet.kilinckaya@nesgrup.com"
+).toLowerCase();
 const GOOGLE_SCOPES = [
   "openid",
   "email",
@@ -42,39 +50,30 @@ const GOOGLE_SCOPES = [
 ];
 
 const OPERATIONS_ROOT_FOLDERS = [
-  "00 Şablonlar",
-  "01 Aktif Projeler",
-  "02 Tamamlanan Projeler",
-  "03 Ortak Teknik Kütüphane",
-  "04 Toplantılar ve Tutanaklar",
-  "05 Genel Operasyon",
+  "01 Projeler",
+  "02 Merkezi Stok, Ekipman ve Lojistik",
+  "03 Ortak Teknik Kütüphane ve Şablonlar",
+  "04 Genel Operasyon ve Toplantılar",
+  "99 Operasyon Arşivi",
 ];
 
 const FINANCE_ROOT_FOLDERS = [
-  "00_Gelen Kutusu & Sınıflandırılacaklar",
-  "01_Şirket & Hukuk",
-  "02_Teklifler",
-  "03_Sözleşmeler",
-  "04_Finans & Muhasebe",
-  "05_Maliyet & Bütçe",
-  "06_Hakedişler",
-  "07_Satın Alma & Tedarik",
-  "08_İnsan Kaynakları",
-  "09_Operasyon & Proje Yönetimi",
-  "10_Raporlama & KPI",
-  "11_Marka & Kurumsal İletişim",
-  "12_Bilgi Teknolojileri & Sistemler",
-  "13_Arşiv",
+  "01 Faturalar ve Muhasebe",
+  "02 Ödeme, Tahsilat ve Banka",
+  "03 Bütçe, Maliyet ve Hakediş",
+  "99 Mali Arşiv",
 ];
 
 const PROJECT_OPERATIONS_FOLDERS = [
   "01 Teklif ve Sözleşme",
   "02 Teknik Dokümanlar",
-  "03 Saha Fotoğrafları",
-  "04 Günlük Raporlar",
-  "05 Toplantılar ve Tutanaklar",
-  "06 Teslim ve Kabul",
+  "03 Saha Raporları ve Tutanaklar",
+  "04 Fotoğraf ve Videolar",
+  "05 Satın Alma ve Sevkiyat",
+  "06 Proje Kapanışı",
 ];
+
+const PROJECT_FINANCE_FOLDERS = ["01 Bütçe", "02 Maliyet", "03 Hakediş"];
 
 function readAdminKey() {
   const secretKeysJson = Deno.env.get("SUPABASE_SECRET_KEYS");
@@ -95,6 +94,46 @@ function readAdminKey() {
 const admin = createClient(SUPABASE_URL, readAdminKey(), {
   auth: { autoRefreshToken: false, persistSession: false },
 });
+
+async function getGoogleOAuthClientConfig(): Promise<GoogleOAuthClientConfig> {
+  if (googleOAuthClientConfigCache) return googleOAuthClientConfigCache;
+
+  const { data, error } = await admin.rpc(
+    "get_google_workspace_oauth_client_credentials",
+  );
+  const row = Array.isArray(data) ? data[0] : data;
+  if (
+    !error &&
+    row &&
+    typeof row.client_id === "string" &&
+    row.client_id &&
+    typeof row.client_secret === "string" &&
+    row.client_secret
+  ) {
+    googleOAuthClientConfigCache = {
+      client_id: row.client_id,
+      client_secret: row.client_secret,
+      redirect_uri:
+        typeof row.redirect_uri === "string" && row.redirect_uri
+          ? row.redirect_uri
+          : GOOGLE_REDIRECT_URI_FALLBACK,
+    };
+    return googleOAuthClientConfigCache;
+  }
+
+  const envClientId = Deno.env.get("GOOGLE_WORKSPACE_CLIENT_ID") ?? "";
+  const envClientSecret = Deno.env.get("GOOGLE_WORKSPACE_CLIENT_SECRET") ?? "";
+  if (envClientId && envClientSecret) {
+    googleOAuthClientConfigCache = {
+      client_id: envClientId,
+      client_secret: envClientSecret,
+      redirect_uri: GOOGLE_REDIRECT_URI_FALLBACK,
+    };
+    return googleOAuthClientConfigCache;
+  }
+
+  throw new Error("Google OAuth sunucu ayarları tamamlanmamış.");
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -200,15 +239,36 @@ async function authenticate(req: Request): Promise<Actor | null> {
   if (error || !data.user) return null;
   const email = data.user.email?.trim().toLowerCase() ?? "";
   if (!email.endsWith("@nesgrup.com"))
-    return { user: data.user, isAdmin: false };
+    return { user: data.user, isAdmin: false, canManageProjects: false };
 
   const { data: roles, error: roleError } = await admin
     .from("user_roles")
     .select("role")
     .eq("user_id", data.user.id)
-    .eq("role", "admin");
+    .in("role", ["admin", "technical_office"]);
 
-  return { user: data.user, isAdmin: !roleError && Boolean(roles?.length) };
+  const roleNames = new Set((roles ?? []).map((item) => item.role));
+  return {
+    user: data.user,
+    isAdmin: !roleError && roleNames.has("admin"),
+    canManageProjects:
+      !roleError &&
+      (roleNames.has("admin") || roleNames.has("technical_office")),
+  };
+}
+
+async function getWorkspaceOwnerUserId() {
+  const { data: sharedConnection, error } = await admin
+    .from("google_workspace_connections")
+    .select("owner_user_id")
+    .eq("google_email", WORKSPACE_OWNER_EMAIL)
+    .maybeSingle();
+  if (error || !sharedConnection?.owner_user_id) {
+    throw new Error(
+      "Kurumsal Google Workspace bağlantısı bulunamadı. Mehmet hesabının bağlantısını kontrol edin.",
+    );
+  }
+  return sharedConnection.owner_user_id;
 }
 
 async function getCredentials(
@@ -251,15 +311,13 @@ async function googleAccessToken(ownerUserId: string) {
     : 0;
   if (expiresAt > Date.now() + 90_000) return credentials.access_token;
 
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    throw new Error("Google OAuth sunucu ayarları tamamlanmamış.");
-  }
+  const googleOAuth = await getGoogleOAuthClientConfig();
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
+      client_id: googleOAuth.client_id,
+      client_secret: googleOAuth.client_secret,
       refresh_token: credentials.refresh_token,
       grant_type: "refresh_token",
     }),
@@ -457,9 +515,7 @@ async function ensurePermission(
 }
 
 async function startGoogleConnection(actor: Actor) {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    throw new Error("Google OAuth istemci ayarları henüz sunucuya eklenmemiş.");
-  }
+  const googleOAuth = await getGoogleOAuthClientConfig();
   const state = randomToken(32);
   const codeVerifier = randomToken(64);
   const codeChallenge = await sha256(codeVerifier);
@@ -474,8 +530,8 @@ async function startGoogleConnection(actor: Actor) {
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.search = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: GOOGLE_REDIRECT_URI,
+    client_id: googleOAuth.client_id,
+    redirect_uri: googleOAuth.redirect_uri,
     response_type: "code",
     scope: GOOGLE_SCOPES.join(" "),
     access_type: "offline",
@@ -495,6 +551,7 @@ async function startGoogleConnection(actor: Actor) {
 }
 
 async function handleGoogleCallback(url: URL) {
+  const googleOAuth = await getGoogleOAuthClientConfig();
   const state = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code") ?? "";
   const googleError = url.searchParams.get("error");
@@ -520,29 +577,45 @@ async function handleGoogleCallback(url: URL) {
     );
   }
 
-  await admin
-    .from("google_workspace_oauth_states")
-    .update({ consumed_at: new Date().toISOString() })
-    .eq("state_hash", stateHash)
-    .is("consumed_at", null);
-
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
+      client_id: googleOAuth.client_id,
+      client_secret: googleOAuth.client_secret,
       code,
       code_verifier: oauthState.code_verifier,
       grant_type: "authorization_code",
-      redirect_uri: GOOGLE_REDIRECT_URI,
+      redirect_uri: googleOAuth.redirect_uri,
     }),
   });
   const token = (await tokenResponse.json()) as Record<string, unknown>;
   if (!tokenResponse.ok || typeof token.access_token !== "string") {
+    const googleErrorCode =
+      typeof token.error === "string"
+        ? token.error.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 80)
+        : "token_exchange_failed";
+    console.error("Google OAuth token exchange failed", {
+      status: tokenResponse.status,
+      error: googleErrorCode,
+    });
     return html(
-      "<h1>Google bağlantısı tamamlanamadı</h1><p>Sohbetten yeniden deneyin.</p>",
+      `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Google bağlantı hatası</title></head><body><h1>Google bağlantısı tamamlanamadı</h1><p>Hata kodu: ${googleErrorCode}</p></body></html>`,
       400,
+    );
+  }
+
+  const { data: consumedState, error: consumeError } = await admin
+    .from("google_workspace_oauth_states")
+    .update({ consumed_at: new Date().toISOString() })
+    .eq("state_hash", stateHash)
+    .is("consumed_at", null)
+    .select("state_hash")
+    .maybeSingle();
+  if (consumeError || !consumedState) {
+    return html(
+      '<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Bağlantı isteği geçersiz</title></head><body><h1>Bağlantı isteği kullanılmış</h1><p>Yeni bir bağlantı başlatın.</p></body></html>',
+      409,
     );
   }
 
@@ -607,6 +680,7 @@ async function handleGoogleCallback(url: URL) {
 }
 
 async function workspaceStatus(actor: Actor) {
+  const googleOAuth = await getGoogleOAuthClientConfig();
   const [{ data: connection }, { data: resources }] = await Promise.all([
     admin
       .from("google_workspace_connections")
@@ -621,7 +695,9 @@ async function workspaceStatus(actor: Actor) {
   ]);
   return {
     connected: Boolean(connection),
-    oauth_server_configured: Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
+    oauth_server_configured: Boolean(
+      googleOAuth.client_id && googleOAuth.client_secret,
+    ),
     google_account: connection?.google_email ?? null,
     scopes: connection?.scopes ?? [],
     token_expires_at: connection?.expires_at ?? null,
@@ -837,7 +913,7 @@ async function ensureWorkspaceMember(actor: Actor, rawArguments: unknown) {
   };
 }
 
-async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
+async function createProjectWorkspace(rawArguments: unknown) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const projectId = requireText(args.project_id, "Proje kimliği", 36);
   if (!/^[0-9a-f-]{36}$/i.test(projectId))
@@ -848,7 +924,17 @@ async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
     .select("operations_folder_id,finance_folder_id")
     .eq("project_id", projectId)
     .maybeSingle();
-  if (existingLink) return { success: true, created: false, ...existingLink };
+  if (existingLink) {
+    return {
+      success: true,
+      created: false,
+      ...existingLink,
+      operations_folder_url: `https://drive.google.com/drive/folders/${existingLink.operations_folder_id}`,
+      finance_folder_url: existingLink.finance_folder_id
+        ? `https://drive.google.com/drive/folders/${existingLink.finance_folder_id}`
+        : null,
+    };
+  }
 
   const { data: project, error } = await admin
     .from("projects")
@@ -857,41 +943,43 @@ async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
     .maybeSingle();
   if (error || !project) throw new Error("Proje bulunamadı.");
 
-  const activeRoot = await ensureFolder(
-    actor.user.id,
+  const workspaceOwnerUserId = await getWorkspaceOwnerUserId();
+
+  const projectsRoot = await ensureFolder(
+    workspaceOwnerUserId,
     OPERATIONS_DRIVE_ID,
-    "01 Aktif Projeler",
+    "01 Projeler",
   );
   const finance = await ensureDrive(
-    actor.user.id,
+    workspaceOwnerUserId,
     "finance_drive",
     "NES Yönetim ve Finans",
   );
   const financeRoot = await ensureFolder(
-    actor.user.id,
+    workspaceOwnerUserId,
     finance.id,
-    "09_Operasyon & Proje Yönetimi",
+    "03 Bütçe, Maliyet ve Hakediş",
   );
   const projectName = `${project.project_no} - ${project.name}`.slice(0, 180);
   const operationsProject = await ensureFolder(
-    actor.user.id,
-    activeRoot.id,
+    workspaceOwnerUserId,
+    projectsRoot.id,
     projectName,
   );
   const financeProject = await ensureFolder(
-    actor.user.id,
+    workspaceOwnerUserId,
     financeRoot.id,
     projectName,
   );
   const operationsFolders = await ensureFolders(
-    actor.user.id,
+    workspaceOwnerUserId,
     operationsProject.id,
     PROJECT_OPERATIONS_FOLDERS,
   );
-  const financeFolder = await ensureFolder(
-    actor.user.id,
+  const financeFolders = await ensureFolders(
+    workspaceOwnerUserId,
     financeProject.id,
-    "07 Yönetim ve Finans",
+    PROJECT_FINANCE_FOLDERS,
   );
 
   const { error: linkError } = await admin
@@ -899,7 +987,7 @@ async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
     .upsert(
       {
         project_id: projectId,
-        owner_user_id: actor.user.id,
+        owner_user_id: workspaceOwnerUserId,
         operations_folder_id: operationsProject.id,
         finance_folder_id: financeProject.id,
         updated_at: new Date().toISOString(),
@@ -915,11 +1003,16 @@ async function createProjectWorkspace(actor: Actor, rawArguments: unknown) {
     project_name: projectName,
     operations_folder_id: operationsProject.id,
     finance_folder_id: financeProject.id,
+    operations_folder_url: `https://drive.google.com/drive/folders/${operationsProject.id}`,
+    finance_folder_url: `https://drive.google.com/drive/folders/${financeProject.id}`,
     operations_subfolders: operationsFolders.map((folder) => ({
       id: folder.id,
       name: folder.name,
     })),
-    finance_subfolder: { id: financeFolder.id, name: financeFolder.name },
+    finance_subfolders: financeFolders.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+    })),
   };
 }
 
@@ -999,6 +1092,10 @@ async function writeAudit(
   });
 }
 
+const OAUTH_SECURITY_SCHEMES = [
+  { type: "oauth2", scopes: ["openid", "email", "profile"] },
+];
+
 const tools = [
   {
     name: "get_google_workspace_status",
@@ -1055,7 +1152,7 @@ const tools = [
     name: "initialize_nes_workspace",
     title: "NES Drive yapısını kur",
     description:
-      "NES Operasyon ve NES Yönetim ve Finans Ortak Drive yapılarını ve rol tabanlı erişimleri idempotent biçimde kurar. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
+      "NES Operasyon'da 5, NES Yönetim ve Finans'ta yalnız parasal kayıtlar için 4 ana klasörü ve rol tabanlı erişimleri idempotent biçimde kurar. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1086,7 +1183,7 @@ const tools = [
     name: "create_project_workspace",
     title: "Proje Drive klasörlerini oluştur",
     description:
-      "NES uygulamasındaki bir proje için Operasyon ve Finans Drive'larında standart klasörleri idempotent biçimde oluşturur. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
+      "NES uygulamasındaki proje için Operasyon merkezli standart klasörleri ve Finans Drive'ında yalnız bütçe, maliyet ve hakediş klasörlerini idempotent biçimde oluşturur. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1167,6 +1264,13 @@ const tools = [
   },
 ];
 
+for (const tool of tools) {
+  Object.assign(tool, {
+    securitySchemes: OAUTH_SECURITY_SCHEMES,
+    _meta: { securitySchemes: OAUTH_SECURITY_SCHEMES },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS")
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -1184,14 +1288,6 @@ Deno.serve(async (req: Request) => {
   }
   if (req.method !== "POST") return json({ error: "POST kullanın." }, 405);
 
-  const actor = await authenticate(req);
-  if (!actor) return unauthorized();
-  if (!actor.isAdmin)
-    return json(
-      { error: "Bu bağlantı yalnızca NES yöneticileri içindir." },
-      403,
-    );
-
   let request: JsonRpcRequest;
   try {
     request = await req.json();
@@ -1204,7 +1300,7 @@ Deno.serve(async (req: Request) => {
     return rpcResult(request.id, {
       protocolVersion: "2025-06-18",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.0.0" },
+      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.1.0" },
     });
   }
   if (request.method === "notifications/initialized") {
@@ -1219,6 +1315,39 @@ Deno.serve(async (req: Request) => {
   const toolName = typeof params.name === "string" ? params.name : "";
   if (!tools.some((tool) => tool.name === toolName))
     return rpcError(request.id, -32602, "Bilinmeyen araç");
+
+  const actor = await authenticate(req);
+  if (!actor) {
+    return rpcResult(request.id, {
+      content: [
+        { type: "text", text: "Bu işlem için NES hesabınızı bağlayın." },
+      ],
+      _meta: {
+        "mcp/www_authenticate": [
+          `Bearer resource_metadata="${RESOURCE_METADATA_URL}", error="invalid_token", error_description="NES hesabıyla oturum açmanız gerekiyor"`,
+        ],
+      },
+      isError: true,
+    });
+  }
+  const canCallTool =
+    actor.isAdmin ||
+    (toolName === "create_project_workspace" && actor.canManageProjects);
+  if (!canCallTool) {
+    return rpcResult(request.id, {
+      content: [
+        {
+          type: "text",
+          text: "Bu işlem için NES yönetici yetkisi gerekir.",
+        },
+      ],
+      structuredContent: {
+        success: false,
+        error: "Bu işlem için NES yönetici yetkisi gerekir.",
+      },
+      isError: true,
+    });
+  }
 
   const requestId = crypto.randomUUID();
   const inputSummary =
@@ -1241,7 +1370,7 @@ Deno.serve(async (req: Request) => {
               : toolName === "ensure_nes_workspace_member"
                 ? await ensureWorkspaceMember(actor, params.arguments)
                 : toolName === "create_project_workspace"
-                  ? await createProjectWorkspace(actor, params.arguments)
+                  ? await createProjectWorkspace(params.arguments)
                   : await createCalendarEvent(actor, params.arguments);
     if (!(
       toolName === "get_google_workspace_status" ||
