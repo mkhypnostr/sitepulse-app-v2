@@ -114,6 +114,85 @@ export type Database = {
         };
         Relationships: [];
       };
+      offers: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          currency: string;
+          customer_approved_at: string | null;
+          customer_id: string | null;
+          id: string;
+          notes: string | null;
+          offer_no: string;
+          offer_type: string;
+          project_id: string | null;
+          source_summary: string | null;
+          status: string;
+          title: string;
+          total_amount: number;
+          updated_at: string;
+          valid_until: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          created_by: string;
+          currency?: string;
+          customer_approved_at?: string | null;
+          customer_id?: string | null;
+          id?: string;
+          notes?: string | null;
+          offer_no?: string;
+          offer_type?: string;
+          project_id?: string | null;
+          source_summary?: string | null;
+          status?: string;
+          title: string;
+          total_amount?: number;
+          updated_at?: string;
+          valid_until?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          currency?: string;
+          customer_approved_at?: string | null;
+          customer_id?: string | null;
+          id?: string;
+          notes?: string | null;
+          offer_no?: string;
+          offer_type?: string;
+          project_id?: string | null;
+          source_summary?: string | null;
+          status?: string;
+          title?: string;
+          total_amount?: number;
+          updated_at?: string;
+          valid_until?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "offers_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "offers_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "offers_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       operational_tasks: {
         Row: {
           assigned_to: string | null;

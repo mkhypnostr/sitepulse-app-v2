@@ -8,6 +8,7 @@ import {
   BriefcaseBusiness,
   CalendarDays,
   ClipboardList,
+  FileSpreadsheet,
   FolderKanban,
   LayoutDashboard,
   ListChecks,
@@ -163,6 +164,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             badgeKey: "workOrders",
           },
           { to: "/projects", label: "Projeler", icon: FolderKanban },
+          { to: "/offers", label: "Teklifler", icon: FileSpreadsheet },
           {
             to: "/tasks",
             label: "Görevler",
