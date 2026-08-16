@@ -22,6 +22,51 @@ export type ProjectWorkspaceResult = {
   error?: string;
 };
 
+export type WorkspaceResource = {
+  resource_key: string;
+  resource_id: string;
+  resource_name: string;
+  resource_type: "drive" | "folder";
+  updated_at: string;
+};
+
+export type GoogleWorkspaceStatus = {
+  connected: boolean;
+  oauth_server_configured: boolean;
+  google_account: string | null;
+  resources: WorkspaceResource[];
+  operations_drive_id: string;
+};
+
+export async function getGoogleWorkspaceStatus() {
+  const requestId = crypto.randomUUID();
+  const { data, error } = await supabase.functions.invoke<
+    WorkspaceToolResult<GoogleWorkspaceStatus>
+  >("nes-workspace-control", {
+    body: {
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "tools/call",
+      params: {
+        name: "get_google_workspace_status",
+        arguments: {},
+      },
+    },
+  });
+
+  if (error) throw error;
+  if (data?.error) {
+    throw new Error(data.error.message || "Google Workspace durumu alınamadı");
+  }
+
+  const result = data?.result;
+  const content = result?.structuredContent;
+  if (!content || result?.isError) {
+    throw new Error("Google Workspace durumu alınamadı");
+  }
+  return content;
+}
+
 export async function createProjectDriveWorkspace(projectId: string) {
   const requestId = crypto.randomUUID();
   const { data, error } = await supabase.functions.invoke<

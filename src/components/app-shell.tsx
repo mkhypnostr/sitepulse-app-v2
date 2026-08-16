@@ -9,6 +9,7 @@ import {
   CalendarDays,
   ClipboardList,
   FolderKanban,
+  FolderOpen,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -163,6 +164,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             badgeKey: "workOrders",
           },
           { to: "/projects", label: "Projeler", icon: FolderKanban },
+          { to: "/shared-files", label: "Ortak Dosyalar", icon: FolderOpen },
           {
             to: "/tasks",
             label: "Görevler",
@@ -193,6 +195,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               badgeKey: "workOrders",
             },
             { to: "/projects", label: "Projeler", icon: FolderKanban },
+            {
+              to: "/shared-files",
+              label: "Ortak Dosyalar",
+              icon: FolderOpen,
+            },
             {
               to: "/tasks",
               label: "Görevler",

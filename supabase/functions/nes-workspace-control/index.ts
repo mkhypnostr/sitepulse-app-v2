@@ -693,6 +693,11 @@ async function workspaceStatus(actor: Actor) {
       .eq("owner_user_id", actor.user.id)
       .order("resource_key"),
   ]);
+  const visibleResources = actor.isAdmin
+    ? (resources ?? [])
+    : (resources ?? []).filter((resource) =>
+        resource.resource_key.startsWith("operations_"),
+      );
   return {
     connected: Boolean(connection),
     oauth_server_configured: Boolean(
@@ -701,7 +706,7 @@ async function workspaceStatus(actor: Actor) {
     google_account: connection?.google_email ?? null,
     scopes: connection?.scopes ?? [],
     token_expires_at: connection?.expires_at ?? null,
-    resources: resources ?? [],
+    resources: visibleResources,
     operations_drive_id: OPERATIONS_DRIVE_ID,
   };
 }
@@ -1332,7 +1337,9 @@ Deno.serve(async (req: Request) => {
   }
   const canCallTool =
     actor.isAdmin ||
-    (toolName === "create_project_workspace" && actor.canManageProjects);
+    ((toolName === "create_project_workspace" ||
+      toolName === "get_google_workspace_status") &&
+      actor.canManageProjects);
   if (!canCallTool) {
     return rpcResult(request.id, {
       content: [
