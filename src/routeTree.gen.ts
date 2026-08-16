@@ -23,6 +23,7 @@ import { Route as AuthenticatedOffersRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedSharedFilesRouteImport } from './routes/_authenticated/shared-files'
 import { Route as AuthenticatedStockRouteImport } from './routes/_authenticated/stock'
 import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/tasks'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
@@ -103,6 +104,12 @@ const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedSharedFilesRoute =
+  AuthenticatedSharedFilesRouteImport.update({
+    id: '/shared-files',
+    path: '/shared-files',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedStockRoute = AuthenticatedStockRouteImport.update({
   id: '/stock',
   path: '/stock',
@@ -166,6 +173,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
+  '/shared-files': typeof AuthenticatedSharedFilesRoute
   '/stock': typeof AuthenticatedStockRoute
   '/tasks': typeof AuthenticatedTasksRoute
   '/team': typeof AuthenticatedTeamRoute
@@ -190,6 +198,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
+  '/shared-files': typeof AuthenticatedSharedFilesRoute
   '/stock': typeof AuthenticatedStockRoute
   '/tasks': typeof AuthenticatedTasksRoute
   '/team': typeof AuthenticatedTeamRoute
@@ -216,6 +225,7 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
+  '/_authenticated/shared-files': typeof AuthenticatedSharedFilesRoute
   '/_authenticated/stock': typeof AuthenticatedStockRoute
   '/_authenticated/tasks': typeof AuthenticatedTasksRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/reports'
+    | '/shared-files'
     | '/stock'
     | '/tasks'
     | '/team'
@@ -266,6 +277,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/reports'
+    | '/shared-files'
     | '/stock'
     | '/tasks'
     | '/team'
@@ -291,6 +303,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/projects'
     | '/_authenticated/reports'
+    | '/_authenticated/shared-files'
     | '/_authenticated/stock'
     | '/_authenticated/tasks'
     | '/_authenticated/team'
@@ -409,6 +422,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReportsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/shared-files': {
+      id: '/_authenticated/shared-files'
+      path: '/shared-files'
+      fullPath: '/shared-files'
+      preLoaderRoute: typeof AuthenticatedSharedFilesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/stock': {
       id: '/_authenticated/stock'
       path: '/stock'
@@ -500,6 +520,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRouteWithChildren
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
+  AuthenticatedSharedFilesRoute: typeof AuthenticatedSharedFilesRoute
   AuthenticatedStockRoute: typeof AuthenticatedStockRoute
   AuthenticatedTasksRoute: typeof AuthenticatedTasksRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
@@ -521,6 +542,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRouteWithChildren,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
+  AuthenticatedSharedFilesRoute: AuthenticatedSharedFilesRoute,
   AuthenticatedStockRoute: AuthenticatedStockRoute,
   AuthenticatedTasksRoute: AuthenticatedTasksRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
