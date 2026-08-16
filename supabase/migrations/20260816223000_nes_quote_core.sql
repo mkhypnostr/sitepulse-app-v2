@@ -49,7 +49,7 @@ CREATE INDEX offers_status_created_at_idx ON public.offers(status, created_at DE
 CREATE OR REPLACE FUNCTION public.assign_offer_no()
 RETURNS trigger
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
@@ -70,6 +70,11 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- Sayaç satırları yalnız bu tetikleyici tarafından güncellenir. Böylece
+-- uygulama kullanıcısı teklif numarasını veya sonraki sıra değerini doğrudan
+-- değiştiremez; RLS, numara üretimini engellemez.
+REVOKE ALL ON FUNCTION public.assign_offer_no() FROM PUBLIC, anon, authenticated;
 
 CREATE TRIGGER offers_assign_number
 BEFORE INSERT ON public.offers
@@ -115,4 +120,3 @@ USING (
   (SELECT public.can_manage_finance(auth.uid()))
   AND status = 'draft'
 );
-
