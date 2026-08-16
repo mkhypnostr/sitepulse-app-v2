@@ -27,7 +27,8 @@ function readAdminKey() {
   }
 
   const legacyKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!legacyKey) throw new Error("Supabase sunucu anahtarı yapılandırılmamış.");
+  if (!legacyKey)
+    throw new Error("Supabase sunucu anahtarı yapılandırılmamış.");
   return legacyKey;
 }
 
@@ -57,8 +58,16 @@ function rpcResult(id: JsonRpcRequest["id"], result: unknown) {
   return json({ jsonrpc: "2.0", id: id ?? null, result });
 }
 
-function rpcError(id: JsonRpcRequest["id"], code: number, message: string, status = 200) {
-  return json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, status);
+function rpcError(
+  id: JsonRpcRequest["id"],
+  code: number,
+  message: string,
+  status = 200,
+) {
+  return json(
+    { jsonrpc: "2.0", id: id ?? null, error: { code, message } },
+    status,
+  );
 }
 
 function unauthorized(message = "Oturum gerekli") {
@@ -84,15 +93,20 @@ function validUsername(value: string) {
 }
 
 function validPassword(value: unknown) {
-  if (typeof value !== "string" || value.length < 12 || value.length > 128) return false;
+  if (typeof value !== "string" || value.length < 12 || value.length > 128)
+    return false;
   return (
-    /[a-z]/.test(value) && /[A-Z]/.test(value) && /\d/.test(value) && /[^A-Za-z0-9]/.test(value)
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value) &&
+    /\d/.test(value) &&
+    /[^A-Za-z0-9]/.test(value)
   );
 }
 
 function optionalText(value: unknown, maxLength: number, fieldLabel: string) {
   if (value == null || value === "") return null;
-  if (typeof value !== "string") throw new Error(`${fieldLabel} metin olmalıdır.`);
+  if (typeof value !== "string")
+    throw new Error(`${fieldLabel} metin olmalıdır.`);
   const normalized = value.trim();
   if (!normalized) return null;
   if (normalized.length > maxLength) {
@@ -116,11 +130,13 @@ async function authenticate(req: Request) {
     .eq("user_id", data.user.id)
     .in("role", ["admin", "technical_office"]);
 
-  if (roleError) return { user: data.user, isAdmin: false, isTechnicalOffice: false };
+  if (roleError)
+    return { user: data.user, isAdmin: false, isTechnicalOffice: false };
   return {
     user: data.user,
     isAdmin: roleRows?.some((row) => row.role === "admin") ?? false,
-    isTechnicalOffice: roleRows?.some((row) => row.role === "technical_office") ?? false,
+    isTechnicalOffice:
+      roleRows?.some((row) => row.role === "technical_office") ?? false,
   };
 }
 
@@ -153,7 +169,8 @@ async function createUser(
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const email = normalizedEmail(args.email);
   const username = normalizedUsername(args.username);
-  const fullName = typeof args.full_name === "string" ? args.full_name.trim() : "";
+  const fullName =
+    typeof args.full_name === "string" ? args.full_name.trim() : "";
   const companyName = optionalText(args.company_name, 160, "Firma adı");
   const phone = optionalText(args.phone, 40, "Telefon");
   const role = args.role as AppRole;
@@ -165,12 +182,19 @@ async function createUser(
       "Kullanıcı adı 3-32 karakter olmalı; yalnızca küçük harf, rakam, nokta, tire ve alt çizgi içermelidir.",
     );
   }
-  if (email && !validEmail(email)) throw new Error("Geçerli bir e-posta adresi girin.");
+  if (email && !validEmail(email))
+    throw new Error("Geçerli bir e-posta adresi girin.");
   if (fullName.length < 2 || fullName.length > 120) {
     throw new Error("Ad soyad 2 ile 120 karakter arasında olmalıdır.");
   }
-  if (!(["admin", "technical_office", "contractor", "customer"] as AppRole[]).includes(role)) {
-    throw new Error("Rol admin, technical_office, contractor veya customer olmalıdır.");
+  if (
+    !(
+      ["admin", "technical_office", "contractor", "customer"] as AppRole[]
+    ).includes(role)
+  ) {
+    throw new Error(
+      "Rol admin, technical_office, contractor veya customer olmalıdır.",
+    );
   }
   if (!actor.isAdmin && (!actor.isTechnicalOffice || role !== "contractor")) {
     throw new Error("Teknik ofis yalnızca taşeron hesabı oluşturabilir.");
@@ -184,7 +208,8 @@ async function createUser(
   let createdUserId: string | null = null;
   // Gerçek e-postası henüz olmayan saha kullanıcıları için yalnızca sistem içinde kullanılan,
   // kullanıcıya gösterilmeyen bir giriş adresi oluşturulur. E-posta doğrulama gönderilmez.
-  const authEmail = email || `${username}.${crypto.randomUUID()}@accounts.nesgrup.com`;
+  const authEmail =
+    email || `${username}.${crypto.randomUUID()}@accounts.nesgrup.com`;
   try {
     const { data, error } = await admin.auth.admin.createUser({
       email: authEmail,
@@ -238,13 +263,16 @@ async function createUser(
 
     if (profileError) throw profileError;
 
-    const { error: usernameError } = await admin.from("user_login_profiles").insert({
-      user_id: createdUserId,
-      username,
-    });
+    const { error: usernameError } = await admin
+      .from("user_login_profiles")
+      .insert({
+        user_id: createdUserId,
+        username,
+      });
 
     if (usernameError) {
-      if (usernameError.code === "23505") throw new Error("Bu kullanıcı adı zaten kullanılıyor.");
+      if (usernameError.code === "23505")
+        throw new Error("Bu kullanıcı adı zaten kullanılıyor.");
       throw usernameError;
     }
 
@@ -275,7 +303,8 @@ async function createUser(
       await admin.auth.admin.deleteUser(createdUserId);
     }
 
-    const message = error instanceof Error ? error.message : "Kullanıcı oluşturulamadı.";
+    const message =
+      error instanceof Error ? error.message : "Kullanıcı oluşturulamadı.";
     if (createdUserId) {
       await writeAudit({
         requestId,
@@ -293,22 +322,35 @@ async function createUser(
 
 async function resetUserPassword(actorUserId: string, rawArguments: unknown) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
-  const targetUserId = typeof args.target_user_id === "string" ? args.target_user_id : "";
+  const targetUserId =
+    typeof args.target_user_id === "string" ? args.target_user_id : "";
   const temporaryPassword = args.temporary_password;
   const requestId = crypto.randomUUID();
 
-  if (!/^[0-9a-f-]{36}$/i.test(targetUserId)) throw new Error("Geçersiz kullanıcı seçildi.");
+  if (!/^[0-9a-f-]{36}$/i.test(targetUserId))
+    throw new Error("Geçersiz kullanıcı seçildi.");
   if (!validPassword(temporaryPassword)) {
-    throw new Error("Geçici şifre en az 12 karakter olmalı; büyük harf, küçük harf, rakam ve özel karakter içermelidir.");
+    throw new Error(
+      "Geçici şifre en az 12 karakter olmalı; büyük harf, küçük harf, rakam ve özel karakter içermelidir.",
+    );
   }
 
-  const [{ data: roleRow, error: roleError }, { data: userResult, error: userError }] = await Promise.all([
-    admin.from("user_roles").select("role").eq("user_id", targetUserId).maybeSingle(),
+  const [
+    { data: roleRow, error: roleError },
+    { data: userResult, error: userError },
+  ] = await Promise.all([
+    admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", targetUserId)
+      .maybeSingle(),
     admin.auth.admin.getUserById(targetUserId),
   ]);
 
-  if (roleError || !roleRow || userError || !userResult.user) throw new Error("Kullanıcı bulunamadı.");
-  if (roleRow.role === "admin") throw new Error("Yönetici hesabının şifresi bu ekrandan yenilenemez.");
+  if (roleError || !roleRow || userError || !userResult.user)
+    throw new Error("Kullanıcı bulunamadı.");
+  if (roleRow.role === "admin")
+    throw new Error("Yönetici hesabının şifresi bu ekrandan yenilenemez.");
 
   const { error } = await admin.auth.admin.updateUserById(targetUserId, {
     password: temporaryPassword as string,
@@ -325,18 +367,25 @@ async function resetUserPassword(actorUserId: string, rawArguments: unknown) {
     outcome: "success",
   });
 
-  return { success: true, user_id: targetUserId, message: "Geçici şifre yenilendi." };
+  return {
+    success: true,
+    user_id: targetUserId,
+    message: "Geçici şifre yenilendi.",
+  };
 }
 
 async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
-  const targetUserId = typeof args.target_user_id === "string" ? args.target_user_id : "";
+  const targetUserId =
+    typeof args.target_user_id === "string" ? args.target_user_id : "";
   const newEmail = normalizedEmail(args.new_email);
   const requestedRole = args.new_role;
   const requestId = crypto.randomUUID();
 
-  if (!/^[0-9a-f-]{36}$/i.test(targetUserId)) throw new Error("Geçersiz kullanıcı seçildi.");
-  if (!validEmail(newEmail)) throw new Error("Geçerli bir e-posta adresi girin.");
+  if (!/^[0-9a-f-]{36}$/i.test(targetUserId))
+    throw new Error("Geçersiz kullanıcı seçildi.");
+  if (!validEmail(newEmail))
+    throw new Error("Geçerli bir e-posta adresi girin.");
   // Yönetici rolü ayrıcalık yükseltmesini önlemek için bu araçtan asla verilemez;
   // yalnızca mevcut yönetici olmayan roller arasında geçiş yapılabilir.
   if (
@@ -345,15 +394,23 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
       requestedRole as AppRole,
     )
   ) {
-    throw new Error("Rol yalnızca technical_office, contractor veya customer olabilir.");
+    throw new Error(
+      "Rol yalnızca technical_office, contractor veya customer olabilir.",
+    );
   }
   const newRole = requestedRole as AppRole | undefined;
 
-  const [{ data: userResult, error: userError }, { data: roleRow, error: roleError }] =
-    await Promise.all([
-      admin.auth.admin.getUserById(targetUserId),
-      admin.from("user_roles").select("role").eq("user_id", targetUserId).maybeSingle(),
-    ]);
+  const [
+    { data: userResult, error: userError },
+    { data: roleRow, error: roleError },
+  ] = await Promise.all([
+    admin.auth.admin.getUserById(targetUserId),
+    admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", targetUserId)
+      .maybeSingle(),
+  ]);
 
   if (userError || !userResult.user) throw new Error("Kullanıcı bulunamadı.");
   if (roleError || !roleRow) throw new Error("Kullanıcının rolü bulunamadı.");
@@ -364,7 +421,9 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
   // Yönetici hesaplarının rolü bu ekrandan asla değiştirilemez (kendi rolünü veya
   // başka bir yöneticinin rolünü düşürme dahil); yalnızca giriş e-postası güncellenebilir.
   if (currentRole === "admin" && newRole !== undefined) {
-    throw new Error("Yönetici hesabının rolü bu ekrandan değiştirilemez; yalnızca e-posta güncellenebilir.");
+    throw new Error(
+      "Yönetici hesabının rolü bu ekrandan değiştirilemez; yalnızca e-posta güncellenebilir.",
+    );
   }
 
   const finalRole = newRole ?? currentRole;
@@ -373,10 +432,13 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
     throw new Error("Yeni e-posta mevcut e-posta ile aynı olamaz.");
   }
 
-  const { error: emailError } = await admin.auth.admin.updateUserById(targetUserId, {
-    email: newEmail,
-    email_confirm: true,
-  });
+  const { error: emailError } = await admin.auth.admin.updateUserById(
+    targetUserId,
+    {
+      email: newEmail,
+      email_confirm: true,
+    },
+  );
 
   if (emailError) {
     await writeAudit({
@@ -390,7 +452,8 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
       errorCode: emailError.code ?? "email_update_failed",
     });
     const message =
-      emailError.code === "email_exists" || /already|exist/i.test(emailError.message)
+      emailError.code === "email_exists" ||
+      /already|exist/i.test(emailError.message)
         ? "Bu e-posta adresi zaten başka bir hesap tarafından kullanılıyor."
         : emailError.message;
     throw new Error(message);
@@ -400,7 +463,10 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
     try {
       const { error: roleUpsertError } = await admin
         .from("user_roles")
-        .upsert({ user_id: targetUserId, role: newRole }, { onConflict: "user_id,role" });
+        .upsert(
+          { user_id: targetUserId, role: newRole },
+          { onConflict: "user_id,role" },
+        );
       if (roleUpsertError) throw roleUpsertError;
 
       const { error: removeOtherRolesError } = await admin
@@ -426,7 +492,8 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
         outcome: "failed",
         errorCode: "role_update_failed_rolled_back",
       });
-      const message = error instanceof Error ? error.message : "Rol güncellenemedi.";
+      const message =
+        error instanceof Error ? error.message : "Rol güncellenemedi.";
       throw new Error(message);
     }
   }
@@ -465,10 +532,20 @@ const tools = [
           type: "string",
           minLength: 3,
           maxLength: 32,
-          description: "Giriş kullanıcı adı: küçük harf, rakam, nokta, tire veya alt çizgi",
+          description:
+            "Giriş kullanıcı adı: küçük harf, rakam, nokta, tire veya alt çizgi",
         },
-        email: { type: "string", format: "email", description: "Gerçek e-posta adresi (isteğe bağlı)" },
-        full_name: { type: "string", minLength: 2, maxLength: 120, description: "Ad ve soyad" },
+        email: {
+          type: "string",
+          format: "email",
+          description: "Gerçek e-posta adresi (isteğe bağlı)",
+        },
+        full_name: {
+          type: "string",
+          minLength: 2,
+          maxLength: 120,
+          description: "Ad ve soyad",
+        },
         company_name: {
           type: "string",
           maxLength: 160,
@@ -482,7 +559,8 @@ const tools = [
         role: {
           type: "string",
           enum: ["admin", "technical_office", "contractor", "customer"],
-          description: "admin: yönetici, contractor: taşeron, customer: müşteri",
+          description:
+            "admin: yönetici, contractor: taşeron, customer: müşteri",
         },
         temporary_password: {
           type: "string",
@@ -510,7 +588,11 @@ const tools = [
       type: "object",
       additionalProperties: false,
       properties: {
-        target_user_id: { type: "string", format: "uuid", description: "Şifresi yenilenecek kullanıcı kimliği" },
+        target_user_id: {
+          type: "string",
+          format: "uuid",
+          description: "Şifresi yenilenecek kullanıcı kimliği",
+        },
         temporary_password: {
           type: "string",
           minLength: 12,
@@ -541,7 +623,11 @@ const tools = [
           format: "uuid",
           description: "E-postası değiştirilecek kullanıcı kimliği",
         },
-        new_email: { type: "string", format: "email", description: "Yeni kurumsal giriş e-postası" },
+        new_email: {
+          type: "string",
+          format: "email",
+          description: "Yeni kurumsal giriş e-postası",
+        },
         new_role: {
           type: "string",
           enum: ["technical_office", "contractor", "customer"],
@@ -561,7 +647,8 @@ const tools = [
 ];
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
+  if (req.method === "OPTIONS")
+    return new Response(null, { status: 204, headers: corsHeaders });
 
   const url = new URL(req.url);
   if (url.pathname.endsWith("/.well-known/oauth-protected-resource")) {
@@ -578,7 +665,13 @@ Deno.serve(async (req: Request) => {
   const auth = await authenticate(req);
   if (!auth) return unauthorized();
   if (!auth.isAdmin && !auth.isTechnicalOffice) {
-    return json({ error: "Bu bağlantı yalnızca NES yöneticileri veya teknik ofis içindir." }, 403);
+    return json(
+      {
+        error:
+          "Bu bağlantı yalnızca NES yöneticileri veya teknik ofis içindir.",
+      },
+      403,
+    );
   }
 
   let request: JsonRpcRequest;
@@ -588,7 +681,8 @@ Deno.serve(async (req: Request) => {
     return rpcError(null, -32700, "Geçersiz JSON", 400);
   }
 
-  if (request.jsonrpc !== "2.0") return rpcError(request.id, -32600, "Geçersiz JSON-RPC isteği");
+  if (request.jsonrpc !== "2.0")
+    return rpcError(request.id, -32600, "Geçersiz JSON-RPC isteği");
 
   if (request.method === "initialize") {
     return rpcResult(request.id, {
@@ -607,20 +701,37 @@ Deno.serve(async (req: Request) => {
 
   if (request.method === "tools/call") {
     const params = request.params ?? {};
-    const knownTools = ["create_nes_user", "reset_nes_user_password", "update_nes_user_email"];
+    const knownTools = [
+      "create_nes_user",
+      "reset_nes_user_password",
+      "update_nes_user_email",
+    ];
     if (!knownTools.includes(params.name as string)) {
       return rpcError(request.id, -32602, "Bilinmeyen araç");
     }
     if (params.name === "reset_nes_user_password" && !auth.isAdmin) {
       return rpcResult(request.id, {
-        content: [{ type: "text", text: "Şifre yenileme yalnızca yöneticiler içindir." }],
-        structuredContent: { success: false, error: "Şifre yenileme yalnızca yöneticiler içindir." },
+        content: [
+          {
+            type: "text",
+            text: "Şifre yenileme yalnızca yöneticiler içindir.",
+          },
+        ],
+        structuredContent: {
+          success: false,
+          error: "Şifre yenileme yalnızca yöneticiler içindir.",
+        },
         isError: true,
       });
     }
     if (params.name === "update_nes_user_email" && !auth.isAdmin) {
       return rpcResult(request.id, {
-        content: [{ type: "text", text: "Giriş e-postası değişimi yalnızca yöneticiler içindir." }],
+        content: [
+          {
+            type: "text",
+            text: "Giriş e-postası değişimi yalnızca yöneticiler içindir.",
+          },
+        ],
         structuredContent: {
           success: false,
           error: "Giriş e-postası değişimi yalnızca yöneticiler içindir.",
@@ -642,7 +753,8 @@ Deno.serve(async (req: Request) => {
         isError: false,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "İşlem başarısız.";
+      const message =
+        error instanceof Error ? error.message : "İşlem başarısız.";
       return rpcResult(request.id, {
         content: [{ type: "text", text: message }],
         structuredContent: { success: false, error: message },

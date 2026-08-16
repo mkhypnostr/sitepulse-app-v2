@@ -1,13 +1,26 @@
 import { useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock3, FileText, History, Paperclip, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  History,
+  Paperclip,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -122,7 +135,13 @@ function isTrackedProjectTask(task: OverdueProjectTask) {
   return (
     Boolean(task.responsible_id) ||
     task.approved_progress_pct > 0 ||
-    ["in_progress", "external_approval", "revision_required", "blocked", "completed"].includes(task.status)
+    [
+      "in_progress",
+      "external_approval",
+      "revision_required",
+      "blocked",
+      "completed",
+    ].includes(task.status)
   );
 }
 
@@ -135,7 +154,8 @@ const actionLabel: Record<string, string> = {
 function ApprovalsPage() {
   const { role, user } = useAuth();
   const queryClient = useQueryClient();
-  const canAccess = role === "admin" || role === "technical_office" || role === "contractor";
+  const canAccess =
+    role === "admin" || role === "technical_office" || role === "contractor";
   const isAdmin = role === "admin";
   const isTechnicalOffice = role === "technical_office";
   const isContractor = role === "contractor";
@@ -163,7 +183,8 @@ function ApprovalsPage() {
           "id, task_name, phase_name, project_id, status, planned_date, approved_progress_pct, responsible_id, projects(name, project_no)",
         )
         .order("planned_date", { ascending: true, nullsFirst: false });
-      if (isContractor && user) projectTasksQuery = projectTasksQuery.eq("responsible_id", user.id);
+      if (isContractor && user)
+        projectTasksQuery = projectTasksQuery.eq("responsible_id", user.id);
 
       let independentTasksQuery = supabase
         .from("operational_tasks")
@@ -171,7 +192,11 @@ function ApprovalsPage() {
           "id, title, project_id, customer_id, status, planned_date, assigned_to, projects(name, project_no)",
         )
         .order("planned_date", { ascending: true, nullsFirst: false });
-      if (isContractor && user) independentTasksQuery = independentTasksQuery.eq("assigned_to", user.id);
+      if (isContractor && user)
+        independentTasksQuery = independentTasksQuery.eq(
+          "assigned_to",
+          user.id,
+        );
 
       let completionsQuery = supabase
         .from("work_completion_submissions")
@@ -180,7 +205,8 @@ function ApprovalsPage() {
         )
         .eq("status", "pending")
         .order("submitted_at", { ascending: false });
-      if (isContractor && user) completionsQuery = completionsQuery.eq("submitted_by", user.id);
+      if (isContractor && user)
+        completionsQuery = completionsQuery.eq("submitted_by", user.id);
 
       let progressQuery = supabase
         .from("progress_updates")
@@ -189,7 +215,8 @@ function ApprovalsPage() {
         )
         .eq("status", "pending")
         .order("created_at", { ascending: false });
-      if (isContractor && user) progressQuery = progressQuery.eq("contractor_id", user.id);
+      if (isContractor && user)
+        progressQuery = progressQuery.eq("contractor_id", user.id);
 
       let projectTaskSubmissionsQuery = supabase
         .from("project_task_progress_submissions")
@@ -198,7 +225,11 @@ function ApprovalsPage() {
         )
         .eq("status", "pending")
         .order("submitted_at", { ascending: false });
-      if (isContractor && user) projectTaskSubmissionsQuery = projectTaskSubmissionsQuery.eq("submitted_by", user.id);
+      if (isContractor && user)
+        projectTaskSubmissionsQuery = projectTaskSubmissionsQuery.eq(
+          "submitted_by",
+          user.id,
+        );
 
       const [
         overdueOrdersResult,
@@ -217,79 +248,120 @@ function ApprovalsPage() {
         progressQuery,
         projectTaskSubmissionsQuery,
         isAdmin
-          ? supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(30)
+          ? supabase
+              .from("activity_logs")
+              .select("*")
+              .order("created_at", { ascending: false })
+              .limit(30)
           : Promise.resolve({ data: [], error: null }),
         isContractor && user
-          ? supabase.from("work_order_assignments").select("work_order_id").eq("contractor_id", user.id)
+          ? supabase
+              .from("work_order_assignments")
+              .select("work_order_id")
+              .eq("contractor_id", user.id)
           : Promise.resolve({ data: [], error: null }),
       ]);
       if (overdueOrdersResult.error) throw overdueOrdersResult.error;
-      if (overdueProjectTasksResult.error) throw overdueProjectTasksResult.error;
+      if (overdueProjectTasksResult.error)
+        throw overdueProjectTasksResult.error;
       if (overdueIndependentResult.error) throw overdueIndependentResult.error;
       if (completionsResult.error) throw completionsResult.error;
       if (progressResult.error) throw progressResult.error;
-      if (projectTaskSubmissionsResult.error) throw projectTaskSubmissionsResult.error;
+      if (projectTaskSubmissionsResult.error)
+        throw projectTaskSubmissionsResult.error;
       if (activityResult.error) throw activityResult.error;
-      if (myWorkOrderAssignmentsResult.error) throw myWorkOrderAssignmentsResult.error;
+      if (myWorkOrderAssignmentsResult.error)
+        throw myWorkOrderAssignmentsResult.error;
 
-      const completions = (completionsResult.data ?? []) as unknown as PendingCompletion[];
-      const progressItems = (progressResult.data ?? []) as unknown as PendingProgress[];
-      const projectTaskSubmissions =
-        (projectTaskSubmissionsResult.data ?? []) as unknown as PendingProjectTaskSubmission[];
-      const overdueOrdersRaw = (overdueOrdersResult.data ?? []) as unknown as OverdueWorkOrder[];
+      const completions = (completionsResult.data ??
+        []) as unknown as PendingCompletion[];
+      const progressItems = (progressResult.data ??
+        []) as unknown as PendingProgress[];
+      const projectTaskSubmissions = (projectTaskSubmissionsResult.data ??
+        []) as unknown as PendingProjectTaskSubmission[];
+      const overdueOrdersRaw = (overdueOrdersResult.data ??
+        []) as unknown as OverdueWorkOrder[];
       const myAssignedWorkOrderIds = new Set(
-        ((myWorkOrderAssignmentsResult.data ?? []) as Array<{ work_order_id: string }>).map(
-          (row) => row.work_order_id,
-        ),
+        (
+          (myWorkOrderAssignmentsResult.data ?? []) as Array<{
+            work_order_id: string;
+          }>
+        ).map((row) => row.work_order_id),
       );
       const overdueOrders = isContractor
-        ? overdueOrdersRaw.filter((order) => myAssignedWorkOrderIds.has(order.id))
+        ? overdueOrdersRaw.filter((order) =>
+            myAssignedWorkOrderIds.has(order.id),
+          )
         : overdueOrdersRaw;
-      const overdueProjectTasksRaw = (overdueProjectTasksResult.data ?? []) as unknown as OverdueProjectTask[];
-      const overdueIndependentRaw = (overdueIndependentResult.data ?? []) as unknown as OverdueIndependentTask[];
+      const overdueProjectTasksRaw = (overdueProjectTasksResult.data ??
+        []) as unknown as OverdueProjectTask[];
+      const overdueIndependentRaw = (overdueIndependentResult.data ??
+        []) as unknown as OverdueIndependentTask[];
       const activityLogs = (activityResult.data ?? []) as ActivityLogRow[];
 
       const overdueProjectTasks = overdueProjectTasksRaw.filter(
-        (task) => isTrackedProjectTask(task) && isOverdue(task.planned_date) && !TERMINAL_TASK_STATUSES.includes(task.status),
+        (task) =>
+          isTrackedProjectTask(task) &&
+          isOverdue(task.planned_date) &&
+          !TERMINAL_TASK_STATUSES.includes(task.status),
       );
       const overdueIndependentTasks = overdueIndependentRaw.filter(
-        (task) => isOverdue(task.planned_date) && !TERMINAL_TASK_STATUSES.includes(task.status),
+        (task) =>
+          isOverdue(task.planned_date) &&
+          !TERMINAL_TASK_STATUSES.includes(task.status),
       );
 
       const completionIds = completions.map((item) => item.id);
-      const projectSubmissionIds = projectTaskSubmissions.map((item) => item.id);
-      const [completionEvidenceResult, projectEvidenceResult] = await Promise.all([
-        completionIds.length
-          ? supabase
-              .from("work_completion_evidence")
-              .select("submission_id, photos(id, storage_path, is_document, caption)")
-              .in("submission_id", completionIds)
-          : Promise.resolve({ data: [], error: null }),
-        projectSubmissionIds.length
-          ? supabase
-              .from("project_task_evidence")
-              .select("id, submission_id, storage_path, evidence_type, description, file_name")
-              .in("submission_id", projectSubmissionIds)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
+      const projectSubmissionIds = projectTaskSubmissions.map(
+        (item) => item.id,
+      );
+      const [completionEvidenceResult, projectEvidenceResult] =
+        await Promise.all([
+          completionIds.length
+            ? supabase
+                .from("work_completion_evidence")
+                .select(
+                  "submission_id, photos(id, storage_path, is_document, caption)",
+                )
+                .in("submission_id", completionIds)
+            : Promise.resolve({ data: [], error: null }),
+          projectSubmissionIds.length
+            ? supabase
+                .from("project_task_evidence")
+                .select(
+                  "id, submission_id, storage_path, evidence_type, description, file_name",
+                )
+                .in("submission_id", projectSubmissionIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
       if (completionEvidenceResult.error) throw completionEvidenceResult.error;
       if (projectEvidenceResult.error) throw projectEvidenceResult.error;
 
       // Onay kartlarında kanıt önizlemesi (fotoğraf thumbnail / PDF linki)
       // gösterebilmek için sadece sayım değil, imzalı URL ile birlikte kanıt
       // kaydını da tutuyoruz.
-      const completionEvidenceRows = (completionEvidenceResult.data ?? []) as unknown as Array<{
+      const completionEvidenceRows = (completionEvidenceResult.data ??
+        []) as unknown as Array<{
         submission_id: string;
-        photos: { id: string; storage_path: string; is_document: boolean; caption: string | null } | null;
+        photos: {
+          id: string;
+          storage_path: string;
+          is_document: boolean;
+          caption: string | null;
+        } | null;
       }>;
-      const completionEvidenceBySubmission = new Map<string, EvidencePreviewItem[]>();
+      const completionEvidenceBySubmission = new Map<
+        string,
+        EvidencePreviewItem[]
+      >();
       await Promise.all(
         completionEvidenceRows.map(async (row) => {
           if (!row.submission_id || !row.photos) return;
           const { data, error } = await supabase.storage
             .from("work-photos")
             .createSignedUrl(row.photos.storage_path, 3600);
-          const list = completionEvidenceBySubmission.get(row.submission_id) ?? [];
+          const list =
+            completionEvidenceBySubmission.get(row.submission_id) ?? [];
           list.push({
             id: row.photos.id,
             signedUrl: error ? null : data.signedUrl,
@@ -300,7 +372,8 @@ function ApprovalsPage() {
         }),
       );
 
-      const projectEvidenceRows = (projectEvidenceResult.data ?? []) as unknown as Array<{
+      const projectEvidenceRows = (projectEvidenceResult.data ??
+        []) as unknown as Array<{
         id: string;
         submission_id: string | null;
         storage_path: string;
@@ -308,7 +381,10 @@ function ApprovalsPage() {
         description: string | null;
         file_name: string;
       }>;
-      const projectEvidenceBySubmission = new Map<string, EvidencePreviewItem[]>();
+      const projectEvidenceBySubmission = new Map<
+        string,
+        EvidencePreviewItem[]
+      >();
       await Promise.all(
         projectEvidenceRows.map(async (row) => {
           if (!row.submission_id) return;
@@ -328,17 +404,27 @@ function ApprovalsPage() {
 
       let financialsByOrderId = new Map<
         string,
-        { customer_labor_amount: number; customer_material_amount: number; contractor_labor_amount: number }
+        {
+          customer_labor_amount: number;
+          customer_material_amount: number;
+          contractor_labor_amount: number;
+        }
       >();
       if (isAdmin) {
-        const orderIds = [...new Set(completions.map((item) => item.work_order_id))];
+        const orderIds = [
+          ...new Set(completions.map((item) => item.work_order_id)),
+        ];
         if (orderIds.length) {
           const { data, error } = await supabase
             .from("work_order_financials")
-            .select("work_order_id, customer_labor_amount, customer_material_amount, contractor_labor_amount")
+            .select(
+              "work_order_id, customer_labor_amount, customer_material_amount, contractor_labor_amount",
+            )
             .in("work_order_id", orderIds);
           if (error) throw error;
-          financialsByOrderId = new Map(data.map((row) => [row.work_order_id, row]));
+          financialsByOrderId = new Map(
+            data.map((row) => [row.work_order_id, row]),
+          );
         }
       }
 
@@ -346,12 +432,19 @@ function ApprovalsPage() {
       completions.forEach((item) => userIds.add(item.submitted_by));
       progressItems.forEach((item) => userIds.add(item.contractor_id));
       projectTaskSubmissions.forEach((item) => userIds.add(item.submitted_by));
-      activityLogs.forEach((item) => item.actor_id && userIds.add(item.actor_id));
+      activityLogs.forEach(
+        (item) => item.actor_id && userIds.add(item.actor_id),
+      );
       const profilesResult = userIds.size
-        ? await supabase.from("profiles").select("id, full_name").in("id", [...userIds])
+        ? await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", [...userIds])
         : { data: [], error: null };
       if (profilesResult.error) throw profilesResult.error;
-      const profileNameById = new Map(profilesResult.data.map((item) => [item.id, item.full_name]));
+      const profileNameById = new Map(
+        profilesResult.data.map((item) => [item.id, item.full_name]),
+      );
 
       return {
         completions,
@@ -385,7 +478,15 @@ function ApprovalsPage() {
   };
 
   const reviewProgress = useMutation({
-    mutationFn: async ({ id, approve, note }: { id: string; approve: boolean; note: string }) => {
+    mutationFn: async ({
+      id,
+      approve,
+      note,
+    }: {
+      id: string;
+      approve: boolean;
+      note: string;
+    }) => {
       const { error } = await supabase.rpc("review_progress_update", {
         target_progress_update_id: id,
         approve_update: approve,
@@ -398,7 +499,15 @@ function ApprovalsPage() {
   });
 
   const reviewCompletion = useMutation({
-    mutationFn: async ({ workOrderId, approve, note }: { workOrderId: string; approve: boolean; note: string }) => {
+    mutationFn: async ({
+      workOrderId,
+      approve,
+      note,
+    }: {
+      workOrderId: string;
+      approve: boolean;
+      note: string;
+    }) => {
       const { error } = await supabase.rpc("review_work_completion", {
         target_work_order_id: workOrderId,
         approve_completion: approve,
@@ -411,7 +520,15 @@ function ApprovalsPage() {
   });
 
   const reviewProjectTaskSubmission = useMutation({
-    mutationFn: async ({ id, approve, note }: { id: string; approve: boolean; note: string }) => {
+    mutationFn: async ({
+      id,
+      approve,
+      note,
+    }: {
+      id: string;
+      approve: boolean;
+      note: string;
+    }) => {
       const { error } = await supabase.rpc("review_project_task_progress", {
         target_submission_id: id,
         approve_submission: approve,
@@ -424,8 +541,14 @@ function ApprovalsPage() {
   });
 
   if (!canAccess) return <AccessDenied />;
-  if (query.isLoading) return <LoadingState label="Onay ve uyarı verileri yükleniyor..." />;
-  if (query.error) return <p className="surface-panel p-5 text-destructive">{errorMessage(query.error)}</p>;
+  if (query.isLoading)
+    return <LoadingState label="Onay ve uyarı verileri yükleniyor..." />;
+  if (query.error)
+    return (
+      <p className="surface-panel p-5 text-destructive">
+        {errorMessage(query.error)}
+      </p>
+    );
 
   const data = query.data ?? {
     completions: [],
@@ -439,15 +562,23 @@ function ApprovalsPage() {
     projectEvidenceBySubmission: new Map<string, EvidencePreviewItem[]>(),
     financialsByOrderId: new Map<
       string,
-      { customer_labor_amount: number; customer_material_amount: number; contractor_labor_amount: number }
+      {
+        customer_labor_amount: number;
+        customer_material_amount: number;
+        contractor_labor_amount: number;
+      }
     >(),
     profileNameById: new Map<string, string | null>(),
   };
 
   const pendingCount =
-    data.completions.length + data.progressItems.length + data.projectTaskSubmissions.length;
+    data.completions.length +
+    data.progressItems.length +
+    data.projectTaskSubmissions.length;
   const overdueCount =
-    data.overdueOrders.length + data.overdueProjectTasks.length + data.overdueIndependentTasks.length;
+    data.overdueOrders.length +
+    data.overdueProjectTasks.length +
+    data.overdueIndependentTasks.length;
 
   return (
     <>
@@ -470,7 +601,10 @@ function ApprovalsPage() {
           </div>
         </div>
         {pendingCount === 0 ? (
-          <EmptyState title="Onay bekleyen kayıt yok" description="Yeni bir gönderim yapıldığında burada görünecek." />
+          <EmptyState
+            title="Onay bekleyen kayıt yok"
+            description="Yeni bir gönderim yapıldığında burada görünecek."
+          />
         ) : (
           <div className="grid gap-3 xl:grid-cols-2">
             {data.completions.map((item) => {
@@ -479,7 +613,11 @@ function ApprovalsPage() {
                 <PendingCard
                   key={`completion-${item.id}`}
                   category="İş Bitirme Onayı"
-                  title={order ? `#${order.work_order_no ?? "—"} · ${order.title}` : "Saha görevi"}
+                  title={
+                    order
+                      ? `#${order.work_order_no ?? "—"} · ${order.title}`
+                      : "Saha görevi"
+                  }
                   relation={
                     order?.project_id
                       ? `Proje: ${order.projects?.name ?? "Proje"}`
@@ -488,21 +626,40 @@ function ApprovalsPage() {
                         : "Bağımsız saha görevi"
                   }
                   note={item.note}
-                  submittedBy={data.profileNameById.get(item.submitted_by) ?? "Kullanıcı"}
+                  submittedBy={
+                    data.profileNameById.get(item.submitted_by) ?? "Kullanıcı"
+                  }
                   submittedAt={item.submitted_at}
-                  evidence={data.completionEvidenceBySubmission.get(item.id) ?? []}
-                  href={order ? `/jobs/${order.id}#completion-approval` : undefined}
+                  evidence={
+                    data.completionEvidenceBySubmission.get(item.id) ?? []
+                  }
+                  href={
+                    order ? `/jobs/${order.id}#completion-approval` : undefined
+                  }
                   extra={
-                    isAdmin && data.financialsByOrderId.has(item.work_order_id) ? (
+                    isAdmin &&
+                    data.financialsByOrderId.has(item.work_order_id) ? (
                       <div className="flex flex-wrap gap-1.5">
                         <Badge variant="secondary">
-                          Satış İşçilik: {formatTRY(data.financialsByOrderId.get(item.work_order_id)?.customer_labor_amount)}
+                          Satış İşçilik:{" "}
+                          {formatTRY(
+                            data.financialsByOrderId.get(item.work_order_id)
+                              ?.customer_labor_amount,
+                          )}
                         </Badge>
                         <Badge variant="secondary">
-                          Satış Malzeme: {formatTRY(data.financialsByOrderId.get(item.work_order_id)?.customer_material_amount)}
+                          Satış Malzeme:{" "}
+                          {formatTRY(
+                            data.financialsByOrderId.get(item.work_order_id)
+                              ?.customer_material_amount,
+                          )}
                         </Badge>
                         <Badge variant="outline">
-                          Taşeron İşçilik: {formatTRY(data.financialsByOrderId.get(item.work_order_id)?.contractor_labor_amount)}
+                          Taşeron İşçilik:{" "}
+                          {formatTRY(
+                            data.financialsByOrderId.get(item.work_order_id)
+                              ?.contractor_labor_amount,
+                          )}
                         </Badge>
                       </div>
                     ) : null
@@ -512,10 +669,18 @@ function ApprovalsPage() {
                       <ReviewActions
                         pending={reviewCompletion.isPending}
                         onApprove={() =>
-                          reviewCompletion.mutate({ workOrderId: item.work_order_id, approve: true, note: "" })
+                          reviewCompletion.mutate({
+                            workOrderId: item.work_order_id,
+                            approve: true,
+                            note: "",
+                          })
                         }
                         onReject={(note) =>
-                          reviewCompletion.mutate({ workOrderId: item.work_order_id, approve: false, note })
+                          reviewCompletion.mutate({
+                            workOrderId: item.work_order_id,
+                            approve: false,
+                            note,
+                          })
                         }
                       />
                     ) : null
@@ -529,23 +694,43 @@ function ApprovalsPage() {
                 <PendingCard
                   key={`progress-${item.id}`}
                   category="Saha İlerleme Onayı"
-                  title={order ? `#${order.work_order_no ?? "—"} · ${order.title}` : "Saha görevi"}
+                  title={
+                    order
+                      ? `#${order.work_order_no ?? "—"} · ${order.title}`
+                      : "Saha görevi"
+                  }
                   relation={
                     order?.project_id
                       ? `Proje: ${order.projects?.name ?? "Proje"} · %${item.pct} ilerleme onayı`
                       : `%${item.pct} ilerleme onayı`
                   }
                   note={item.note}
-                  submittedBy={data.profileNameById.get(item.contractor_id) ?? "Kullanıcı"}
+                  submittedBy={
+                    data.profileNameById.get(item.contractor_id) ?? "Kullanıcı"
+                  }
                   submittedAt={item.created_at}
                   evidenceCount={item.evidence_photo_id ? 1 : 0}
-                  href={order ? `/jobs/${order.id}#progress-approval` : undefined}
+                  href={
+                    order ? `/jobs/${order.id}#progress-approval` : undefined
+                  }
                   actions={
                     isAdmin ? (
                       <ReviewActions
                         pending={reviewProgress.isPending}
-                        onApprove={() => reviewProgress.mutate({ id: item.id, approve: true, note: "" })}
-                        onReject={(note) => reviewProgress.mutate({ id: item.id, approve: false, note })}
+                        onApprove={() =>
+                          reviewProgress.mutate({
+                            id: item.id,
+                            approve: true,
+                            note: "",
+                          })
+                        }
+                        onReject={(note) =>
+                          reviewProgress.mutate({
+                            id: item.id,
+                            approve: false,
+                            note,
+                          })
+                        }
                       />
                     ) : null
                   }
@@ -561,19 +746,33 @@ function ApprovalsPage() {
                   title={task?.task_name ?? "Proje görevi"}
                   relation={`${task?.projects?.name ?? "Proje"} · ${task?.phase_name ?? ""} · %${item.proposed_pct} onay bekliyor`}
                   note={item.note}
-                  submittedBy={data.profileNameById.get(item.submitted_by) ?? "Kullanıcı"}
+                  submittedBy={
+                    data.profileNameById.get(item.submitted_by) ?? "Kullanıcı"
+                  }
                   submittedAt={item.submitted_at}
                   evidence={data.projectEvidenceBySubmission.get(item.id) ?? []}
-                  href={task ? `/projects/${task.project_id}#task-${task.id}` : undefined}
+                  href={
+                    task
+                      ? `/projects/${task.project_id}#task-${task.id}`
+                      : undefined
+                  }
                   actions={
                     canManageProjectApprovals ? (
                       <ReviewActions
                         pending={reviewProjectTaskSubmission.isPending}
                         onApprove={() =>
-                          reviewProjectTaskSubmission.mutate({ id: item.id, approve: true, note: "" })
+                          reviewProjectTaskSubmission.mutate({
+                            id: item.id,
+                            approve: true,
+                            note: "",
+                          })
                         }
                         onReject={(note) =>
-                          reviewProjectTaskSubmission.mutate({ id: item.id, approve: false, note })
+                          reviewProjectTaskSubmission.mutate({
+                            id: item.id,
+                            approve: false,
+                            note,
+                          })
                         }
                       />
                     ) : null
@@ -591,12 +790,16 @@ function ApprovalsPage() {
           <div>
             <h2 className="text-lg font-black">Geciken Kayıtlar</h2>
             <p className="text-sm text-muted-foreground">
-              Planlanan tarihi geçmiş, henüz kapanmamış kayıtlar · {overdueCount} kayıt
+              Planlanan tarihi geçmiş, henüz kapanmamış kayıtlar ·{" "}
+              {overdueCount} kayıt
             </p>
           </div>
         </div>
         {overdueCount === 0 ? (
-          <EmptyState title="Geciken kayıt yok" description="Planlanan tarihi geçen açık kayıt bulunmuyor." />
+          <EmptyState
+            title="Geciken kayıt yok"
+            description="Planlanan tarihi geçen açık kayıt bulunmuyor."
+          />
         ) : (
           <div className="grid gap-3 xl:grid-cols-2">
             {data.overdueOrders.map((order) => (
@@ -630,7 +833,11 @@ function ApprovalsPage() {
                 key={`independent-${task.id}`}
                 category="Bağımsız Görev"
                 title={task.title}
-                relation={task.project_id ? `Proje: ${task.projects?.name ?? "Proje"}` : "Bağımsız operasyon görevi"}
+                relation={
+                  task.project_id
+                    ? `Proje: ${task.projects?.name ?? "Proje"}`
+                    : "Bağımsız operasyon görevi"
+                }
                 plannedDate={task.planned_date}
                 href={`/tasks#operational-${task.id}`}
               />
@@ -645,11 +852,16 @@ function ApprovalsPage() {
             <History className="h-5 w-5 text-highlight" />
             <div>
               <h2 className="text-lg font-black">Aktivite Geçmişi</h2>
-              <p className="text-sm text-muted-foreground">Sistemdeki son 30 değişiklik kaydı.</p>
+              <p className="text-sm text-muted-foreground">
+                Sistemdeki son 30 değişiklik kaydı.
+              </p>
             </div>
           </div>
           {data.activityLogs.length === 0 ? (
-            <EmptyState title="Aktivite kaydı yok" description="Henüz bir değişiklik kaydedilmedi." />
+            <EmptyState
+              title="Aktivite kaydı yok"
+              description="Henüz bir değişiklik kaydedilmedi."
+            />
           ) : (
             <div className="grid gap-2">
               {data.activityLogs.map((log) => (
@@ -658,10 +870,15 @@ function ApprovalsPage() {
                   className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background/20 px-3 py-2 text-sm"
                 >
                   <span>
-                    <span className="font-bold">{data.profileNameById.get(log.actor_id ?? "") ?? "Sistem"}</span>{" "}
-                    {log.entity_type} kaydını {actionLabel[log.action] ?? log.action}
+                    <span className="font-bold">
+                      {data.profileNameById.get(log.actor_id ?? "") ?? "Sistem"}
+                    </span>{" "}
+                    {log.entity_type} kaydını{" "}
+                    {actionLabel[log.action] ?? log.action}
                   </span>
-                  <span className="text-xs text-muted-foreground">{formatDate(log.created_at)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate(log.created_at)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -694,7 +911,13 @@ function ReviewActions({
           className="min-h-16 text-sm"
         />
         <div className="flex justify-end gap-2">
-          <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => setRejecting(false)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pending}
+            onClick={() => setRejecting(false)}
+          >
             Vazgeç
           </Button>
           <Button
@@ -713,7 +936,13 @@ function ReviewActions({
 
   return (
     <div className="mt-3 flex justify-end gap-2">
-      <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => setRejecting(true)}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        onClick={() => setRejecting(true)}
+      >
         Revize İste
       </Button>
       <Button type="button" size="sm" disabled={pending} onClick={onApprove}>
@@ -748,14 +977,21 @@ function PendingCard({
   extra?: ReactNode;
   actions?: ReactNode;
 }) {
-  const resolvedEvidenceCount = evidence ? evidence.length : (evidenceCount ?? 0);
+  const resolvedEvidenceCount = evidence
+    ? evidence.length
+    : (evidenceCount ?? 0);
   return (
     <div className="surface-panel border-destructive/40 bg-destructive/5 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-black uppercase tracking-wide text-destructive">{category}</p>
+          <p className="text-xs font-black uppercase tracking-wide text-destructive">
+            {category}
+          </p>
           {href ? (
-            <a href={href} className="mt-1 block font-black hover:text-highlight">
+            <a
+              href={href}
+              className="mt-1 block font-black hover:text-highlight"
+            >
               {title}
             </a>
           ) : (
@@ -765,7 +1001,11 @@ function PendingCard({
         </div>
         <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
       </div>
-      {note ? <p className="mt-2 rounded-lg bg-background/40 p-2 text-xs text-muted-foreground">{note}</p> : null}
+      {note ? (
+        <p className="mt-2 rounded-lg bg-background/40 p-2 text-xs text-muted-foreground">
+          {note}
+        </p>
+      ) : null}
       {evidence && evidence.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {evidence.map((item) =>
@@ -810,7 +1050,8 @@ function PendingCard({
         <div className="flex flex-wrap items-center gap-2">
           {extra}
           <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/40 px-2 py-1 font-bold text-foreground">
-            <Paperclip className="h-3.5 w-3.5 text-highlight" /> {resolvedEvidenceCount} kanıt
+            <Paperclip className="h-3.5 w-3.5 text-highlight" />{" "}
+            {resolvedEvidenceCount} kanıt
           </span>
         </div>
       </div>

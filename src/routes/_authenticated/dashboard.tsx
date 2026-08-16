@@ -42,11 +42,18 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 // work_status enum'unda "not_applicable" ve "external_approval" yok
 // (bunlar project_task_status'a ait); yalnızca geçerli değerler tutulur.
 // "draft" da hariç tutulur — taslak bir iş emri henüz gerçek/aktif iş değildir.
-const TERMINAL_ORDER_STATUSES = ["draft", "completed", "cancelled", "review_pending"];
+const TERMINAL_ORDER_STATUSES = [
+  "draft",
+  "completed",
+  "cancelled",
+  "review_pending",
+];
 
-type ProjectSubmission = Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
+type ProjectSubmission =
+  Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
 type WorkSubmission = Database["public"]["Tables"]["progress_updates"]["Row"];
-type CompletionSubmission = Database["public"]["Tables"]["work_completion_submissions"]["Row"];
+type CompletionSubmission =
+  Database["public"]["Tables"]["work_completion_submissions"]["Row"];
 type ProjectTaskSummary = Pick<
   Database["public"]["Tables"]["project_tasks"]["Row"],
   "id" | "project_id" | "task_name" | "phase_name"
@@ -82,10 +89,17 @@ const TERMINAL_TASK_STATUSES = ["completed", "cancelled", "not_applicable"];
 
 type TaskDueBucket = "overdue" | "today" | "tomorrow" | "future" | "none";
 
-function taskDueBucket(plannedDate: string | null, referenceNow: Date): TaskDueBucket {
+function taskDueBucket(
+  plannedDate: string | null,
+  referenceNow: Date,
+): TaskDueBucket {
   if (!plannedDate) return "none";
   const date = new Date(`${plannedDate.slice(0, 10)}T00:00:00`);
-  const startOfToday = new Date(referenceNow.getFullYear(), referenceNow.getMonth(), referenceNow.getDate());
+  const startOfToday = new Date(
+    referenceNow.getFullYear(),
+    referenceNow.getMonth(),
+    referenceNow.getDate(),
+  );
   const startOfTomorrow = new Date(startOfToday.getTime() + 86_400_000);
   const startOfDayAfter = new Date(startOfToday.getTime() + 2 * 86_400_000);
   if (date < startOfToday) return "overdue";
@@ -111,9 +125,13 @@ type DashboardWorkOrder = Database["public"]["Tables"]["work_orders"]["Row"] & {
   } | null;
 };
 
-const EYEBROW = "text-[8.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground";
+const EYEBROW =
+  "text-[8.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground";
 
-const projectStatusVariant: Record<ProjectStatus, NonNullable<BadgeProps["variant"]>> = {
+const projectStatusVariant: Record<
+  ProjectStatus,
+  NonNullable<BadgeProps["variant"]>
+> = {
   draft: "outline",
   active: "default",
   on_hold: "warning",
@@ -143,7 +161,9 @@ function DashboardPage() {
           ? await (async () => {
               const { data, error } = await supabase
                 .from("work_orders")
-                .select("id, customer_id, title, description, location, scheduled_at, progress_pct, status, created_by, created_at, updated_at, work_order_no, location_url, completion_note, completion_submitted_at, completion_submitted_by, review_note, reviewed_at, reviewed_by, work_scope_type, default_material_source, project_id, show_to_customer, customers(name), projects(name, project_no)")
+                .select(
+                  "id, customer_id, title, description, location, scheduled_at, progress_pct, status, created_by, created_at, updated_at, work_order_no, location_url, completion_note, completion_submitted_at, completion_submitted_by, review_note, reviewed_at, reviewed_by, work_scope_type, default_material_source, project_id, show_to_customer, customers(name), projects(name, project_no)",
+                )
                 .order("scheduled_at", { ascending: false });
               if (error) throw error;
               return (data ?? []).map((row) => ({
@@ -184,7 +204,9 @@ function DashboardPage() {
       if (role === "contractor" && user) {
         const { data, error } = await supabase
           .from("operational_tasks")
-          .select("id, title, project_id, planned_date, status, assigned_to, projects(name, project_no)")
+          .select(
+            "id, title, project_id, planned_date, status, assigned_to, projects(name, project_no)",
+          )
           .eq("assigned_to", user.id)
           .order("planned_date", { ascending: true, nullsFirst: false });
         if (error) throw error;
@@ -192,46 +214,53 @@ function DashboardPage() {
       }
 
       if (operationalManager) {
-        const [allProjectsResult, visibleTasksResult, independentTasksResult] = await Promise.all([
-          supabase
-            .from("projects")
-            .select("id, name, project_no, status, customers(name)")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("project_tasks")
-            .select("id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date, responsible_id")
-            .order("planned_date", { ascending: true, nullsFirst: false }),
-          supabase
-            .from("operational_tasks")
-            .select("id, title, project_id, planned_date, status, assigned_to")
-            .order("planned_date", { ascending: true, nullsFirst: false }),
-        ]);
+        const [allProjectsResult, visibleTasksResult, independentTasksResult] =
+          await Promise.all([
+            supabase
+              .from("projects")
+              .select("id, name, project_no, status, customers(name)")
+              .order("created_at", { ascending: false }),
+            supabase
+              .from("project_tasks")
+              .select(
+                "id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date, responsible_id",
+              )
+              .order("planned_date", { ascending: true, nullsFirst: false }),
+            supabase
+              .from("operational_tasks")
+              .select(
+                "id, title, project_id, planned_date, status, assigned_to",
+              )
+              .order("planned_date", { ascending: true, nullsFirst: false }),
+          ]);
         if (allProjectsResult.error) throw allProjectsResult.error;
         if (visibleTasksResult.error) throw visibleTasksResult.error;
         if (independentTasksResult.error) throw independentTasksResult.error;
-        allProjects = (allProjectsResult.data ?? []) as unknown as ProjectDashboardSummary[];
+        allProjects = (allProjectsResult.data ??
+          []) as unknown as ProjectDashboardSummary[];
         visibleProjectTasks = visibleTasksResult.data ?? [];
         independentTasks = independentTasksResult.data ?? [];
 
         // Yalnızca yönetici kararı bekleyen (pending) kayıtlar getirilir; onay
         // geçmişi bu panelde artık gösterilmiyor (bkz. Raporlar).
-        const [pendingResult, workPendingResult, completionResult] = await Promise.all([
-          supabase
-            .from("project_task_progress_submissions")
-            .select("*")
-            .eq("status", "pending")
-            .order("submitted_at", { ascending: false }),
-          supabase
-            .from("progress_updates")
-            .select("*")
-            .eq("status", "pending")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("work_completion_submissions")
-            .select("*")
-            .eq("status", "pending")
-            .order("submitted_at", { ascending: false }),
-        ]);
+        const [pendingResult, workPendingResult, completionResult] =
+          await Promise.all([
+            supabase
+              .from("project_task_progress_submissions")
+              .select("*")
+              .eq("status", "pending")
+              .order("submitted_at", { ascending: false }),
+            supabase
+              .from("progress_updates")
+              .select("*")
+              .eq("status", "pending")
+              .order("created_at", { ascending: false }),
+            supabase
+              .from("work_completion_submissions")
+              .select("*")
+              .eq("status", "pending")
+              .order("submitted_at", { ascending: false }),
+          ]);
         if (pendingResult.error) throw pendingResult.error;
         if (workPendingResult.error) throw workPendingResult.error;
         if (completionResult.error) throw completionResult.error;
@@ -239,7 +268,9 @@ function DashboardPage() {
         workSubmissions = workPendingResult.data;
         pendingCompletionSubmissions = completionResult.data ?? [];
 
-        const taskIds = [...new Set(projectSubmissions.map((item) => item.project_task_id))];
+        const taskIds = [
+          ...new Set(projectSubmissions.map((item) => item.project_task_id)),
+        ];
         if (taskIds.length) {
           const taskResult = await supabase
             .from("project_tasks")
@@ -248,9 +279,14 @@ function DashboardPage() {
           if (taskResult.error) throw taskResult.error;
           projectTasks = taskResult.data;
 
-          const projectIds = [...new Set(projectTasks.map((item) => item.project_id))];
+          const projectIds = [
+            ...new Set(projectTasks.map((item) => item.project_id)),
+          ];
           const projectsResult = await (projectIds.length
-            ? supabase.from("projects").select("id, name, project_no").in("id", projectIds)
+            ? supabase
+                .from("projects")
+                .select("id, name, project_no")
+                .in("id", projectIds)
             : Promise.resolve({ data: [], error: null }));
           if (projectsResult.error) throw projectsResult.error;
           projects = projectsResult.data ?? [];
@@ -280,10 +316,13 @@ function DashboardPage() {
     if (!query.data || typeof window === "undefined") return;
 
     const targetId = window.location.hash.replace("#", "");
-    if (!["approval-center", "finance", "project-status"].includes(targetId)) return;
+    if (!["approval-center", "finance", "project-status"].includes(targetId))
+      return;
 
     const timer = window.setTimeout(() => {
-      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document
+        .getElementById(targetId)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
 
     return () => window.clearTimeout(timer);
@@ -291,12 +330,20 @@ function DashboardPage() {
 
   if (query.isLoading) return <LoadingState />;
   if (query.error) {
-    return <p className="surface-panel p-5 text-destructive">{errorMessage(query.error)}</p>;
+    return (
+      <p className="surface-panel p-5 text-destructive">
+        {errorMessage(query.error)}
+      </p>
+    );
   }
 
   const orders = query.data?.orders ?? [];
-  const active = orders.filter((order) => !TERMINAL_ORDER_STATUSES.includes(order.status)).length;
-  const completed = orders.filter((order) => order.status === "completed").length;
+  const active = orders.filter(
+    (order) => !TERMINAL_ORDER_STATUSES.includes(order.status),
+  ).length;
+  const completed = orders.filter(
+    (order) => order.status === "completed",
+  ).length;
 
   // ── Kişisel panel: taşeron / müşteri ──────────────────────────────────
   if (!operationalManager) {
@@ -308,9 +355,20 @@ function DashboardPage() {
       | { kind: "order"; date: string | null; order: DashboardWorkOrder }
       | { kind: "task"; date: string | null; task: ContractorTask }
     > = [
-      ...orders.map((order) => ({ kind: "order" as const, date: order.scheduled_at, order })),
-      ...myOperationalTasks.map((task) => ({ kind: "task" as const, date: task.planned_date, task })),
-    ].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
+      ...orders.map((order) => ({
+        kind: "order" as const,
+        date: order.scheduled_at,
+        order,
+      })),
+      ...myOperationalTasks.map((task) => ({
+        kind: "task" as const,
+        date: task.planned_date,
+        task,
+      })),
+    ].sort(
+      (a, b) =>
+        new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime(),
+    );
 
     const personalMetrics = [
       {
@@ -335,7 +393,10 @@ function DashboardPage() {
 
     return (
       <>
-        <PageHeader title="Panel" description="Size açık işlerin ve projelerin güncel özeti." />
+        <PageHeader
+          title="Panel"
+          description="Size açık işlerin ve projelerin güncel özeti."
+        />
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {personalMetrics.map((metric) => (
             <a key={metric.label} href={metric.href} className="block h-full">
@@ -347,7 +408,9 @@ function DashboardPage() {
                       <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
                     </div>
                   </div>
-                  <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
+                  <p className="text-3xl font-black leading-none sm:text-4xl">
+                    {metric.value}
+                  </p>
                 </CardContent>
               </Card>
             </a>
@@ -379,22 +442,30 @@ function DashboardPage() {
                         <span className="font-mono text-xs text-muted-foreground">
                           #{item.order.work_order_no}
                         </span>
-                        <Badge variant="outline">{statusLabels[item.order.status]}</Badge>
+                        <Badge variant="outline">
+                          {statusLabels[item.order.status]}
+                        </Badge>
                       </div>
-                      <h3 className="mt-2 truncate font-bold">{item.order.title}</h3>
+                      <h3 className="mt-2 truncate font-bold">
+                        {item.order.title}
+                      </h3>
                       {item.order.projects ? (
                         <p className="text-xs font-semibold text-highlight">
-                          {item.order.projects.project_no} · {item.order.projects.name}
+                          {item.order.projects.project_no} ·{" "}
+                          {item.order.projects.name}
                         </p>
                       ) : null}
                       <p className="text-sm text-muted-foreground">
-                        {item.order.customers?.name} · {formatDate(item.order.scheduled_at)}
+                        {item.order.customers?.name} ·{" "}
+                        {formatDate(item.order.scheduled_at)}
                       </p>
                     </div>
                     <div className="w-full shrink-0 sm:w-56">
                       <div className="mb-1 flex justify-between text-xs">
                         <span>İlerleme</span>
-                        <span className="font-bold">%{item.order.progress_pct}</span>
+                        <span className="font-bold">
+                          %{item.order.progress_pct}
+                        </span>
                       </div>
                       <Progress value={item.order.progress_pct} />
                     </div>
@@ -409,17 +480,24 @@ function DashboardPage() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{projectTaskStatusLabel[item.task.status]}</Badge>
+                        <Badge variant="outline">
+                          {projectTaskStatusLabel[item.task.status]}
+                        </Badge>
                         <Badge variant="secondary">Bağımsız Görev</Badge>
                       </div>
-                      <h3 className="mt-2 truncate font-bold">{item.task.title}</h3>
+                      <h3 className="mt-2 truncate font-bold">
+                        {item.task.title}
+                      </h3>
                       {item.task.projects ? (
                         <p className="text-xs font-semibold text-highlight">
-                          {item.task.projects.project_no} · {item.task.projects.name}
+                          {item.task.projects.project_no} ·{" "}
+                          {item.task.projects.name}
                         </p>
                       ) : null}
                       <p className="text-sm text-muted-foreground">
-                        {item.task.planned_date ? formatDate(item.task.planned_date) : "Tarih belirlenmedi"}
+                        {item.task.planned_date
+                          ? formatDate(item.task.planned_date)
+                          : "Tarih belirlenmedi"}
                       </p>
                     </div>
                   </div>
@@ -445,7 +523,10 @@ function DashboardPage() {
   const lowStock = stock.filter((item) => item.quantity <= item.min_quantity);
 
   const projectNameById = new Map(
-    allProjects.map((project) => [project.id, `${project.project_no} · ${project.name}`]),
+    allProjects.map((project) => [
+      project.id,
+      `${project.project_no} · ${project.name}`,
+    ]),
   );
   type ActiveTaskItem = {
     id: string;
@@ -476,8 +557,12 @@ function DashboardPage() {
         title: task.title,
         status: task.status,
         plannedDate: task.planned_date,
-        relation: task.project_id ? (projectNameById.get(task.project_id) ?? "Proje") : "Bağımsız görev",
-        href: task.project_id ? `/projects/${task.project_id}` : `/tasks#operational-${task.id}`,
+        relation: task.project_id
+          ? (projectNameById.get(task.project_id) ?? "Proje")
+          : "Bağımsız görev",
+        href: task.project_id
+          ? `/projects/${task.project_id}`
+          : `/tasks#operational-${task.id}`,
       })),
   ].sort((a, b) => {
     if (!a.plannedDate && !b.plannedDate) return 0;
@@ -491,17 +576,26 @@ function DashboardPage() {
 
   const pendingProjectSubmissions = query.data?.projectSubmissions ?? [];
   const pendingWorkSubmissions = query.data?.workSubmissions ?? [];
-  const pendingCompletionSubmissions = query.data?.pendingCompletionSubmissions ?? [];
-  const projectTaskById = new Map((query.data?.projectTasks ?? []).map((item) => [item.id, item]));
-  const projectById = new Map((query.data?.projects ?? []).map((item) => [item.id, item]));
+  const pendingCompletionSubmissions =
+    query.data?.pendingCompletionSubmissions ?? [];
+  const projectTaskById = new Map(
+    (query.data?.projectTasks ?? []).map((item) => [item.id, item]),
+  );
+  const projectById = new Map(
+    (query.data?.projects ?? []).map((item) => [item.id, item]),
+  );
   const pendingCompletionByWorkOrder = new Map(
     pendingCompletionSubmissions.map((item) => [item.work_order_id, item]),
   );
   const pendingCompletionOrders = orders.filter(
-    (order) => order.status === "review_pending" || pendingCompletionByWorkOrder.has(order.id),
+    (order) =>
+      order.status === "review_pending" ||
+      pendingCompletionByWorkOrder.has(order.id),
   );
   const pendingApprovalCount =
-    pendingCompletionOrders.length + pendingWorkSubmissions.length + pendingProjectSubmissions.length;
+    pendingCompletionOrders.length +
+    pendingWorkSubmissions.length +
+    pendingProjectSubmissions.length;
 
   const pendingApprovalItems = [
     ...pendingCompletionOrders.map((order) => {
@@ -544,7 +638,9 @@ function DashboardPage() {
         },
       ];
     }),
-  ].sort((a, b) => new Date(b.time ?? 0).getTime() - new Date(a.time ?? 0).getTime());
+  ].sort(
+    (a, b) => new Date(b.time ?? 0).getTime() - new Date(a.time ?? 0).getTime(),
+  );
 
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -572,8 +668,14 @@ function DashboardPage() {
     { laborSales: 0, materialSales: 0, contractorCost: 0, materialCost: 0 },
   );
   const netProfit =
-    financeTotals.laborSales + financeTotals.materialSales - financeTotals.contractorCost - financeTotals.materialCost;
-  const monthLabel = new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric" }).format(now);
+    financeTotals.laborSales +
+    financeTotals.materialSales -
+    financeTotals.contractorCost -
+    financeTotals.materialCost;
+  const monthLabel = new Intl.DateTimeFormat("tr-TR", {
+    month: "long",
+    year: "numeric",
+  }).format(now);
 
   const tasksByProject = new Map<string, VisibleProjectTask[]>();
   for (const task of visibleProjectTasks) {
@@ -589,7 +691,10 @@ function DashboardPage() {
         approved_progress_pct: number;
         status: ProjectTaskStatus;
       }>;
-      return { ...project, percentage: projectApprovedProgress(tasks).percentage };
+      return {
+        ...project,
+        percentage: projectApprovedProgress(tasks).percentage,
+      };
     });
 
   const statCards = [
@@ -603,7 +708,9 @@ function DashboardPage() {
     {
       label: "Bekleyen Onaylar",
       value: pendingApprovalCount,
-      detail: pendingApprovalCount ? "Karar bekleyen kayıt var" : "Bekleyen kayıt yok",
+      detail: pendingApprovalCount
+        ? "Karar bekleyen kayıt var"
+        : "Bekleyen kayıt yok",
       icon: ShieldAlert,
       href: "/approvals",
       attention: pendingApprovalCount > 0 ? ("danger" as const) : undefined,
@@ -611,7 +718,9 @@ function DashboardPage() {
     {
       label: "Geciken Görevler",
       value: overdueTaskCount,
-      detail: overdueTaskCount ? "Planlanan tarihi geçen görev var" : "Geciken görev yok",
+      detail: overdueTaskCount
+        ? "Planlanan tarihi geçen görev var"
+        : "Geciken görev yok",
       icon: AlertTriangle,
       href: "/tasks?filter=overdue",
       attention: overdueTaskCount > 0 ? ("danger" as const) : undefined,
@@ -639,7 +748,10 @@ function DashboardPage() {
     month: "long",
     year: "numeric",
   }).format(now);
-  const timeLabel = new Intl.DateTimeFormat("tr-TR", { hour: "2-digit", minute: "2-digit" }).format(now);
+  const timeLabel = new Intl.DateTimeFormat("tr-TR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(now);
 
   return (
     <>
@@ -654,7 +766,10 @@ function DashboardPage() {
               </Link>
             </Button>
             <Button asChild>
-              <Link to="/work-orders" search={{ create: true, projectId: undefined }}>
+              <Link
+                to="/work-orders"
+                search={{ create: true, projectId: undefined }}
+              >
                 <Plus className="h-4 w-4" /> Yeni İş Emri
               </Link>
             </Button>
@@ -694,7 +809,9 @@ function DashboardPage() {
                   </div>
                 </div>
                 <div>
-                  <p className="text-3xl font-black leading-none sm:text-4xl">{metric.value}</p>
+                  <p className="text-3xl font-black leading-none sm:text-4xl">
+                    {metric.value}
+                  </p>
                   <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">
                     {metric.detail}
                   </p>
@@ -706,10 +823,16 @@ function DashboardPage() {
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <section id="project-status" className="surface-panel scroll-mt-6 p-4 sm:p-5">
+        <section
+          id="project-status"
+          className="surface-panel scroll-mt-6 p-4 sm:p-5"
+        >
           <div className="mb-4 flex items-center justify-between">
             <p className={EYEBROW}>Proje Durumu</p>
-            <Link to="/projects" className="text-xs font-semibold text-highlight">
+            <Link
+              to="/projects"
+              className="text-xs font-semibold text-highlight"
+            >
               Tümünü gör
             </Link>
           </div>
@@ -727,13 +850,18 @@ function DashboardPage() {
                       <FolderKanban className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-foreground">{project.name}</p>
+                      <p className="truncate text-sm font-bold text-foreground">
+                        {project.name}
+                      </p>
                       <p className="truncate text-xs text-muted-foreground">
                         {project.customers?.name ?? "Müşteri atanmadı"}
                       </p>
                     </div>
                   </div>
-                  <Badge variant={projectStatusVariant[project.status]} className="shrink-0">
+                  <Badge
+                    variant={projectStatusVariant[project.status]}
+                    className="shrink-0"
+                  >
                     {projectStatusLabel[project.status]}
                   </Badge>
                 </div>
@@ -746,7 +874,9 @@ function DashboardPage() {
               </Link>
             ))}
             {projectRows.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Henüz proje yok.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Henüz proje yok.
+              </p>
             ) : null}
           </div>
         </section>
@@ -760,23 +890,33 @@ function DashboardPage() {
             <div className="space-y-2.5 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Satış İşçilik</span>
-                <span className="font-bold text-foreground">{formatTRY(financeTotals.laborSales)}</span>
+                <span className="font-bold text-foreground">
+                  {formatTRY(financeTotals.laborSales)}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Satış Malzeme</span>
-                <span className="font-bold text-foreground">{formatTRY(financeTotals.materialSales)}</span>
+                <span className="font-bold text-foreground">
+                  {formatTRY(financeTotals.materialSales)}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Taşeron Maliyeti</span>
-                <span className="font-bold text-destructive">-{formatTRY(financeTotals.contractorCost)}</span>
+                <span className="font-bold text-destructive">
+                  -{formatTRY(financeTotals.contractorCost)}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Malzeme Maliyeti</span>
-                <span className="font-bold text-destructive">-{formatTRY(financeTotals.materialCost)}</span>
+                <span className="font-bold text-destructive">
+                  -{formatTRY(financeTotals.materialCost)}
+                </span>
               </div>
               <div className="my-1 border-t border-border" />
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-foreground">Net Kar</span>
+                <span className="text-sm font-bold text-foreground">
+                  Net Kar
+                </span>
                 <span
                   className={`text-lg font-black ${netProfit >= 0 ? "text-success" : "text-destructive"}`}
                 >
@@ -796,10 +936,16 @@ function DashboardPage() {
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <section id="approval-center" className="surface-panel scroll-mt-6 p-4 sm:p-5">
+        <section
+          id="approval-center"
+          className="surface-panel scroll-mt-6 p-4 sm:p-5"
+        >
           <div className="mb-4 flex items-center justify-between">
             <p className={EYEBROW}>Onay Merkezi</p>
-            <Link to="/approvals" className="text-xs font-semibold text-highlight">
+            <Link
+              to="/approvals"
+              className="text-xs font-semibold text-highlight"
+            >
               Tümünü gör
             </Link>
           </div>
@@ -814,8 +960,12 @@ function DashboardPage() {
                   <item.icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">{item.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{item.label}</p>
+                  <p className="truncate text-sm font-bold text-foreground">
+                    {item.title}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {item.label}
+                  </p>
                 </div>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {item.time ? formatProjectDateTime(item.time) : "—"}
@@ -823,7 +973,9 @@ function DashboardPage() {
               </a>
             ))}
             {pendingApprovalItems.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Onay bekleyen kayıt yok.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Onay bekleyen kayıt yok.
+              </p>
             ) : null}
           </div>
         </section>
@@ -844,14 +996,18 @@ function DashboardPage() {
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
                   <Boxes className="h-4 w-4" />
                 </span>
-                <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">{item.name}</p>
+                <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
+                  {item.name}
+                </p>
                 <span className="shrink-0 text-xs font-bold text-warning">
                   {item.quantity} {item.unit}
                 </span>
               </div>
             ))}
             {lowStock.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Kritik stok yok.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Kritik stok yok.
+              </p>
             ) : null}
           </div>
         </section>
@@ -892,8 +1048,12 @@ function DashboardPage() {
                   <Icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">{item.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{item.relation}</p>
+                  <p className="truncate text-sm font-bold text-foreground">
+                    {item.title}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {item.relation}
+                  </p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p
@@ -915,15 +1075,22 @@ function DashboardPage() {
                             ? formatDate(item.plannedDate)
                             : "Tarih yok"}
                   </p>
-                  {(bucket === "overdue" || bucket === "today" || bucket === "tomorrow") && item.plannedDate ? (
-                    <p className="text-[10px] text-muted-foreground">{formatDate(item.plannedDate)}</p>
+                  {(bucket === "overdue" ||
+                    bucket === "today" ||
+                    bucket === "tomorrow") &&
+                  item.plannedDate ? (
+                    <p className="text-[10px] text-muted-foreground">
+                      {formatDate(item.plannedDate)}
+                    </p>
                   ) : null}
                 </div>
               </a>
             );
           })}
           {activeTaskItems.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Aktif görev yok.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Aktif görev yok.
+            </p>
           ) : null}
         </div>
       </section>

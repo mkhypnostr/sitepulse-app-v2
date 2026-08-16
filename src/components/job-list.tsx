@@ -11,10 +11,19 @@ type Order = Database["public"]["Tables"]["work_orders"]["Row"] & {
   customers: { name: string } | null;
 };
 
-export function JobList({ orders, emptyLabel }: { orders: Order[]; emptyLabel: string }) {
+export function JobList({
+  orders,
+  emptyLabel,
+}: {
+  orders: Order[];
+  emptyLabel: string;
+}) {
   if (orders.length === 0) {
     return (
-      <EmptyState title={emptyLabel} description="Yeni bir kayıt açıldığında burada görünecek." />
+      <EmptyState
+        title={emptyLabel}
+        description="Yeni bir kayıt açıldığında burada görünecek."
+      />
     );
   }
 

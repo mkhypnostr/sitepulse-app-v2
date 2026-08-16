@@ -12,6 +12,7 @@ dist/
 .vercel/
 .nitro/
 .vite/
+.wrangler/
 
 # Env files (keep .env.example tracked)
 .env

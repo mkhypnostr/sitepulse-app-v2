@@ -9,24 +9,49 @@ import { errorMessage, roleLabels } from "@/lib/domain";
 import { formatDate } from "@/lib/format";
 import { isOperationalManager } from "@/lib/permissions";
 import type { ProjectTaskStatus } from "@/lib/projects";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/tasks")({
   validateSearch: (search: Record<string, unknown>) => ({
-    filter: ["open", "overdue", "approval", "completed"].includes(String(search.filter))
+    filter: ["open", "overdue", "approval", "completed"].includes(
+      String(search.filter),
+    )
       ? (search.filter as "open" | "overdue" | "approval" | "completed")
       : undefined,
   }),
   component: TasksPage,
 });
 
-type Assignee = { id: string; full_name: string | null; role: "admin" | "technical_office" | "contractor" | "customer" };
+type Assignee = {
+  id: string;
+  full_name: string | null;
+  role: "admin" | "technical_office" | "contractor" | "customer";
+};
 type IndependentTask = {
   id: string;
   title: string;
@@ -76,12 +101,32 @@ const statusLabel: Record<string, string> = {
 
 type TaskFilter = "all" | "open" | "overdue" | "approval" | "completed";
 
-const taskViews: Array<{ value: TaskFilter; label: string; description: string }> = [
+const taskViews: Array<{
+  value: TaskFilter;
+  label: string;
+  description: string;
+}> = [
   { value: "all", label: "Tümü", description: "Bütün görev kayıtları" },
-  { value: "open", label: "Açık", description: "Planlanan, devam eden, engelli ve revizyondaki görevler" },
-  { value: "approval", label: "Onay Bekleyen", description: "Yönetici incelemesi bekleyen görevler" },
-  { value: "overdue", label: "Süresi Dolan", description: "Planlanan tarihi geçen açık görevler" },
-  { value: "completed", label: "Tamamlanan", description: "Tamamlanmış veya uygulanmayacak görevler" },
+  {
+    value: "open",
+    label: "Açık",
+    description: "Planlanan, devam eden, engelli ve revizyondaki görevler",
+  },
+  {
+    value: "approval",
+    label: "Onay Bekleyen",
+    description: "Yönetici incelemesi bekleyen görevler",
+  },
+  {
+    value: "overdue",
+    label: "Süresi Dolan",
+    description: "Planlanan tarihi geçen açık görevler",
+  },
+  {
+    value: "completed",
+    label: "Tamamlanan",
+    description: "Tamamlanmış veya uygulanmayacak görevler",
+  },
 ];
 
 function isTerminal(status: string) {
@@ -90,7 +135,9 @@ function isTerminal(status: string) {
 
 function isOverdue(plannedDate: string | null) {
   if (!plannedDate) return false;
-  return new Date(`${plannedDate.slice(0, 10)}T23:59:59`).getTime() < Date.now();
+  return (
+    new Date(`${plannedDate.slice(0, 10)}T23:59:59`).getTime() < Date.now()
+  );
 }
 
 function TasksPage() {
@@ -104,39 +151,93 @@ function TasksPage() {
   const canReassignTasks = isOperationalManager(role);
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ title: "", description: "", projectId: "none", customerId: "none", assigneeId: "none", plannedDate: "" });
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    projectId: "none",
+    customerId: "none",
+    assigneeId: "none",
+    plannedDate: "",
+  });
   const [editingTask, setEditingTask] = useState<IndependentTask | null>(null);
-  const [editingWorkOrder, setEditingWorkOrder] = useState<AssignedWorkOrder | null>(null);
-  const [workOrderForm, setWorkOrderForm] = useState({ title: "", description: "", assigneeId: "none", scheduledAt: "" });
-  const [editingProjectTask, setEditingProjectTask] = useState<ProjectTask | null>(null);
-  const [projectTaskForm, setProjectTaskForm] = useState({ title: "", note: "", assigneeId: "none", plannedDate: "" });
-  const [selectedTask, setSelectedTask] = useState<IndependentTask | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<IndependentTask | null>(null);
-  const [deleteWorkOrderTarget, setDeleteWorkOrderTarget] = useState<AssignedWorkOrder | null>(null);
-  const [removeProjectTaskTarget, setRemoveProjectTaskTarget] = useState<ProjectTask | null>(null);
+  const [editingWorkOrder, setEditingWorkOrder] =
+    useState<AssignedWorkOrder | null>(null);
+  const [workOrderForm, setWorkOrderForm] = useState({
+    title: "",
+    description: "",
+    assigneeId: "none",
+    scheduledAt: "",
+  });
+  const [editingProjectTask, setEditingProjectTask] =
+    useState<ProjectTask | null>(null);
+  const [projectTaskForm, setProjectTaskForm] = useState({
+    title: "",
+    note: "",
+    assigneeId: "none",
+    plannedDate: "",
+  });
+  const [selectedTask, setSelectedTask] = useState<IndependentTask | null>(
+    null,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<IndependentTask | null>(
+    null,
+  );
+  const [deleteWorkOrderTarget, setDeleteWorkOrderTarget] =
+    useState<AssignedWorkOrder | null>(null);
+  const [removeProjectTaskTarget, setRemoveProjectTaskTarget] =
+    useState<ProjectTask | null>(null);
 
   const tasksQuery = useQuery({
     queryKey: ["unified-tasks"],
     enabled: canViewTasks,
     queryFn: async () => {
-      const [independentResult, projectTasksResult, workOrdersResult, assignmentsResult, projectsResult, customersResult, assigneesResult] = await Promise.all([
-        supabase.from("operational_tasks" as never).select("id, title, description, project_id, customer_id, assigned_to, status, planned_date").order("planned_date", { ascending: true, nullsFirst: false }),
-        supabase.from("project_tasks").select("id, project_id, task_name, phase_name, responsible_id, status, planned_date, note, approved_progress_pct").order("planned_date", { ascending: true, nullsFirst: false }),
-        supabase.from("work_orders").select("id, work_order_no, title, description, project_id, customer_id, status, scheduled_at, progress_pct").order("scheduled_at", { ascending: true, nullsFirst: false }),
-        supabase.from("work_order_assignments").select("work_order_id, contractor_id"),
-        supabase.from("projects").select("id, name, project_no").order("created_at", { ascending: false }),
+      const [
+        independentResult,
+        projectTasksResult,
+        workOrdersResult,
+        assignmentsResult,
+        projectsResult,
+        customersResult,
+        assigneesResult,
+      ] = await Promise.all([
+        supabase
+          .from("operational_tasks" as never)
+          .select(
+            "id, title, description, project_id, customer_id, assigned_to, status, planned_date",
+          )
+          .order("planned_date", { ascending: true, nullsFirst: false }),
+        supabase
+          .from("project_tasks")
+          .select(
+            "id, project_id, task_name, phase_name, responsible_id, status, planned_date, note, approved_progress_pct",
+          )
+          .order("planned_date", { ascending: true, nullsFirst: false }),
+        supabase
+          .from("work_orders")
+          .select(
+            "id, work_order_no, title, description, project_id, customer_id, status, scheduled_at, progress_pct",
+          )
+          .order("scheduled_at", { ascending: true, nullsFirst: false }),
+        supabase
+          .from("work_order_assignments")
+          .select("work_order_id, contractor_id"),
+        supabase
+          .from("projects")
+          .select("id, name, project_no")
+          .order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name").order("name"),
         supabase.rpc("list_task_assignees"),
       ]);
-        if (independentResult.error) throw independentResult.error;
-        if (projectTasksResult.error) throw projectTasksResult.error;
-        if (workOrdersResult.error) throw workOrdersResult.error;
-        if (assignmentsResult.error) throw assignmentsResult.error;
+      if (independentResult.error) throw independentResult.error;
+      if (projectTasksResult.error) throw projectTasksResult.error;
+      if (workOrdersResult.error) throw workOrdersResult.error;
+      if (assignmentsResult.error) throw assignmentsResult.error;
       if (projectsResult.error) throw projectsResult.error;
       if (customersResult.error) throw customersResult.error;
       if (assigneesResult.error) throw assigneesResult.error;
       return {
-        independent: (independentResult.data ?? []) as unknown as IndependentTask[],
+        independent: (independentResult.data ??
+          []) as unknown as IndependentTask[],
         projectTasks: (projectTasksResult.data ?? []) as ProjectTask[],
         workOrders: (workOrdersResult.data ?? []) as AssignedWorkOrder[],
         assignments: (assignmentsResult.data ?? []) as WorkOrderAssignment[],
@@ -152,20 +253,28 @@ function TasksPage() {
     const targetId = window.location.hash.replace("#", "");
     if (!targetId) return;
     const timer = window.setTimeout(() => {
-      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document
+        .getElementById(targetId)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 80);
     return () => window.clearTimeout(timer);
   }, [tasksQuery.data]);
 
   const createTask = useMutation({
     mutationFn: async () => {
-      if (form.title.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      if (form.title.trim().length < 3)
+        throw new Error("Görev adı en az 3 karakter olmalıdır.");
       const { error } = await supabase.rpc("create_operational_task", {
         task_title: form.title.trim(),
         task_description: form.description.trim() || undefined,
-        target_project_id: form.projectId === "none" ? undefined : form.projectId,
-        target_customer_id: form.customerId === "none" ? undefined : form.customerId,
-        assigned_user_id: canAssignTasks && form.assigneeId !== "none" ? form.assigneeId : undefined,
+        target_project_id:
+          form.projectId === "none" ? undefined : form.projectId,
+        target_customer_id:
+          form.customerId === "none" ? undefined : form.customerId,
+        assigned_user_id:
+          canAssignTasks && form.assigneeId !== "none"
+            ? form.assigneeId
+            : undefined,
         planned_on: form.plannedDate || undefined,
       });
       if (error) throw error;
@@ -175,7 +284,14 @@ function TasksPage() {
         queryClient.invalidateQueries({ queryKey: ["unified-tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
-      setForm({ title: "", description: "", projectId: "none", customerId: "none", assigneeId: "none", plannedDate: "" });
+      setForm({
+        title: "",
+        description: "",
+        projectId: "none",
+        customerId: "none",
+        assigneeId: "none",
+        plannedDate: "",
+      });
       setOpen(false);
       toast.success("Bağımsız görev oluşturuldu");
     },
@@ -185,24 +301,31 @@ function TasksPage() {
   const updateTask = useMutation({
     mutationFn: async () => {
       if (!editingTask) throw new Error("Düzenlenecek görev bulunamadı.");
-      if (form.title.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      if (form.title.trim().length < 3)
+        throw new Error("Görev adı en az 3 karakter olmalıdır.");
       const { error } = canAssignTasks
         ? await supabase.rpc("update_operational_task", {
             target_task_id: editingTask.id,
             task_title: form.title.trim(),
             task_description: form.description.trim() || undefined,
-            target_project_id: form.projectId === "none" ? undefined : form.projectId,
-            target_customer_id: form.customerId === "none" ? undefined : form.customerId,
-            assigned_user_id: form.assigneeId === "none" ? undefined : form.assigneeId,
+            target_project_id:
+              form.projectId === "none" ? undefined : form.projectId,
+            target_customer_id:
+              form.customerId === "none" ? undefined : form.customerId,
+            assigned_user_id:
+              form.assigneeId === "none" ? undefined : form.assigneeId,
             planned_on: form.plannedDate || undefined,
           })
         : await supabase.rpc("update_operational_task_technical", {
             target_task_id: editingTask.id,
             task_title: form.title.trim(),
             task_description: form.description.trim() || undefined,
-            target_project_id: form.projectId === "none" ? undefined : form.projectId,
-            target_customer_id: form.customerId === "none" ? undefined : form.customerId,
-            assigned_user_id: form.assigneeId === "none" ? undefined : form.assigneeId,
+            target_project_id:
+              form.projectId === "none" ? undefined : form.projectId,
+            target_customer_id:
+              form.customerId === "none" ? undefined : form.customerId,
+            assigned_user_id:
+              form.assigneeId === "none" ? undefined : form.assigneeId,
             planned_on: form.plannedDate || undefined,
             new_status: editingTask.status as ProjectTaskStatus,
           });
@@ -222,7 +345,9 @@ function TasksPage() {
 
   const deleteTask = useMutation({
     mutationFn: async (taskId: string) => {
-      const { error } = await supabase.rpc("delete_operational_task", { target_task_id: taskId });
+      const { error } = await supabase.rpc("delete_operational_task", {
+        target_task_id: taskId,
+      });
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -239,16 +364,25 @@ function TasksPage() {
 
   const updateWorkOrder = useMutation({
     mutationFn: async () => {
-      if (!editingWorkOrder) throw new Error("Düzenlenecek saha görevi bulunamadı.");
-      if (workOrderForm.title.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
-      if (!workOrderForm.scheduledAt) throw new Error("Planlanan tarih zorunludur.");
-      const { error } = await supabase.rpc("update_work_order_task" as never, {
-        target_work_order_id: editingWorkOrder.id,
-        task_title: workOrderForm.title.trim(),
-        task_description: workOrderForm.description.trim(),
-        planned_at: new Date(workOrderForm.scheduledAt).toISOString(),
-        assigned_user_id: workOrderForm.assigneeId === "none" ? null : workOrderForm.assigneeId,
-      } as never);
+      if (!editingWorkOrder)
+        throw new Error("Düzenlenecek saha görevi bulunamadı.");
+      if (workOrderForm.title.trim().length < 3)
+        throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      if (!workOrderForm.scheduledAt)
+        throw new Error("Planlanan tarih zorunludur.");
+      const { error } = await supabase.rpc(
+        "update_work_order_task" as never,
+        {
+          target_work_order_id: editingWorkOrder.id,
+          task_title: workOrderForm.title.trim(),
+          task_description: workOrderForm.description.trim(),
+          planned_at: new Date(workOrderForm.scheduledAt).toISOString(),
+          assigned_user_id:
+            workOrderForm.assigneeId === "none"
+              ? null
+              : workOrderForm.assigneeId,
+        } as never,
+      );
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -265,10 +399,14 @@ function TasksPage() {
 
   const deleteWorkOrder = useMutation({
     mutationFn: async () => {
-      if (!deleteWorkOrderTarget) throw new Error("Silinecek saha görevi bulunamadı.");
-      const { error } = await supabase.rpc("delete_work_order_permanently" as never, {
-        target_work_order_id: deleteWorkOrderTarget.id,
-      } as never);
+      if (!deleteWorkOrderTarget)
+        throw new Error("Silinecek saha görevi bulunamadı.");
+      const { error } = await supabase.rpc(
+        "delete_work_order_permanently" as never,
+        {
+          target_work_order_id: deleteWorkOrderTarget.id,
+        } as never,
+      );
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -285,15 +423,23 @@ function TasksPage() {
 
   const updateProjectTask = useMutation({
     mutationFn: async () => {
-      if (!editingProjectTask) throw new Error("Düzenlenecek proje görevi bulunamadı.");
-      if (projectTaskForm.title.trim().length < 3) throw new Error("Görev adı en az 3 karakter olmalıdır.");
-      const { error } = await supabase.rpc("manage_project_task_from_task_center" as never, {
-        target_task_id: editingProjectTask.id,
-        task_title: projectTaskForm.title.trim(),
-        assigned_user_id: projectTaskForm.assigneeId === "none" ? null : projectTaskForm.assigneeId,
-        planned_on: projectTaskForm.plannedDate || null,
-        task_note: projectTaskForm.note.trim() || null,
-      } as never);
+      if (!editingProjectTask)
+        throw new Error("Düzenlenecek proje görevi bulunamadı.");
+      if (projectTaskForm.title.trim().length < 3)
+        throw new Error("Görev adı en az 3 karakter olmalıdır.");
+      const { error } = await supabase.rpc(
+        "manage_project_task_from_task_center" as never,
+        {
+          target_task_id: editingProjectTask.id,
+          task_title: projectTaskForm.title.trim(),
+          assigned_user_id:
+            projectTaskForm.assigneeId === "none"
+              ? null
+              : projectTaskForm.assigneeId,
+          planned_on: projectTaskForm.plannedDate || null,
+          task_note: projectTaskForm.note.trim() || null,
+        } as never,
+      );
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -310,10 +456,14 @@ function TasksPage() {
 
   const removeProjectTask = useMutation({
     mutationFn: async () => {
-      if (!removeProjectTaskTarget) throw new Error("Kaldırılacak proje görevi bulunamadı.");
-      const { error } = await supabase.rpc("remove_project_task_from_task_center" as never, {
-        target_task_id: removeProjectTaskTarget.id,
-      } as never);
+      if (!removeProjectTaskTarget)
+        throw new Error("Kaldırılacak proje görevi bulunamadı.");
+      const { error } = await supabase.rpc(
+        "remove_project_task_from_task_center" as never,
+        {
+          target_task_id: removeProjectTaskTarget.id,
+        } as never,
+      );
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -329,38 +479,186 @@ function TasksPage() {
   });
 
   if (!canViewTasks) return <AccessDenied />;
-  if (tasksQuery.isLoading) return <LoadingState label="Görevler yükleniyor..." />;
-  if (tasksQuery.error) return <p className="surface-panel p-5 text-destructive">{errorMessage(tasksQuery.error)}</p>;
+  if (tasksQuery.isLoading)
+    return <LoadingState label="Görevler yükleniyor..." />;
+  if (tasksQuery.error)
+    return (
+      <p className="surface-panel p-5 text-destructive">
+        {errorMessage(tasksQuery.error)}
+      </p>
+    );
 
-  const data = tasksQuery.data ?? { independent: [], projectTasks: [], workOrders: [], assignments: [], projects: [], customers: [], assignees: [] };
-  const projectById = new Map(data.projects.map((project) => [project.id, project]));
-  const customerById = new Map(data.customers.map((customer) => [customer.id, customer.name]));
-  const assigneeById = new Map(data.assignees.map((assignee) => [assignee.id, assignee]));
+  const data = tasksQuery.data ?? {
+    independent: [],
+    projectTasks: [],
+    workOrders: [],
+    assignments: [],
+    projects: [],
+    customers: [],
+    assignees: [],
+  };
+  const projectById = new Map(
+    data.projects.map((project) => [project.id, project]),
+  );
+  const customerById = new Map(
+    data.customers.map((customer) => [customer.id, customer.name]),
+  );
+  const assigneeById = new Map(
+    data.assignees.map((assignee) => [assignee.id, assignee]),
+  );
   // Görev oluşturma anında atama hâlâ yalnızca admin yetkisinde
   // (create_operational_task bunu sunucu tarafında da zorunlu kılar);
   // düzenlemede ise admin ve teknik ofis eşit yetkiye sahip.
   const showAssigneeField = editingTask ? canReassignTasks : canAssignTasks;
   const createButton = canCreateTasks ? (
-    <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setEditingTask(null); }}>
-      <DialogTrigger asChild><Button className="h-12 font-bold" onClick={() => setEditingTask(null)}><Plus className="mr-2 h-4 w-4" /> Yeni Bağımsız Görev</Button></DialogTrigger>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setEditingTask(null);
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button className="h-12 font-bold" onClick={() => setEditingTask(null)}>
+          <Plus className="mr-2 h-4 w-4" /> Yeni Bağımsız Görev
+        </Button>
+      </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{editingTask ? "Bağımsız görevi düzenle" : "Bağımsız görev oluştur"}</DialogTitle>
-          <DialogDescription>Müşteri ve proje isteğe bağlıdır. Finansal bilgi bu görev kaydında yer almaz. {!showAssigneeField ? "Sorumlu ataması yönetici tarafından yapılır." : ""}</DialogDescription>
+          <DialogTitle>
+            {editingTask ? "Bağımsız görevi düzenle" : "Bağımsız görev oluştur"}
+          </DialogTitle>
+          <DialogDescription>
+            Müşteri ve proje isteğe bağlıdır. Finansal bilgi bu görev kaydında
+            yer almaz.{" "}
+            {!showAssigneeField
+              ? "Sorumlu ataması yönetici tarafından yapılır."
+              : ""}
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
-          <label className="grid gap-1.5 text-sm font-medium">Görev Başlığı<Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} maxLength={180} /></label>
-          <label className="grid gap-1.5 text-sm font-medium">Açıklama<Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} maxLength={2000} /></label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Görev Başlığı
+            <Input
+              value={form.title}
+              onChange={(event) =>
+                setForm({ ...form, title: event.target.value })
+              }
+              maxLength={180}
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm font-medium">
+            Açıklama
+            <Textarea
+              value={form.description}
+              onChange={(event) =>
+                setForm({ ...form, description: event.target.value })
+              }
+              maxLength={2000}
+            />
+          </label>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-medium">Bağlı Proje (isteğe bağlı)<Select value={form.projectId} onValueChange={(projectId) => setForm({ ...form, projectId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Bağımsız görev</SelectItem>{data.projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.project_no} · {project.name}</SelectItem>)}</SelectContent></Select></label>
-            <label className="grid gap-1.5 text-sm font-medium">Müşteri (isteğe bağlı)<Select value={form.customerId} onValueChange={(customerId) => setForm({ ...form, customerId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Müşteri seçilmedi</SelectItem>{data.customers.map((customer) => <SelectItem key={customer.id} value={customer.id}>{customer.name}</SelectItem>)}</SelectContent></Select></label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Bağlı Proje (isteğe bağlı)
+              <Select
+                value={form.projectId}
+                onValueChange={(projectId) => setForm({ ...form, projectId })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Bağımsız görev</SelectItem>
+                  {data.projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.project_no} · {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Müşteri (isteğe bağlı)
+              <Select
+                value={form.customerId}
+                onValueChange={(customerId) => setForm({ ...form, customerId })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Müşteri seçilmedi</SelectItem>
+                  {data.customers.map((customer) => (
+                    <SelectItem key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
           </div>
-          <div className={showAssigneeField ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"}>
-            {showAssigneeField ? <label className="grid gap-1.5 text-sm font-medium">Sorumlu (isteğe bağlı)<Select value={form.assigneeId} onValueChange={(assigneeId) => setForm({ ...form, assigneeId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Henüz atama yok</SelectItem>{data.assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}</SelectItem>)}</SelectContent></Select></label> : null}
-            <label className="grid gap-1.5 text-sm font-medium">Planlanan Tarih<Input type="date" value={form.plannedDate} onChange={(event) => setForm({ ...form, plannedDate: event.target.value })} /></label>
+          <div
+            className={
+              showAssigneeField ? "grid gap-4 sm:grid-cols-2" : "grid gap-4"
+            }
+          >
+            {showAssigneeField ? (
+              <label className="grid gap-1.5 text-sm font-medium">
+                Sorumlu (isteğe bağlı)
+                <Select
+                  value={form.assigneeId}
+                  onValueChange={(assigneeId) =>
+                    setForm({ ...form, assigneeId })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Henüz atama yok</SelectItem>
+                    {data.assignees.map((assignee) => (
+                      <SelectItem key={assignee.id} value={assignee.id}>
+                        {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
+                        {roleLabels[assignee.role]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : null}
+            <label className="grid gap-1.5 text-sm font-medium">
+              Planlanan Tarih
+              <Input
+                type="date"
+                value={form.plannedDate}
+                onChange={(event) =>
+                  setForm({ ...form, plannedDate: event.target.value })
+                }
+              />
+            </label>
           </div>
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Vazgeç</Button><Button onClick={() => editingTask ? updateTask.mutate() : createTask.mutate()} disabled={createTask.isPending || updateTask.isPending || form.title.trim().length < 3}>{createTask.isPending || updateTask.isPending ? "Kaydediliyor..." : editingTask ? "Değişiklikleri Kaydet" : "Görevi Oluştur"}</Button></DialogFooter>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Vazgeç
+          </Button>
+          <Button
+            onClick={() =>
+              editingTask ? updateTask.mutate() : createTask.mutate()
+            }
+            disabled={
+              createTask.isPending ||
+              updateTask.isPending ||
+              form.title.trim().length < 3
+            }
+          >
+            {createTask.isPending || updateTask.isPending
+              ? "Kaydediliyor..."
+              : editingTask
+                ? "Değişiklikleri Kaydet"
+                : "Görevi Oluştur"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   ) : null;
@@ -368,44 +666,86 @@ function TasksPage() {
   const contractorsByWorkOrder = new Map<string, Assignee>();
   for (const assignment of data.assignments) {
     const contractor = assigneeById.get(assignment.contractor_id);
-    if (contractor) contractorsByWorkOrder.set(assignment.work_order_id, contractor);
+    if (contractor)
+      contractorsByWorkOrder.set(assignment.work_order_id, contractor);
   }
 
   const activeFilter: TaskFilter = filter ?? "all";
   const trackedProjectTask = (task: ProjectTask) =>
-    Boolean(task.responsible_id) || task.approved_progress_pct > 0 ||
-    ["in_progress", "external_approval", "revision_required", "blocked", "completed"].includes(task.status);
-  const matchesFilter = (task: { status: string; plannedDate: string | null }, filterValue: TaskFilter) => {
+    Boolean(task.responsible_id) ||
+    task.approved_progress_pct > 0 ||
+    [
+      "in_progress",
+      "external_approval",
+      "revision_required",
+      "blocked",
+      "completed",
+    ].includes(task.status);
+  const matchesFilter = (
+    task: { status: string; plannedDate: string | null },
+    filterValue: TaskFilter,
+  ) => {
     if (filterValue === "all") return true;
-    if (filterValue === "open") return !isTerminal(task.status) && task.status !== "external_approval" && task.status !== "review_pending";
-    if (filterValue === "approval") return ["external_approval", "review_pending"].includes(task.status);
-    if (filterValue === "overdue") return !isTerminal(task.status) && isOverdue(task.plannedDate);
+    if (filterValue === "open")
+      return (
+        !isTerminal(task.status) &&
+        task.status !== "external_approval" &&
+        task.status !== "review_pending"
+      );
+    if (filterValue === "approval")
+      return ["external_approval", "review_pending"].includes(task.status);
+    if (filterValue === "overdue")
+      return !isTerminal(task.status) && isOverdue(task.plannedDate);
     return isTerminal(task.status);
   };
   const visibleWorkOrders = data.workOrders.filter((task) =>
-    matchesFilter({ status: task.status, plannedDate: task.scheduled_at }, activeFilter),
+    matchesFilter(
+      { status: task.status, plannedDate: task.scheduled_at },
+      activeFilter,
+    ),
   );
   const visibleIndependentTasks = data.independent.filter((task) =>
-    matchesFilter({ status: task.status, plannedDate: task.planned_date }, activeFilter),
+    matchesFilter(
+      { status: task.status, plannedDate: task.planned_date },
+      activeFilter,
+    ),
   );
-  const visibleProjectTasks = data.projectTasks.filter((task) =>
-    trackedProjectTask(task) &&
-    matchesFilter({ status: task.status, plannedDate: task.planned_date }, activeFilter),
+  const visibleProjectTasks = data.projectTasks.filter(
+    (task) =>
+      trackedProjectTask(task) &&
+      matchesFilter(
+        { status: task.status, plannedDate: task.planned_date },
+        activeFilter,
+      ),
   );
   const visibleTaskCount =
-    visibleWorkOrders.length + visibleIndependentTasks.length + visibleProjectTasks.length;
+    visibleWorkOrders.length +
+    visibleIndependentTasks.length +
+    visibleProjectTasks.length;
 
   const startEditingTask = (task: IndependentTask) => {
     setEditingTask(task);
-    setForm({ title: task.title, description: task.description ?? "", projectId: task.project_id ?? "none", customerId: task.customer_id ?? "none", assigneeId: task.assigned_to ?? "none", plannedDate: task.planned_date ?? "" });
+    setForm({
+      title: task.title,
+      description: task.description ?? "",
+      projectId: task.project_id ?? "none",
+      customerId: task.customer_id ?? "none",
+      assigneeId: task.assigned_to ?? "none",
+      plannedDate: task.planned_date ?? "",
+    });
     setOpen(true);
   };
 
   const startEditingWorkOrder = (task: AssignedWorkOrder) => {
     const scheduledAt = task.scheduled_at ? new Date(task.scheduled_at) : null;
-    const localDateTime = scheduledAt && !Number.isNaN(scheduledAt.getTime())
-      ? new Date(scheduledAt.getTime() - scheduledAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-      : "";
+    const localDateTime =
+      scheduledAt && !Number.isNaN(scheduledAt.getTime())
+        ? new Date(
+            scheduledAt.getTime() - scheduledAt.getTimezoneOffset() * 60000,
+          )
+            .toISOString()
+            .slice(0, 16)
+        : "";
     setEditingWorkOrder(task);
     setWorkOrderForm({
       title: task.title,
@@ -433,10 +773,46 @@ function TasksPage() {
       status: task.status,
       plannedDate: task.scheduled_at,
       assignee: contractorsByWorkOrder.get(task.id),
-      relation: task.project_id ? `Bağlı proje: ${projectById.get(task.project_id)?.name || "Proje"}` : "Saha görevi",
+      relation: task.project_id
+        ? `Bağlı proje: ${projectById.get(task.project_id)?.name || "Proje"}`
+        : "Saha görevi",
       subtitle: `İlerleme %${task.progress_pct}`,
-      onOpen: () => { window.location.href = `/jobs/${task.id}`; },
-      actions: <><Link to="/jobs/$jobId" params={{ jobId: task.id }}><Button type="button" size="sm" variant="outline">Görevi Aç</Button></Link>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingWorkOrder(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteWorkOrderTarget(task)} disabled={deleteWorkOrder.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
+      onOpen: () => {
+        window.location.href = `/jobs/${task.id}`;
+      },
+      actions: (
+        <>
+          <Link to="/jobs/$jobId" params={{ jobId: task.id }}>
+            <Button type="button" size="sm" variant="outline">
+              Görevi Aç
+            </Button>
+          </Link>
+          {role === "admin" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => startEditingWorkOrder(task)}
+            >
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Düzenle
+            </Button>
+          ) : null}
+          {role === "admin" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:text-destructive"
+              onClick={() => setDeleteWorkOrderTarget(task)}
+              disabled={deleteWorkOrder.isPending}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Sil
+            </Button>
+          ) : null}
+        </>
+      ),
     })),
     ...visibleIndependentTasks.map((task) => ({
       id: `operational-${task.id}`,
@@ -444,11 +820,52 @@ function TasksPage() {
       title: task.title,
       status: task.status,
       plannedDate: task.planned_date,
-      assignee: task.assigned_to ? assigneeById.get(task.assigned_to) : undefined,
-      relation: task.project_id ? `Proje: ${projectById.get(task.project_id)?.name || "Proje"}` : "Bağımsız görev",
-      subtitle: task.customer_id ? `Müşteri: ${customerById.get(task.customer_id) || "Müşteri"}` : "Genel operasyon görevi",
+      assignee: task.assigned_to
+        ? assigneeById.get(task.assigned_to)
+        : undefined,
+      relation: task.project_id
+        ? `Proje: ${projectById.get(task.project_id)?.name || "Proje"}`
+        : "Bağımsız görev",
+      subtitle: task.customer_id
+        ? `Müşteri: ${customerById.get(task.customer_id) || "Müşteri"}`
+        : "Genel operasyon görevi",
       onOpen: () => setSelectedTask(task),
-      actions: <><Button type="button" size="sm" variant="outline" onClick={() => setSelectedTask(task)}>Görevi Aç</Button>{isOperationalManager(role) ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(task)} disabled={deleteTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Sil</Button> : null}</>,
+      actions: (
+        <>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setSelectedTask(task)}
+          >
+            Görevi Aç
+          </Button>
+          {isOperationalManager(role) ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => startEditingTask(task)}
+            >
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Düzenle
+            </Button>
+          ) : null}
+          {role === "admin" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:text-destructive"
+              onClick={() => setDeleteTarget(task)}
+              disabled={deleteTask.isPending}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Sil
+            </Button>
+          ) : null}
+        </>
+      ),
     })),
     ...visibleProjectTasks.map((task) => ({
       id: `project-task-${task.id}`,
@@ -456,135 +873,672 @@ function TasksPage() {
       title: task.task_name,
       status: task.status,
       plannedDate: task.planned_date,
-      assignee: task.responsible_id ? assigneeById.get(task.responsible_id) : undefined,
+      assignee: task.responsible_id
+        ? assigneeById.get(task.responsible_id)
+        : undefined,
       relation: `Proje: ${projectById.get(task.project_id)?.name || "Proje"}`,
       subtitle: `${task.phase_name} · Onaylı ilerleme %${task.approved_progress_pct}`,
       onOpen: () => startEditingProjectTask(task),
-      actions: <><Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}>Görevi Aç</Button>{role === "admin" ? <Button type="button" size="sm" variant="outline" onClick={() => startEditingProjectTask(task)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Düzenle</Button> : null}{role === "admin" ? <Button type="button" size="sm" variant="outline" className="border-destructive/40 text-destructive hover:text-destructive" onClick={() => setRemoveProjectTaskTarget(task)} disabled={removeProjectTask.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Kaldır</Button> : null}</>,
+      actions: (
+        <>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => startEditingProjectTask(task)}
+          >
+            Görevi Aç
+          </Button>
+          {role === "admin" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => startEditingProjectTask(task)}
+            >
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Düzenle
+            </Button>
+          ) : null}
+          {role === "admin" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:text-destructive"
+              onClick={() => setRemoveProjectTaskTarget(task)}
+              disabled={removeProjectTask.isPending}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              Kaldır
+            </Button>
+          ) : null}
+        </>
+      ),
     })),
-  ].sort((left, right) => (left.plannedDate || "9999-12-31").localeCompare(right.plannedDate || "9999-12-31"));
+  ].sort((left, right) =>
+    (left.plannedDate || "9999-12-31").localeCompare(
+      right.plannedDate || "9999-12-31",
+    ),
+  );
 
   const projectTaskGroups = new Map<string, typeof unifiedTasks>();
-  const operationalTaskItems = unifiedTasks.filter((task) => task.category !== "Proje görevi");
-  for (const task of unifiedTasks.filter((item) => item.category === "Proje görevi")) {
+  const operationalTaskItems = unifiedTasks.filter(
+    (task) => task.category !== "Proje görevi",
+  );
+  for (const task of unifiedTasks.filter(
+    (item) => item.category === "Proje görevi",
+  )) {
     const groupKey = task.relation;
-    projectTaskGroups.set(groupKey, [...(projectTaskGroups.get(groupKey) ?? []), task]);
+    projectTaskGroups.set(groupKey, [
+      ...(projectTaskGroups.get(groupKey) ?? []),
+      task,
+    ]);
   }
 
-  return <>
-    <PageHeader title="Görevler" description="Bütün operasyon görevlerini tek merkezden açın, atayın, takip edin ve yönetin." actions={createButton} />
-    <section className="surface-panel mt-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-      <div>
-        <h2 className="text-lg font-black">{taskViews.find((view) => view.value === activeFilter)?.label} Görevler</h2>
-        <p className="text-sm text-muted-foreground">{taskViews.find((view) => view.value === activeFilter)?.description} · {visibleTaskCount} kayıt listeleniyor.</p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {taskViews.map((view) => {
-          const href = view.value === "all" ? "/tasks" : `/tasks?filter=${view.value}`;
-          return <a key={view.value} href={href} className={activeFilter === view.value ? "rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground" : "rounded-lg border border-border bg-background/30 px-3 py-2 text-sm font-bold text-muted-foreground hover:border-primary/60 hover:text-foreground"}>{view.label}</a>;
-        })}
-      </div>
-    </section>
-    <section className="surface-panel mt-6 p-4 sm:p-5">
-      <div className="mb-4"><h2 className="text-lg font-black">Görev Listesi</h2><p className="text-sm text-muted-foreground">Saha, proje ve bağımsız görevler burada tek listede yönetilir. Etiket yalnızca görevin nereden geldiğini gösterir.</p></div>
-      {activeFilter === "all" ? <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">Henüz atanmamış proje kontrol listesi kalemleri burada görev sayılmaz; yalnızca proje detayında görünür. Bu liste, Paneldeki görev sayılarıyla aynı kayıtları gösterir.</p> : null}
-      {unifiedTasks.length === 0 ? <EmptyState title="Bu görünümde görev yok" description="Filtreyi değiştirin veya yeni görev oluşturun." action={activeFilter === "all" ? createButton : undefined} /> : <div className="grid gap-5">
-        {operationalTaskItems.length > 0 ? <div className="grid gap-3">
-          <div><h3 className="font-black">Operasyon Görevleri</h3><p className="text-sm text-muted-foreground">Bağımsız ve saha görevleri aynı listede.</p></div>
-          {operationalTaskItems.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} relation={task.relation} subtitle={task.subtitle} onOpen={task.onOpen} actions={task.actions} />)}
-        </div> : null}
-        {[...projectTaskGroups.entries()].map(([projectName, tasks]) => <details key={projectName} className="rounded-xl border border-border bg-background/20 p-4" open={activeFilter !== "all"}>
-          <summary className="cursor-pointer list-none"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-black">{projectName.replace("Proje: ", "")}</h3><p className="text-sm text-muted-foreground">Proje süreçlerine bağlı {tasks.length} görev</p></div><Badge variant="secondary">Görevleri aç</Badge></div></summary>
-          <div className="mt-4 grid gap-3">{tasks.map((task) => <TaskCard key={task.id} category={task.category} title={task.title} status={task.status} plannedDate={task.plannedDate} assignee={task.assignee} relation={task.relation} subtitle={task.subtitle} onOpen={task.onOpen} actions={task.actions} />)}</div>
-        </details>)}
-      </div>}
-    </section>
-    <Dialog open={Boolean(selectedTask)} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedTask(null); }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{selectedTask?.title || "Görev Detayı"}</DialogTitle>
-          <DialogDescription>Bağımsız operasyon görevi bilgileri</DialogDescription>
-        </DialogHeader>
-        {selectedTask ? <div className="grid gap-3 text-sm">
-          <div className="rounded-xl border border-border bg-muted/20 p-3"><p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Açıklama</p><p className="mt-1 whitespace-pre-wrap">{selectedTask.description?.trim() || "Açıklama girilmemiş."}</p></div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-border p-3"><p className="text-xs font-bold text-muted-foreground">Sorumlu</p><p className="mt-1 font-bold">{selectedTask.assigned_to ? assigneeById.get(selectedTask.assigned_to)?.full_name || "Kullanıcı" : "Henüz atama yok"}</p></div>
-            <div className="rounded-xl border border-border p-3"><p className="text-xs font-bold text-muted-foreground">Planlanan Tarih</p><p className="mt-1 font-bold">{selectedTask.planned_date ? formatDate(selectedTask.planned_date) : "Tarih belirlenmedi"}</p></div>
-            <div className="rounded-xl border border-border p-3"><p className="text-xs font-bold text-muted-foreground">Bağlı Proje</p><p className="mt-1 font-bold">{selectedTask.project_id ? projectById.get(selectedTask.project_id)?.name || "Proje" : "Bağımsız"}</p></div>
-            <div className="rounded-xl border border-border p-3"><p className="text-xs font-bold text-muted-foreground">Müşteri</p><p className="mt-1 font-bold">{selectedTask.customer_id ? customerById.get(selectedTask.customer_id) || "Müşteri" : "Seçilmedi"}</p></div>
-          </div>
-        </div> : null}
-        <DialogFooter>{selectedTask && isOperationalManager(role) ? <Button variant="outline" onClick={() => { const task = selectedTask; setSelectedTask(null); startEditingTask(task); }}><Pencil className="mr-2 h-4 w-4" />Düzenle</Button> : null}<Button variant="outline" onClick={() => setSelectedTask(null)}>Kapat</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <Dialog open={Boolean(editingProjectTask)} onOpenChange={(nextOpen) => { if (!nextOpen && !updateProjectTask.isPending) setEditingProjectTask(null); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Proje görevini düzenle</DialogTitle>
-          <DialogDescription>Bu ekrandan görev tanımı, plan tarihi ve sorumlusu yönetilir. Kanıt, ilerleme ve onay akışı “Kanıt / Detay” ekranında korunur.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4">
-          <label className="grid gap-1.5 text-sm font-medium">Görev Başlığı<Input value={projectTaskForm.title} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, title: event.target.value })} maxLength={180} /></label>
-          <label className="grid gap-1.5 text-sm font-medium">Planlama Notu<Textarea value={projectTaskForm.note} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, note: event.target.value })} maxLength={2000} /></label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-medium">Sorumlu<Select value={projectTaskForm.assigneeId} onValueChange={(assigneeId) => setProjectTaskForm({ ...projectTaskForm, assigneeId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Henüz atama yok</SelectItem>{data.assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}</SelectItem>)}</SelectContent></Select></label>
-            <label className="grid gap-1.5 text-sm font-medium">Planlanan Tarih<Input type="date" value={projectTaskForm.plannedDate} onChange={(event) => setProjectTaskForm({ ...projectTaskForm, plannedDate: event.target.value })} /></label>
-          </div>
+  return (
+    <>
+      <PageHeader
+        title="Görevler"
+        description="Bütün operasyon görevlerini tek merkezden açın, atayın, takip edin ve yönetin."
+        actions={createButton}
+      />
+      <section className="surface-panel mt-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div>
+          <h2 className="text-lg font-black">
+            {taskViews.find((view) => view.value === activeFilter)?.label}{" "}
+            Görevler
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {taskViews.find((view) => view.value === activeFilter)?.description}{" "}
+            · {visibleTaskCount} kayıt listeleniyor.
+          </p>
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => setEditingProjectTask(null)} disabled={updateProjectTask.isPending}>Vazgeç</Button><Button onClick={() => updateProjectTask.mutate()} disabled={updateProjectTask.isPending || projectTaskForm.title.trim().length < 3}>{updateProjectTask.isPending ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <Dialog open={Boolean(editingWorkOrder)} onOpenChange={(nextOpen) => { if (!nextOpen && !updateWorkOrder.isPending) setEditingWorkOrder(null); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Saha görevini düzenle</DialogTitle>
-          <DialogDescription>Ticari bilgiler burada görünmez veya değiştirilemez. Kanıt ve ilerleme ayrıntıları “Kanıt / Detay” ekranındadır.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4">
-          <label className="grid gap-1.5 text-sm font-medium">Görev Başlığı<Input value={workOrderForm.title} onChange={(event) => setWorkOrderForm({ ...workOrderForm, title: event.target.value })} maxLength={180} /></label>
-          <label className="grid gap-1.5 text-sm font-medium">Açıklama<Textarea value={workOrderForm.description} onChange={(event) => setWorkOrderForm({ ...workOrderForm, description: event.target.value })} maxLength={2000} /></label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-medium">Sorumlu<Select value={workOrderForm.assigneeId} onValueChange={(assigneeId) => setWorkOrderForm({ ...workOrderForm, assigneeId })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Henüz atama yok</SelectItem>{data.assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.full_name || "İsimsiz kullanıcı"} · {roleLabels[assignee.role]}</SelectItem>)}</SelectContent></Select></label>
-            <label className="grid gap-1.5 text-sm font-medium">Planlanan Tarih ve Saat<Input type="datetime-local" value={workOrderForm.scheduledAt} onChange={(event) => setWorkOrderForm({ ...workOrderForm, scheduledAt: event.target.value })} /></label>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {taskViews.map((view) => {
+            const href =
+              view.value === "all" ? "/tasks" : `/tasks?filter=${view.value}`;
+            return (
+              <a
+                key={view.value}
+                href={href}
+                className={
+                  activeFilter === view.value
+                    ? "rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground"
+                    : "rounded-lg border border-border bg-background/30 px-3 py-2 text-sm font-bold text-muted-foreground hover:border-primary/60 hover:text-foreground"
+                }
+              >
+                {view.label}
+              </a>
+            );
+          })}
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => setEditingWorkOrder(null)} disabled={updateWorkOrder.isPending}>Vazgeç</Button><Button onClick={() => updateWorkOrder.mutate()} disabled={updateWorkOrder.isPending || workOrderForm.title.trim().length < 3 || !workOrderForm.scheduledAt}>{updateWorkOrder.isPending ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <Dialog open={Boolean(deleteTarget)} onOpenChange={(nextOpen) => { if (!nextOpen && !deleteTask.isPending) setDeleteTarget(null); }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Bağımsız görev kalıcı olarak silinsin mi?</DialogTitle>
-          <DialogDescription>“{deleteTarget?.title}” görevi geri alınamayacak şekilde silinir.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteTask.isPending}>Vazgeç</Button>
-          <Button variant="destructive" onClick={() => deleteTarget && deleteTask.mutate(deleteTarget.id)} disabled={deleteTask.isPending}>{deleteTask.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <Dialog open={Boolean(deleteWorkOrderTarget)} onOpenChange={(nextOpen) => { if (!nextOpen && !deleteWorkOrder.isPending) setDeleteWorkOrderTarget(null); }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Saha görevi kalıcı olarak silinsin mi?</DialogTitle>
-          <DialogDescription>{deleteWorkOrderTarget ? `#${deleteWorkOrderTarget.work_order_no ?? "—"} · ${deleteWorkOrderTarget.title}` : "Bu saha görevi"} ve bağlı atama, ilerleme, kanıt ve finans kayıtları silinir. Bu işlem geri alınamaz.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter><Button variant="outline" onClick={() => setDeleteWorkOrderTarget(null)} disabled={deleteWorkOrder.isPending}>Vazgeç</Button><Button variant="destructive" onClick={() => deleteWorkOrder.mutate()} disabled={deleteWorkOrder.isPending}>{deleteWorkOrder.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <Dialog open={Boolean(removeProjectTaskTarget)} onOpenChange={(nextOpen) => { if (!nextOpen && !removeProjectTask.isPending) setRemoveProjectTaskTarget(null); }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Proje görevi aktif listeden kaldırılsın mı?</DialogTitle>
-          <DialogDescription>{removeProjectTaskTarget ? `“${removeProjectTaskTarget.task_name}” görevi` : "Bu görev"} uygulanmaz olarak işaretlenir. Proje, kanıt ve geçmiş kayıtları korunur; görev aktif listelerde görünmez.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter><Button variant="outline" onClick={() => setRemoveProjectTaskTarget(null)} disabled={removeProjectTask.isPending}>Vazgeç</Button><Button variant="destructive" onClick={() => removeProjectTask.mutate()} disabled={removeProjectTask.isPending}>{removeProjectTask.isPending ? "Kaldırılıyor..." : "Görevi Aktif Listeden Kaldır"}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </>;
+      </section>
+      <section className="surface-panel mt-6 p-4 sm:p-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-black">Görev Listesi</h2>
+          <p className="text-sm text-muted-foreground">
+            Saha, proje ve bağımsız görevler burada tek listede yönetilir.
+            Etiket yalnızca görevin nereden geldiğini gösterir.
+          </p>
+        </div>
+        {activeFilter === "all" ? (
+          <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">
+            Henüz atanmamış proje kontrol listesi kalemleri burada görev
+            sayılmaz; yalnızca proje detayında görünür. Bu liste, Paneldeki
+            görev sayılarıyla aynı kayıtları gösterir.
+          </p>
+        ) : null}
+        {unifiedTasks.length === 0 ? (
+          <EmptyState
+            title="Bu görünümde görev yok"
+            description="Filtreyi değiştirin veya yeni görev oluşturun."
+            action={activeFilter === "all" ? createButton : undefined}
+          />
+        ) : (
+          <div className="grid gap-5">
+            {operationalTaskItems.length > 0 ? (
+              <div className="grid gap-3">
+                <div>
+                  <h3 className="font-black">Operasyon Görevleri</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Bağımsız ve saha görevleri aynı listede.
+                  </p>
+                </div>
+                {operationalTaskItems.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    category={task.category}
+                    title={task.title}
+                    status={task.status}
+                    plannedDate={task.plannedDate}
+                    assignee={task.assignee}
+                    relation={task.relation}
+                    subtitle={task.subtitle}
+                    onOpen={task.onOpen}
+                    actions={task.actions}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {[...projectTaskGroups.entries()].map(([projectName, tasks]) => (
+              <details
+                key={projectName}
+                className="rounded-xl border border-border bg-background/20 p-4"
+                open={activeFilter !== "all"}
+              >
+                <summary className="cursor-pointer list-none">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-black">
+                        {projectName.replace("Proje: ", "")}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Proje süreçlerine bağlı {tasks.length} görev
+                      </p>
+                    </div>
+                    <Badge variant="secondary">Görevleri aç</Badge>
+                  </div>
+                </summary>
+                <div className="mt-4 grid gap-3">
+                  {tasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      category={task.category}
+                      title={task.title}
+                      status={task.status}
+                      plannedDate={task.plannedDate}
+                      assignee={task.assignee}
+                      relation={task.relation}
+                      subtitle={task.subtitle}
+                      onOpen={task.onOpen}
+                      actions={task.actions}
+                    />
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+      </section>
+      <Dialog
+        open={Boolean(selectedTask)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSelectedTask(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{selectedTask?.title || "Görev Detayı"}</DialogTitle>
+            <DialogDescription>
+              Bağımsız operasyon görevi bilgileri
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTask ? (
+            <div className="grid gap-3 text-sm">
+              <div className="rounded-xl border border-border bg-muted/20 p-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Açıklama
+                </p>
+                <p className="mt-1 whitespace-pre-wrap">
+                  {selectedTask.description?.trim() || "Açıklama girilmemiş."}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-border p-3">
+                  <p className="text-xs font-bold text-muted-foreground">
+                    Sorumlu
+                  </p>
+                  <p className="mt-1 font-bold">
+                    {selectedTask.assigned_to
+                      ? assigneeById.get(selectedTask.assigned_to)?.full_name ||
+                        "Kullanıcı"
+                      : "Henüz atama yok"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border p-3">
+                  <p className="text-xs font-bold text-muted-foreground">
+                    Planlanan Tarih
+                  </p>
+                  <p className="mt-1 font-bold">
+                    {selectedTask.planned_date
+                      ? formatDate(selectedTask.planned_date)
+                      : "Tarih belirlenmedi"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border p-3">
+                  <p className="text-xs font-bold text-muted-foreground">
+                    Bağlı Proje
+                  </p>
+                  <p className="mt-1 font-bold">
+                    {selectedTask.project_id
+                      ? projectById.get(selectedTask.project_id)?.name ||
+                        "Proje"
+                      : "Bağımsız"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border p-3">
+                  <p className="text-xs font-bold text-muted-foreground">
+                    Müşteri
+                  </p>
+                  <p className="mt-1 font-bold">
+                    {selectedTask.customer_id
+                      ? customerById.get(selectedTask.customer_id) || "Müşteri"
+                      : "Seçilmedi"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            {selectedTask && isOperationalManager(role) ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const task = selectedTask;
+                  setSelectedTask(null);
+                  startEditingTask(task);
+                }}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                Düzenle
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => setSelectedTask(null)}>
+              Kapat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(editingProjectTask)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !updateProjectTask.isPending)
+            setEditingProjectTask(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Proje görevini düzenle</DialogTitle>
+            <DialogDescription>
+              Bu ekrandan görev tanımı, plan tarihi ve sorumlusu yönetilir.
+              Kanıt, ilerleme ve onay akışı “Kanıt / Detay” ekranında korunur.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <label className="grid gap-1.5 text-sm font-medium">
+              Görev Başlığı
+              <Input
+                value={projectTaskForm.title}
+                onChange={(event) =>
+                  setProjectTaskForm({
+                    ...projectTaskForm,
+                    title: event.target.value,
+                  })
+                }
+                maxLength={180}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Planlama Notu
+              <Textarea
+                value={projectTaskForm.note}
+                onChange={(event) =>
+                  setProjectTaskForm({
+                    ...projectTaskForm,
+                    note: event.target.value,
+                  })
+                }
+                maxLength={2000}
+              />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-medium">
+                Sorumlu
+                <Select
+                  value={projectTaskForm.assigneeId}
+                  onValueChange={(assigneeId) =>
+                    setProjectTaskForm({ ...projectTaskForm, assigneeId })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Henüz atama yok</SelectItem>
+                    {data.assignees.map((assignee) => (
+                      <SelectItem key={assignee.id} value={assignee.id}>
+                        {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
+                        {roleLabels[assignee.role]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Planlanan Tarih
+                <Input
+                  type="date"
+                  value={projectTaskForm.plannedDate}
+                  onChange={(event) =>
+                    setProjectTaskForm({
+                      ...projectTaskForm,
+                      plannedDate: event.target.value,
+                    })
+                  }
+                />
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditingProjectTask(null)}
+              disabled={updateProjectTask.isPending}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              onClick={() => updateProjectTask.mutate()}
+              disabled={
+                updateProjectTask.isPending ||
+                projectTaskForm.title.trim().length < 3
+              }
+            >
+              {updateProjectTask.isPending
+                ? "Kaydediliyor..."
+                : "Değişiklikleri Kaydet"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(editingWorkOrder)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !updateWorkOrder.isPending)
+            setEditingWorkOrder(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Saha görevini düzenle</DialogTitle>
+            <DialogDescription>
+              Ticari bilgiler burada görünmez veya değiştirilemez. Kanıt ve
+              ilerleme ayrıntıları “Kanıt / Detay” ekranındadır.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <label className="grid gap-1.5 text-sm font-medium">
+              Görev Başlığı
+              <Input
+                value={workOrderForm.title}
+                onChange={(event) =>
+                  setWorkOrderForm({
+                    ...workOrderForm,
+                    title: event.target.value,
+                  })
+                }
+                maxLength={180}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Açıklama
+              <Textarea
+                value={workOrderForm.description}
+                onChange={(event) =>
+                  setWorkOrderForm({
+                    ...workOrderForm,
+                    description: event.target.value,
+                  })
+                }
+                maxLength={2000}
+              />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-medium">
+                Sorumlu
+                <Select
+                  value={workOrderForm.assigneeId}
+                  onValueChange={(assigneeId) =>
+                    setWorkOrderForm({ ...workOrderForm, assigneeId })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Henüz atama yok</SelectItem>
+                    {data.assignees.map((assignee) => (
+                      <SelectItem key={assignee.id} value={assignee.id}>
+                        {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
+                        {roleLabels[assignee.role]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Planlanan Tarih ve Saat
+                <Input
+                  type="datetime-local"
+                  value={workOrderForm.scheduledAt}
+                  onChange={(event) =>
+                    setWorkOrderForm({
+                      ...workOrderForm,
+                      scheduledAt: event.target.value,
+                    })
+                  }
+                />
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditingWorkOrder(null)}
+              disabled={updateWorkOrder.isPending}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              onClick={() => updateWorkOrder.mutate()}
+              disabled={
+                updateWorkOrder.isPending ||
+                workOrderForm.title.trim().length < 3 ||
+                !workOrderForm.scheduledAt
+              }
+            >
+              {updateWorkOrder.isPending
+                ? "Kaydediliyor..."
+                : "Değişiklikleri Kaydet"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !deleteTask.isPending) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Bağımsız görev kalıcı olarak silinsin mi?</DialogTitle>
+            <DialogDescription>
+              “{deleteTarget?.title}” görevi geri alınamayacak şekilde silinir.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleteTask.isPending}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteTarget && deleteTask.mutate(deleteTarget.id)}
+              disabled={deleteTask.isPending}
+            >
+              {deleteTask.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(deleteWorkOrderTarget)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !deleteWorkOrder.isPending)
+            setDeleteWorkOrderTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Saha görevi kalıcı olarak silinsin mi?</DialogTitle>
+            <DialogDescription>
+              {deleteWorkOrderTarget
+                ? `#${deleteWorkOrderTarget.work_order_no ?? "—"} · ${deleteWorkOrderTarget.title}`
+                : "Bu saha görevi"}{" "}
+              ve bağlı atama, ilerleme, kanıt ve finans kayıtları silinir. Bu
+              işlem geri alınamaz.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteWorkOrderTarget(null)}
+              disabled={deleteWorkOrder.isPending}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteWorkOrder.mutate()}
+              disabled={deleteWorkOrder.isPending}
+            >
+              {deleteWorkOrder.isPending ? "Siliniyor..." : "Görevi Kalıcı Sil"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(removeProjectTaskTarget)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !removeProjectTask.isPending)
+            setRemoveProjectTaskTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Proje görevi aktif listeden kaldırılsın mı?
+            </DialogTitle>
+            <DialogDescription>
+              {removeProjectTaskTarget
+                ? `“${removeProjectTaskTarget.task_name}” görevi`
+                : "Bu görev"}{" "}
+              uygulanmaz olarak işaretlenir. Proje, kanıt ve geçmiş kayıtları
+              korunur; görev aktif listelerde görünmez.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRemoveProjectTaskTarget(null)}
+              disabled={removeProjectTask.isPending}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => removeProjectTask.mutate()}
+              disabled={removeProjectTask.isPending}
+            >
+              {removeProjectTask.isPending
+                ? "Kaldırılıyor..."
+                : "Görevi Aktif Listeden Kaldır"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
-function TaskCard({ id, category, title, status, plannedDate, assignee, relation, subtitle, onOpen, actions }: { id?: string; category?: string; title: string; status: string; plannedDate: string | null; assignee?: Assignee; relation: string; subtitle: string; onOpen?: () => void; actions?: ReactNode }) {
+function TaskCard({
+  id,
+  category,
+  title,
+  status,
+  plannedDate,
+  assignee,
+  relation,
+  subtitle,
+  onOpen,
+  actions,
+}: {
+  id?: string;
+  category?: string;
+  title: string;
+  status: string;
+  plannedDate: string | null;
+  assignee?: Assignee;
+  relation: string;
+  subtitle: string;
+  onOpen?: () => void;
+  actions?: ReactNode;
+}) {
   const overdue = !isTerminal(status) && isOverdue(plannedDate);
-  return <div id={id} className={`scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50 ${overdue ? "border-warning/50 bg-warning/[0.035]" : ""}`}><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><button type="button" className="min-w-0 text-left transition-colors hover:text-highlight" onClick={onOpen}><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{title}</p>{category ? <Badge variant="secondary">{category}</Badge> : null}{overdue ? <Badge className="border-warning/50 bg-warning/15 text-warning">Gecikti</Badge> : null}</div><div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm"><span className="font-semibold text-foreground/90">{relation}</span><span className="text-muted-foreground">• {subtitle}</span></div></button><div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant="outline">{statusLabel[status] || status}</Badge>{assignee ? <Badge variant="secondary"><UserRound className="mr-1 h-3 w-3" />{assignee.full_name || "Kullanıcı"} · {roleLabels[assignee.role]}</Badge> : <Badge variant="secondary">Henüz atama yok</Badge>}{plannedDate ? <Badge className={overdue ? "border-warning/50 bg-warning/15 text-warning" : ""} variant="secondary"><CalendarDays className="mr-1 h-3 w-3" />{formatDate(plannedDate)}</Badge> : null}{actions}</div></div></div>;
+  return (
+    <div
+      id={id}
+      className={`scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50 ${overdue ? "border-warning/50 bg-warning/[0.035]" : ""}`}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <button
+          type="button"
+          className="min-w-0 text-left transition-colors hover:text-highlight"
+          onClick={onOpen}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-bold">{title}</p>
+            {category ? <Badge variant="secondary">{category}</Badge> : null}
+            {overdue ? (
+              <Badge className="border-warning/50 bg-warning/15 text-warning">
+                Gecikti
+              </Badge>
+            ) : null}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <span className="font-semibold text-foreground/90">{relation}</span>
+            <span className="text-muted-foreground">• {subtitle}</span>
+          </div>
+        </button>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <Badge variant="outline">{statusLabel[status] || status}</Badge>
+          {assignee ? (
+            <Badge variant="secondary">
+              <UserRound className="mr-1 h-3 w-3" />
+              {assignee.full_name || "Kullanıcı"} · {roleLabels[assignee.role]}
+            </Badge>
+          ) : (
+            <Badge variant="secondary">Henüz atama yok</Badge>
+          )}
+          {plannedDate ? (
+            <Badge
+              className={
+                overdue ? "border-warning/50 bg-warning/15 text-warning" : ""
+              }
+              variant="secondary"
+            >
+              <CalendarDays className="mr-1 h-3 w-3" />
+              {formatDate(plannedDate)}
+            </Badge>
+          ) : null}
+          {actions}
+        </div>
+      </div>
+    </div>
+  );
 }

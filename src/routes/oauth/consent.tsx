@@ -17,7 +17,9 @@ type AuthorizationDetails = {
 export const Route = createFileRoute("/oauth/consent")({
   validateSearch: (search: Record<string, unknown>) => ({
     authorization_id:
-      typeof search.authorization_id === "string" ? search.authorization_id : undefined,
+      typeof search.authorization_id === "string"
+        ? search.authorization_id
+        : undefined,
   }),
   component: OAuthConsentPage,
 });
@@ -52,13 +54,16 @@ function OAuthConsentPage() {
     }
 
     async function loadDetails() {
-      const { data, error: detailsError } = await supabase.auth.oauth.getAuthorizationDetails(
-        authorizationId!,
-      );
+      const { data, error: detailsError } =
+        await supabase.auth.oauth.getAuthorizationDetails(authorizationId!);
 
       if (detailsError) {
         setError(detailsError.message);
-      } else if (data && "redirect_url" in data && !("authorization_id" in data)) {
+      } else if (
+        data &&
+        "redirect_url" in data &&
+        !("authorization_id" in data)
+      ) {
         window.location.assign(data.redirect_url);
         return;
       } else {
@@ -115,7 +120,8 @@ function OAuthConsentPage() {
               NES Kullanıcı Yönetimi bağlantısı
             </CardTitle>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              {details?.client?.name || "ChatGPT"} NES hesabınıza güvenli erişim istiyor.
+              {details?.client?.name || "ChatGPT"} NES hesabınıza güvenli erişim
+              istiyor.
             </p>
           </div>
         </CardHeader>
@@ -130,16 +136,22 @@ function OAuthConsentPage() {
             </div>
           ) : role !== "admin" ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-              Bu bağlantıyı yalnızca NES Enerji yöneticisi onaylayabilir. Giriş yapılan hesap:
+              Bu bağlantıyı yalnızca NES Enerji yöneticisi onaylayabilir. Giriş
+              yapılan hesap:
               <strong className="ml-1">{user?.email}</strong>
             </div>
           ) : (
             <>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-black text-slate-900">İstenen temel izinler</p>
+                <p className="text-sm font-black text-slate-900">
+                  İstenen temel izinler
+                </p>
                 <ul className="mt-3 space-y-2">
                   {scopes.map((scope) => (
-                    <li key={scope} className="flex items-center gap-2 text-sm text-slate-600">
+                    <li
+                      key={scope}
+                      className="flex items-center gap-2 text-sm text-slate-600"
+                    >
                       <Check className="h-4 w-4 text-emerald-600" />
                       {scopeLabels[scope] ?? scope}
                     </li>
@@ -147,8 +159,9 @@ function OAuthConsentPage() {
                 </ul>
               </div>
               <div className="rounded-xl bg-blue-50 p-4 text-sm leading-6 text-slate-600">
-                Kullanıcı oluşturma gibi yazma işlemleri için ChatGPT ayrıca açık onayınızı ister.
-                Bağlantı yalnızca yönetici hesabınızla çalışır.
+                Kullanıcı oluşturma gibi yazma işlemleri için ChatGPT ayrıca
+                açık onayınızı ister. Bağlantı yalnızca yönetici hesabınızla
+                çalışır.
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Button

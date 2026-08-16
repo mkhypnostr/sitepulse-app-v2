@@ -13,9 +13,13 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">{title}</h1>
+        <h1 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
+          {title}
+        </h1>
         {description ? (
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
         ) : null}
       </div>
       {actions ? <div className="shrink-0">{actions}</div> : null}
@@ -23,7 +27,11 @@ export function PageHeader({
   );
 }
 
-export function LoadingState({ label = "Veriler yükleniyor..." }: { label?: string }) {
+export function LoadingState({
+  label = "Veriler yükleniyor...",
+}: {
+  label?: string;
+}) {
   return (
     <div className="flex min-h-52 items-center justify-center gap-3 text-muted-foreground">
       <LoaderCircle className="h-5 w-5 animate-spin text-highlight" />
@@ -46,7 +54,9 @@ export function EmptyState({
       <PackageOpen className="mb-4 h-10 w-10 text-highlight" />
       <h2 className="text-lg font-bold text-foreground">{title}</h2>
       {description ? (
-        <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">{description}</p>
+        <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+          {description}
+        </p>
       ) : null}
       {action ? <div className="mt-5">{action}</div> : null}
     </div>

@@ -6,7 +6,12 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -65,7 +70,10 @@ function CustomersPage() {
     queryKey: ["customers"],
     enabled: canManageCustomers,
     queryFn: async () => {
-      const { data, error } = await supabase.from("customers").select("*").order("name");
+      const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .order("name");
       if (error) throw error;
       return data;
     },
@@ -112,7 +120,10 @@ function CustomersPage() {
         customer_tax_office: taxOffice.trim(),
         customer_tax_no: taxNo.trim(),
         customer_billing_address: billingAddress.trim(),
-        target_contact_user_id: role === "admin" && contactUserId !== "none" ? contactUserId : undefined,
+        target_contact_user_id:
+          role === "admin" && contactUserId !== "none"
+            ? contactUserId
+            : undefined,
         target_customer_id: editingCustomer?.id ?? undefined,
       });
       if (error) throw error;
@@ -130,21 +141,35 @@ function CustomersPage() {
   const deleteCustomer = useMutation({
     mutationFn: async (customerId: string) => {
       const [workOrdersResult, projectsResult] = await Promise.all([
-        supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("customer_id", customerId),
-        supabase.from("projects").select("id", { count: "exact", head: true }).eq("customer_id", customerId),
+        supabase
+          .from("work_orders")
+          .select("id", { count: "exact", head: true })
+          .eq("customer_id", customerId),
+        supabase
+          .from("projects")
+          .select("id", { count: "exact", head: true })
+          .eq("customer_id", customerId),
       ]);
 
       if (workOrdersResult.error) throw workOrdersResult.error;
       if (projectsResult.error) throw projectsResult.error;
 
-      const relatedRecordCount = (workOrdersResult.count ?? 0) + (projectsResult.count ?? 0);
+      const relatedRecordCount =
+        (workOrdersResult.count ?? 0) + (projectsResult.count ?? 0);
       if (relatedRecordCount > 0) {
-        throw new Error("Bu müşteriye bağlı proje veya görev bulunduğu için silinemez. Önce bağlı kayıtları başka bir müşteriye taşıyın ya da kapatın.");
+        throw new Error(
+          "Bu müşteriye bağlı proje veya görev bulunduğu için silinemez. Önce bağlı kayıtları başka bir müşteriye taşıyın ya da kapatın.",
+        );
       }
 
-      const { error } = await supabase.from("customers").delete().eq("id", customerId);
+      const { error } = await supabase
+        .from("customers")
+        .delete()
+        .eq("id", customerId);
       if (error?.code === "23503") {
-        throw new Error("Bu müşteri proje veya görevlerde kullanıldığı için silinemez.");
+        throw new Error(
+          "Bu müşteri proje veya görevlerde kullanıldığı için silinemez.",
+        );
       }
       if (error) throw error;
     },
@@ -160,7 +185,9 @@ function CustomersPage() {
 
   const customers = customersQuery.data ?? [];
   const customerUsers = customerUsersQuery.data ?? [];
-  const profileById = new Map(customerUsers.map((profile) => [profile.id, profile]));
+  const profileById = new Map(
+    customerUsers.map((profile) => [profile.id, profile]),
+  );
   const beginEdit = (customer: (typeof customers)[number]) => {
     setEditingCustomer(customer);
     setName(customer.name);
@@ -188,15 +215,21 @@ function CustomersPage() {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{editingCustomer ? "Müşteriyi düzenle" : "Yeni müşteri oluştur"}</DialogTitle>
+          <DialogTitle>
+            {editingCustomer ? "Müşteriyi düzenle" : "Yeni müşteri oluştur"}
+          </DialogTitle>
           <DialogDescription>
-            Müşteri hesabı varsa eşleştirin; yoksa daha sonra Ekip ekranından bağlayabilirsiniz.
+            Müşteri hesabı varsa eşleştirin; yoksa daha sonra Ekip ekranından
+            bağlayabilirsiniz.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
           <label className="grid gap-1.5 text-sm font-medium">
             Müşteri / Firma Adı
-            <Input value={name} onChange={(event) => setName(event.target.value)} />
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
           </label>
           <label className="grid gap-1.5 text-sm font-medium">
             İletişim Bilgisi
@@ -229,23 +262,41 @@ function CustomersPage() {
             </p>
           )}
           <div className="border-t border-border pt-4 sm:col-span-2">
-            <p className="mb-3 flex items-center gap-2 text-sm font-bold"><FileText className="h-4 w-4 text-highlight" /> Fatura Bilgileri</p>
+            <p className="mb-3 flex items-center gap-2 text-sm font-bold">
+              <FileText className="h-4 w-4 text-highlight" /> Fatura Bilgileri
+            </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm font-medium">
                 Fatura Ünvanı
-                <Input value={billingTitle} onChange={(event) => setBillingTitle(event.target.value)} maxLength={180} />
+                <Input
+                  value={billingTitle}
+                  onChange={(event) => setBillingTitle(event.target.value)}
+                  maxLength={180}
+                />
               </label>
               <label className="grid gap-1.5 text-sm font-medium">
                 Vergi Dairesi
-                <Input value={taxOffice} onChange={(event) => setTaxOffice(event.target.value)} maxLength={120} />
+                <Input
+                  value={taxOffice}
+                  onChange={(event) => setTaxOffice(event.target.value)}
+                  maxLength={120}
+                />
               </label>
               <label className="grid gap-1.5 text-sm font-medium">
                 Vergi Numarası
-                <Input value={taxNo} onChange={(event) => setTaxNo(event.target.value)} maxLength={32} />
+                <Input
+                  value={taxNo}
+                  onChange={(event) => setTaxNo(event.target.value)}
+                  maxLength={32}
+                />
               </label>
               <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
                 Fatura Adresi
-                <Input value={billingAddress} onChange={(event) => setBillingAddress(event.target.value)} maxLength={1000} />
+                <Input
+                  value={billingAddress}
+                  onChange={(event) => setBillingAddress(event.target.value)}
+                  maxLength={1000}
+                />
               </label>
             </div>
           </div>
@@ -255,7 +306,11 @@ function CustomersPage() {
             onClick={() => saveCustomer.mutate()}
             disabled={!name.trim() || saveCustomer.isPending}
           >
-            {saveCustomer.isPending ? "Kaydediliyor..." : editingCustomer ? "Değişiklikleri Kaydet" : "Kaydet"}
+            {saveCustomer.isPending
+              ? "Kaydediliyor..."
+              : editingCustomer
+                ? "Değişiklikleri Kaydet"
+                : "Kaydet"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -279,7 +334,9 @@ function CustomersPage() {
         <section className="surface-panel overflow-hidden">
           <div className="border-b border-border px-5 py-4">
             <h2 className="font-black">Müşteri Kayıtları</h2>
-            <p className="mt-1 text-sm text-muted-foreground">İletişim, portal ve fatura bilgilerini bu bölümden yönetin.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              İletişim, portal ve fatura bilgilerini bu bölümden yönetin.
+            </p>
           </div>
           <Table>
             <TableHeader>
@@ -297,28 +354,44 @@ function CustomersPage() {
                   <TableCell className="font-bold">{customer.name}</TableCell>
                   <TableCell>{customer.contact || "—"}</TableCell>
                   <TableCell>
-                    {customer.billing_title || customer.tax_no || customer.billing_address ? (
+                    {customer.billing_title ||
+                    customer.tax_no ||
+                    customer.billing_address ? (
                       <div className="max-w-56 space-y-0.5 text-sm">
-                        <p className="font-semibold">{customer.billing_title || "Fatura ünvanı girilmedi"}</p>
+                        <p className="font-semibold">
+                          {customer.billing_title || "Fatura ünvanı girilmedi"}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {[customer.tax_office, customer.tax_no].filter(Boolean).join(" · ") || "Vergi bilgisi girilmedi"}
+                          {[customer.tax_office, customer.tax_no]
+                            .filter(Boolean)
+                            .join(" · ") || "Vergi bilgisi girilmedi"}
                         </p>
                         {customer.billing_address ? (
-                          <p className="truncate text-xs text-muted-foreground" title={customer.billing_address}>
+                          <p
+                            className="truncate text-xs text-muted-foreground"
+                            title={customer.billing_address}
+                          >
                             {customer.billing_address}
                           </p>
                         ) : null}
                       </div>
-                    ) : "—"}
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell>
                     {customer.contact_user_id
-                      ? profileById.get(customer.contact_user_id)?.full_name || "Bağlı kullanıcı"
+                      ? profileById.get(customer.contact_user_id)?.full_name ||
+                        "Bağlı kullanıcı"
                       : "Eşleştirilmedi"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => beginEdit(customer)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => beginEdit(customer)}
+                      >
                         <Pencil className="mr-1.5 h-3.5 w-3.5" /> Düzenle
                       </Button>
                       {role === "admin" ? (
@@ -328,7 +401,11 @@ function CustomersPage() {
                           className="text-destructive hover:text-destructive"
                           disabled={deleteCustomer.isPending}
                           onClick={() => {
-                            if (window.confirm(`${customer.name} müşterisini silmek istediğinize emin misiniz?`)) {
+                            if (
+                              window.confirm(
+                                `${customer.name} müşterisini silmek istediğinize emin misiniz?`,
+                              )
+                            ) {
                               deleteCustomer.mutate(customer.id);
                             }
                           }}
@@ -345,10 +422,13 @@ function CustomersPage() {
         </section>
       )}
       {customersQuery.error ? (
-        <p className="mt-4 text-sm text-destructive">{errorMessage(customersQuery.error)}</p>
+        <p className="mt-4 text-sm text-destructive">
+          {errorMessage(customersQuery.error)}
+        </p>
       ) : null}
       <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
-        <Users className="h-4 w-4" /> Müşteri yalnızca kendisine açılmış iş ve fotoğrafları görür.
+        <Users className="h-4 w-4" /> Müşteri yalnızca kendisine açılmış iş ve
+        fotoğrafları görür.
       </div>
     </>
   );

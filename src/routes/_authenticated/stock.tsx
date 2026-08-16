@@ -7,7 +7,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { downloadCsv, errorMessage, parseDelimitedText } from "@/lib/domain";
 import { formatTRY } from "@/lib/format";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,7 +69,10 @@ function StockPage() {
     queryKey: ["stock-items"],
     enabled: canManageStock,
     queryFn: async () => {
-      const { data, error } = await supabase.from("stock_items").select("*").order("name");
+      const { data, error } = await supabase
+        .from("stock_items")
+        .select("*")
+        .order("name");
       if (error) throw error;
       return data;
     },
@@ -75,13 +83,20 @@ function StockPage() {
       const quantity = Number(form.quantity.replace(",", "."));
       const minQuantity = Number(form.minQuantity.replace(",", "."));
       const unitPrice = Number(form.unitPrice.replace(",", "."));
-      if (!Number.isFinite(quantity) || !Number.isFinite(minQuantity) || !Number.isFinite(unitPrice)) {
+      if (
+        !Number.isFinite(quantity) ||
+        !Number.isFinite(minQuantity) ||
+        !Number.isFinite(unitPrice)
+      ) {
         throw new Error("Miktar ve fiyat alanlarını kontrol edin");
       }
       if (unitPrice < 0) {
         throw new Error("Birim fiyat negatif olamaz");
       }
-      if (form.unit === "adet" && (!Number.isInteger(quantity) || !Number.isInteger(minQuantity))) {
+      if (
+        form.unit === "adet" &&
+        (!Number.isInteger(quantity) || !Number.isInteger(minQuantity))
+      ) {
         throw new Error("Adet biriminde küsurat kullanılamaz");
       }
       const { error } = await supabase.from("stock_items").insert({
@@ -117,9 +132,13 @@ function StockPage() {
   async function importCsv(file: File) {
     try {
       const rows = parseDelimitedText(await file.text());
-      if (rows.length < 2) throw new Error("Dosyada aktarılacak satır bulunamadı");
-      const headers = rows[0].map((cell) => cell.toLocaleLowerCase("tr-TR").trim());
-      const find = (...names: string[]) => headers.findIndex((header) => names.includes(header));
+      if (rows.length < 2)
+        throw new Error("Dosyada aktarılacak satır bulunamadı");
+      const headers = rows[0].map((cell) =>
+        cell.toLocaleLowerCase("tr-TR").trim(),
+      );
+      const find = (...names: string[]) =>
+        headers.findIndex((header) => names.includes(header));
       const indexes = {
         code: find("code", "kod", "malzeme kodu"),
         name: find("name", "ad", "malzeme adı", "malzeme adi"),
@@ -129,12 +148,22 @@ function StockPage() {
         location: find("location", "lokasyon", "konum"),
         description: find("description", "açıklama", "aciklama"),
       };
-      if (indexes.code < 0 || indexes.name < 0 || indexes.unit < 0 || indexes.quantity < 0) {
+      if (
+        indexes.code < 0 ||
+        indexes.name < 0 ||
+        indexes.unit < 0 ||
+        indexes.quantity < 0
+      ) {
         throw new Error("Zorunlu sütunlar: kod, malzeme adı, birim ve miktar");
       }
       const items = rows.slice(1).map((row) => {
-        const unit = row[indexes.unit]?.toLocaleLowerCase("tr-TR") === "metre" ? "metre" : "adet";
-        const quantity = Number((row[indexes.quantity] || "0").replace(",", "."));
+        const unit =
+          row[indexes.unit]?.toLocaleLowerCase("tr-TR") === "metre"
+            ? "metre"
+            : "adet";
+        const quantity = Number(
+          (row[indexes.quantity] || "0").replace(",", "."),
+        );
         const minQuantity = Number((row[indexes.min] || "0").replace(",", "."));
         if (
           !row[indexes.code]?.trim() ||
@@ -149,11 +178,19 @@ function StockPage() {
           unit: unit as StockUnit,
           quantity,
           min_quantity: Number.isFinite(minQuantity) ? minQuantity : 0,
-          location: indexes.location >= 0 ? row[indexes.location]?.trim() || null : null,
-          description: indexes.description >= 0 ? row[indexes.description]?.trim() || null : null,
+          location:
+            indexes.location >= 0
+              ? row[indexes.location]?.trim() || null
+              : null,
+          description:
+            indexes.description >= 0
+              ? row[indexes.description]?.trim() || null
+              : null,
         };
       });
-      const { error } = await supabase.from("stock_items").upsert(items, { onConflict: "code" });
+      const { error } = await supabase
+        .from("stock_items")
+        .upsert(items, { onConflict: "code" });
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ["stock-items"] });
       toast.success(`${items.length} malzeme içe aktarıldı`);
@@ -168,7 +205,10 @@ function StockPage() {
   if (stockQuery.isLoading) return <LoadingState />;
 
   const items = stockQuery.data ?? [];
-  const totalStockValue = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+  const totalStockValue = items.reduce(
+    (sum, item) => sum + item.quantity * item.unit_price,
+    0,
+  );
   const addButton = (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -188,14 +228,18 @@ function StockPage() {
             Kod
             <Input
               value={form.code}
-              onChange={(event) => setForm({ ...form, code: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, code: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm">
             Malzeme Adı
             <Input
               value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, name: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm">
@@ -218,7 +262,9 @@ function StockPage() {
             <Input
               inputMode="decimal"
               value={form.quantity}
-              onChange={(event) => setForm({ ...form, quantity: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, quantity: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm">
@@ -226,7 +272,9 @@ function StockPage() {
             <Input
               inputMode="decimal"
               value={form.minQuantity}
-              onChange={(event) => setForm({ ...form, minQuantity: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, minQuantity: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm">
@@ -234,21 +282,27 @@ function StockPage() {
             <Input
               inputMode="decimal"
               value={form.unitPrice}
-              onChange={(event) => setForm({ ...form, unitPrice: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, unitPrice: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm">
             Lokasyon
             <Input
               value={form.location}
-              onChange={(event) => setForm({ ...form, location: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, location: event.target.value })
+              }
             />
           </label>
           <label className="grid gap-1 text-sm sm:col-span-2">
             Açıklama
             <Input
               value={form.description}
-              onChange={(event) => setForm({ ...form, description: event.target.value })}
+              onChange={(event) =>
+                setForm({ ...form, description: event.target.value })
+              }
             />
           </label>
         </div>
@@ -276,9 +330,15 @@ function StockPage() {
               type="file"
               accept=".csv,text/csv"
               className="hidden"
-              onChange={(event) => event.target.files?.[0] && importCsv(event.target.files[0])}
+              onChange={(event) =>
+                event.target.files?.[0] && importCsv(event.target.files[0])
+              }
             />
-            <Button variant="outline" className="h-12" onClick={() => fileInput.current?.click()}>
+            <Button
+              variant="outline"
+              className="h-12"
+              onClick={() => fileInput.current?.click()}
+            >
               <FileUp className="mr-2 h-4 w-4" /> Excel CSV Yükle
             </Button>
             <Button
@@ -286,7 +346,15 @@ function StockPage() {
               className="h-12"
               onClick={() =>
                 downloadCsv("nes-stok-katalogu.csv", [
-                  ["Kod", "Malzeme Adı", "Birim", "Miktar", "Minimum Stok", "Lokasyon", "Açıklama"],
+                  [
+                    "Kod",
+                    "Malzeme Adı",
+                    "Birim",
+                    "Miktar",
+                    "Minimum Stok",
+                    "Lokasyon",
+                    "Açıklama",
+                  ],
                   ...items.map((item) => [
                     item.code,
                     item.name,
@@ -309,12 +377,16 @@ function StockPage() {
         <Card>
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground">Toplam Stok Değeri</p>
-            <p className="text-3xl font-black text-highlight">{formatTRY(totalStockValue)}</p>
+            <p className="text-3xl font-black text-highlight">
+              {formatTRY(totalStockValue)}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Kayıtlı Malzeme Kalemi</p>
+            <p className="text-sm text-muted-foreground">
+              Kayıtlı Malzeme Kalemi
+            </p>
             <p className="text-3xl font-black">{items.length}</p>
           </CardContent>
         </Card>
@@ -329,7 +401,9 @@ function StockPage() {
         <section className="surface-panel overflow-hidden">
           <div className="border-b border-border px-5 py-4">
             <h2 className="font-black">Stok Kataloğu</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Depodaki malzemeleri ve kritik stok durumlarını takip edin.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Depodaki malzemeleri ve kritik stok durumlarını takip edin.
+            </p>
           </div>
           <Table>
             <TableHeader>
@@ -348,13 +422,17 @@ function StockPage() {
                 const low = item.quantity <= item.min_quantity;
                 return (
                   <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{item.code || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {item.code || "—"}
+                    </TableCell>
                     <TableCell className="font-bold">{item.name}</TableCell>
                     <TableCell>{item.location || "—"}</TableCell>
                     <TableCell className="text-right text-lg font-black">
                       {item.quantity} {item.unit}
                     </TableCell>
-                    <TableCell className="text-right">{formatTRY(item.unit_price)}</TableCell>
+                    <TableCell className="text-right">
+                      {formatTRY(item.unit_price)}
+                    </TableCell>
                     <TableCell className="text-right font-bold">
                       {formatTRY(item.quantity * item.unit_price)}
                     </TableCell>

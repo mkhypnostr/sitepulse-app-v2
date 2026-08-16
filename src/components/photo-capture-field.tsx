@@ -82,10 +82,19 @@ export function PhotoCaptureField({
           />
         </label>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Button type="button" variant="outline" onClick={reset} disabled={submitting}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={reset}
+            disabled={submitting}
+          >
             <X className="mr-2 h-4 w-4" /> Vazgeç
           </Button>
-          <Button type="button" onClick={confirm} disabled={submitting || disabled}>
+          <Button
+            type="button"
+            onClick={confirm}
+            disabled={submitting || disabled}
+          >
             {submitting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (

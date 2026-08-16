@@ -7,8 +7,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
-import { formatProjectDate, projectApprovedProgress, projectStatusLabel } from "@/lib/projects";
-import { AccessDenied, EmptyState, LoadingState, PageHeader } from "@/components/page-states";
+import {
+  formatProjectDate,
+  projectApprovedProgress,
+  projectStatusLabel,
+} from "@/lib/projects";
+import {
+  AccessDenied,
+  EmptyState,
+  LoadingState,
+  PageHeader,
+} from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,8 +78,13 @@ function ReportsPage() {
   const { role } = useAuth();
   const now = new Date();
   const [year, setYear] = useState(String(now.getFullYear()));
-  const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, "0"));
-  const yearOptions = Array.from({ length: 8 }, (_, index) => now.getFullYear() + 1 - index);
+  const [month, setMonth] = useState(
+    String(now.getMonth() + 1).padStart(2, "0"),
+  );
+  const yearOptions = Array.from(
+    { length: 8 },
+    (_, index) => now.getFullYear() + 1 - index,
+  );
   const periodLabel =
     month === "all"
       ? `${year} Yılı`
@@ -107,12 +121,19 @@ function ReportsPage() {
       if (completionsResult.error) throw completionsResult.error;
 
       const completions = completionsResult.data ?? [];
-      const contractorIds = [...new Set(completions.map((item) => item.submitted_by))];
+      const contractorIds = [
+        ...new Set(completions.map((item) => item.submitted_by)),
+      ];
       const profilesResult = contractorIds.length
-        ? await supabase.from("profiles").select("id, full_name").in("id", contractorIds)
+        ? await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", contractorIds)
         : { data: [], error: null };
       if (profilesResult.error) throw profilesResult.error;
-      const contractorNameById = new Map(profilesResult.data.map((item) => [item.id, item.full_name]));
+      const contractorNameById = new Map(
+        profilesResult.data.map((item) => [item.id, item.full_name]),
+      );
 
       return {
         materials: materialsResult.data,
@@ -120,8 +141,11 @@ function ReportsPage() {
           id: item.id,
           approved_at: item.reviewed_at ?? item.submitted_at,
           work_orders: item.work_orders,
-          contractor_name: contractorNameById.get(item.submitted_by) || "Taşeron",
-          approved_amount: item.work_orders?.work_order_financials?.contractor_labor_amount ?? 0,
+          contractor_name:
+            contractorNameById.get(item.submitted_by) || "Taşeron",
+          approved_amount:
+            item.work_orders?.work_order_financials?.contractor_labor_amount ??
+            0,
         })),
       };
     },
@@ -130,20 +154,28 @@ function ReportsPage() {
   if (role !== "admin") return <AccessDenied />;
   if (reportQuery.isLoading) return <LoadingState />;
   if (reportQuery.error)
-    return <p className="text-destructive">{errorMessage(reportQuery.error)}</p>;
+    return (
+      <p className="text-destructive">{errorMessage(reportQuery.error)}</p>
+    );
 
   const materials = reportQuery.data?.materials ?? [];
   const approvals = reportQuery.data?.approvals ?? [];
   const nesUsage = materials.filter((item) => item.is_nes_stock).length;
   const contractorUsage = materials.length - nesUsage;
-  const totalMaterialQuantity = materials.reduce((sum, item) => sum + item.quantity, 0);
+  const totalMaterialQuantity = materials.reduce(
+    (sum, item) => sum + item.quantity,
+    0,
+  );
   const materialUnitPrice = (item: (typeof materials)[number]) =>
     item.is_nes_stock ? (item.stock_items?.unit_price ?? 0) : 0;
   const totalMaterialAmount = materials.reduce(
     (sum, item) => sum + item.quantity * materialUnitPrice(item),
     0,
   );
-  const approvedTotal = approvals.reduce((sum, item) => sum + item.approved_amount, 0);
+  const approvedTotal = approvals.reduce(
+    (sum, item) => sum + item.approved_amount,
+    0,
+  );
 
   async function exportReport() {
     // exceljs (ve zip/stream bağımlılıkları) tarayıcı dışı kod yoluna hiç
@@ -158,7 +190,10 @@ function ReportsPage() {
 
       const logoResponse = await fetch(NES_LOGO_URL);
       const logoBuffer = await logoResponse.arrayBuffer();
-      const logoImageId = workbook.addImage({ buffer: logoBuffer, extension: "png" });
+      const logoImageId = workbook.addImage({
+        buffer: logoBuffer,
+        extension: "png",
+      });
 
       const boldFont = { bold: true };
       const titleFont = { bold: true, size: 13 };
@@ -181,7 +216,10 @@ function ReportsPage() {
         totalRow: (string | number)[],
       ) {
         const sheet = workbook.addWorksheet(name);
-        sheet.addImage(logoImageId, { tl: { col: 0, row: 0 }, ext: { width: 160, height: 49 } });
+        sheet.addImage(logoImageId, {
+          tl: { col: 0, row: 0 },
+          ext: { width: 160, height: 49 },
+        });
         sheet.getRow(1).height = 26;
         sheet.getRow(2).height = 26;
         sheet.mergeCells(1, headers.length + 1, 2, headers.length + 3);
@@ -229,13 +267,27 @@ function ReportsPage() {
           item.work_orders?.customers?.name ?? "",
           item.is_nes_stock ? "NES Stoğu" : "Taşeron",
           item.stock_items?.code ?? "",
-          (item.is_nes_stock ? item.stock_items?.name : item.custom_material_name) ?? "",
+          (item.is_nes_stock
+            ? item.stock_items?.name
+            : item.custom_material_name) ?? "",
           item.quantity,
           item.unit,
           materialUnitPrice(item),
           item.quantity * materialUnitPrice(item),
         ]),
-        ["", "", "", "", "", "", "TOPLAM", totalMaterialQuantity, "", "", totalMaterialAmount],
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "TOPLAM",
+          totalMaterialQuantity,
+          "",
+          "",
+          totalMaterialAmount,
+        ],
       );
 
       addSheet(
@@ -254,7 +306,9 @@ function ReportsPage() {
 
       const buffer = await workbook.xlsx.writeBuffer();
       const url = URL.createObjectURL(
-        new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
       );
       const link = document.createElement("a");
       link.href = url;
@@ -286,7 +340,8 @@ function ReportsPage() {
             <div>
               <h2 className="text-lg font-black">Kullanım ve Hakediş Raporu</h2>
               <p className="text-sm text-muted-foreground">
-                NES stoğu, taşeron malzemeleri ve onaylanan hakedişler tek çıktıda.
+                NES stoğu, taşeron malzemeleri ve onaylanan hakedişler tek
+                çıktıda.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -314,106 +369,131 @@ function ReportsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button className="h-12" onClick={exportReport} disabled={exporting}>
-                <Download className="mr-2 h-4 w-4" /> {exporting ? "Hazırlanıyor..." : "Excel Çıktısı"}
+              <Button
+                className="h-12"
+                onClick={exportReport}
+                disabled={exporting}
+              >
+                <Download className="mr-2 h-4 w-4" />{" "}
+                {exporting ? "Hazırlanıyor..." : "Excel Çıktısı"}
               </Button>
             </div>
           </div>
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">NES Stok Kalemi Kullanımı</p>
-            <p className="text-3xl font-black">{nesUsage}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Taşeron Malzeme Kaydı</p>
-            <p className="text-3xl font-black">{contractorUsage}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Onaylanan Hakediş Toplamı</p>
-            <p className="text-2xl font-black text-highlight">{formatTRY(approvedTotal)}</p>
-          </CardContent>
-        </Card>
-      </div>
+          <div className="mb-6 grid gap-4 sm:grid-cols-3">
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-sm text-muted-foreground">
+                  NES Stok Kalemi Kullanımı
+                </p>
+                <p className="text-3xl font-black">{nesUsage}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-sm text-muted-foreground">
+                  Taşeron Malzeme Kaydı
+                </p>
+                <p className="text-3xl font-black">{contractorUsage}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-sm text-muted-foreground">
+                  Onaylanan Hakediş Toplamı
+                </p>
+                <p className="text-2xl font-black text-highlight">
+                  {formatTRY(approvedTotal)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
 
-      <h2 className="mb-3 text-xl font-black">Malzeme Kullanımları</h2>
-      {materials.length === 0 ? (
-        <EmptyState title={`${periodLabel} döneminde malzeme kullanımı yok`} />
-      ) : (
-        <div className="surface-panel overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tarih</TableHead>
-                <TableHead>Görev</TableHead>
-                <TableHead>Kaynak</TableHead>
-                <TableHead>Malzeme</TableHead>
-                <TableHead className="text-right">Miktar</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {materials.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>{formatDate(item.created_at)}</TableCell>
-                  <TableCell>
-                    #{item.work_orders?.work_order_no} · {item.work_orders?.title}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={item.is_nes_stock ? "default" : "outline"}>
-                      {item.is_nes_stock ? "NES" : "Taşeron"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {item.is_nes_stock ? item.stock_items?.name : item.custom_material_name}
-                  </TableCell>
-                  <TableCell className="text-right font-bold">
-                    {item.quantity} {item.unit}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+          <h2 className="mb-3 text-xl font-black">Malzeme Kullanımları</h2>
+          {materials.length === 0 ? (
+            <EmptyState
+              title={`${periodLabel} döneminde malzeme kullanımı yok`}
+            />
+          ) : (
+            <div className="surface-panel overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tarih</TableHead>
+                    <TableHead>Görev</TableHead>
+                    <TableHead>Kaynak</TableHead>
+                    <TableHead>Malzeme</TableHead>
+                    <TableHead className="text-right">Miktar</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {materials.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{formatDate(item.created_at)}</TableCell>
+                      <TableCell>
+                        #{item.work_orders?.work_order_no} ·{" "}
+                        {item.work_orders?.title}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={item.is_nes_stock ? "default" : "outline"}
+                        >
+                          {item.is_nes_stock ? "NES" : "Taşeron"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {item.is_nes_stock
+                          ? item.stock_items?.name
+                          : item.custom_material_name}
+                      </TableCell>
+                      <TableCell className="text-right font-bold">
+                        {item.quantity} {item.unit}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
 
-      <h2 className="mb-3 mt-7 text-xl font-black">Hakediş Onayları</h2>
-      {approvals.length === 0 ? (
-        <EmptyState title={`${periodLabel} döneminde hakediş onayı yok`} />
-      ) : (
-        <div className="surface-panel overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tarih</TableHead>
-                <TableHead>Görev</TableHead>
-                <TableHead>Müşteri</TableHead>
-                <TableHead>Taşeron</TableHead>
-                <TableHead className="text-right">Onaylanan Tutar</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {approvals.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>{formatDate(item.approved_at)}</TableCell>
-                  <TableCell>
-                    #{item.work_orders?.work_order_no} · {item.work_orders?.title}
-                  </TableCell>
-                  <TableCell>{item.work_orders?.customers?.name || "—"}</TableCell>
-                  <TableCell>{item.contractor_name}</TableCell>
-                  <TableCell className="text-right font-black">
-                    {formatTRY(item.approved_amount)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+          <h2 className="mb-3 mt-7 text-xl font-black">Hakediş Onayları</h2>
+          {approvals.length === 0 ? (
+            <EmptyState title={`${periodLabel} döneminde hakediş onayı yok`} />
+          ) : (
+            <div className="surface-panel overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tarih</TableHead>
+                    <TableHead>Görev</TableHead>
+                    <TableHead>Müşteri</TableHead>
+                    <TableHead>Taşeron</TableHead>
+                    <TableHead className="text-right">
+                      Onaylanan Tutar
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {approvals.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{formatDate(item.approved_at)}</TableCell>
+                      <TableCell>
+                        #{item.work_orders?.work_order_no} ·{" "}
+                        {item.work_orders?.title}
+                      </TableCell>
+                      <TableCell>
+                        {item.work_orders?.customers?.name || "—"}
+                      </TableCell>
+                      <TableCell>{item.contractor_name}</TableCell>
+                      <TableCell className="text-right font-black">
+                        {formatTRY(item.approved_amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="project" className="mt-6">
@@ -440,7 +520,9 @@ function ProjectReportTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
-        .select("id, project_no, name, status, start_date, target_end_date, customers(name)")
+        .select(
+          "id, project_no, name, status, start_date, target_end_date, customers(name)",
+        )
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
@@ -473,7 +555,9 @@ function ProjectReportTab() {
       );
       return {
         workOrderCount: workOrders.length,
-        completedWorkOrderCount: workOrders.filter((order) => order.status === "completed").length,
+        completedWorkOrderCount: workOrders.filter(
+          (order) => order.status === "completed",
+        ).length,
         taskCount: progress.total,
         completedTaskCount: progress.completed,
         taskProgressPct: progress.percentage,
@@ -483,25 +567,34 @@ function ProjectReportTab() {
 
   if (projectsQuery.isLoading) return <LoadingState />;
   const projects = projectsQuery.data ?? [];
-  const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  const selectedProject = projects.find(
+    (project) => project.id === selectedProjectId,
+  );
 
   return (
     <div>
       <div className="mb-6">
         <h2 className="text-lg font-black">Proje Bazlı Rapor</h2>
         <p className="text-sm text-muted-foreground">
-          Bir proje seçin; proje bilgileri, bağlı iş emirleri, görev ilerlemesi, malzeme ve mali
-          özet içeren tam rapor PDF veya Word olarak indirilebilir.
+          Bir proje seçin; proje bilgileri, bağlı iş emirleri, görev ilerlemesi,
+          malzeme ve mali özet içeren tam rapor PDF veya Word olarak
+          indirilebilir.
         </p>
       </div>
 
       {projects.length === 0 ? (
-        <EmptyState title="Henüz proje yok" description="Rapor için önce bir proje oluşturun." />
+        <EmptyState
+          title="Henüz proje yok"
+          description="Rapor için önce bir proje oluşturun."
+        />
       ) : (
         <>
           <label className="grid max-w-md gap-1 text-sm">
             Proje
-            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+            <Select
+              value={selectedProjectId}
+              onValueChange={setSelectedProjectId}
+            >
               <SelectTrigger className="h-11">
                 <SelectValue placeholder="Proje seçin" />
               </SelectTrigger>
@@ -523,7 +616,9 @@ function ProjectReportTab() {
                     <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                       {selectedProject.project_no}
                     </p>
-                    <h3 className="text-xl font-black">{selectedProject.name}</h3>
+                    <h3 className="text-xl font-black">
+                      {selectedProject.name}
+                    </h3>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {selectedProject.customers?.name || "Müşteri yok"} ·{" "}
                       {projectStatusLabel[selectedProject.status]} ·{" "}
@@ -532,8 +627,12 @@ function ProjectReportTab() {
                     </p>
                   </div>
                   <Button asChild className="h-12">
-                    <Link to="/project-report/$projectId" params={{ projectId: selectedProject.id }}>
-                      <FileText className="mr-2 h-4 w-4" /> Tam Raporu Aç (PDF / Word)
+                    <Link
+                      to="/project-report/$projectId"
+                      params={{ projectId: selectedProject.id }}
+                    >
+                      <FileText className="mr-2 h-4 w-4" /> Tam Raporu Aç (PDF /
+                      Word)
                     </Link>
                   </Button>
                 </div>
@@ -541,21 +640,33 @@ function ProjectReportTab() {
                 {summaryQuery.data ? (
                   <div className="mt-5 grid gap-3 sm:grid-cols-3">
                     <div className="rounded-[14px] border border-border/60 bg-background/30 p-3">
-                      <p className="text-xs text-muted-foreground">Bağlı İş Emri</p>
-                      <p className="mt-1 text-2xl font-black">
-                        {summaryQuery.data.completedWorkOrderCount}/{summaryQuery.data.workOrderCount}
+                      <p className="text-xs text-muted-foreground">
+                        Bağlı İş Emri
                       </p>
-                      <p className="text-xs text-muted-foreground">tamamlandı</p>
+                      <p className="mt-1 text-2xl font-black">
+                        {summaryQuery.data.completedWorkOrderCount}/
+                        {summaryQuery.data.workOrderCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        tamamlandı
+                      </p>
                     </div>
                     <div className="rounded-[14px] border border-border/60 bg-background/30 p-3">
-                      <p className="text-xs text-muted-foreground">Proje Görevi</p>
-                      <p className="mt-1 text-2xl font-black">
-                        {summaryQuery.data.completedTaskCount}/{summaryQuery.data.taskCount}
+                      <p className="text-xs text-muted-foreground">
+                        Proje Görevi
                       </p>
-                      <p className="text-xs text-muted-foreground">tamamlandı</p>
+                      <p className="mt-1 text-2xl font-black">
+                        {summaryQuery.data.completedTaskCount}/
+                        {summaryQuery.data.taskCount}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        tamamlandı
+                      </p>
                     </div>
                     <div className="rounded-[14px] border border-border/60 bg-background/30 p-3">
-                      <p className="text-xs text-muted-foreground">Onaylı İlerleme</p>
+                      <p className="text-xs text-muted-foreground">
+                        Onaylı İlerleme
+                      </p>
                       <p className="mt-1 text-2xl font-black text-highlight">
                         %{summaryQuery.data.taskProgressPct}
                       </p>

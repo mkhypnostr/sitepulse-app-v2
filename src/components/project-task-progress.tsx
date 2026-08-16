@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Clock3, History, Paperclip, RotateCcw, Send } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock3,
+  History,
+  Paperclip,
+  RotateCcw,
+  Send,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,7 +21,8 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 
 type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
-type Submission = Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
+type Submission =
+  Database["public"]["Tables"]["project_task_progress_submissions"]["Row"];
 
 const submissionLabel = {
   pending: "Yönetici onayında",
@@ -41,7 +49,9 @@ export function ProjectTaskProgress({
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setProposedPct(String(Math.min(100, Math.max(task.approved_progress_pct + 5, 5))));
+    setProposedPct(
+      String(Math.min(100, Math.max(task.approved_progress_pct + 5, 5))),
+    );
   }, [task.approved_progress_pct]);
 
   const submissionsQuery = useQuery({
@@ -57,18 +67,24 @@ export function ProjectTaskProgress({
       const userIds = [
         ...new Set(
           submissionsResult.data.flatMap(
-            (item) => [item.submitted_by, item.reviewed_by].filter(Boolean) as string[],
+            (item) =>
+              [item.submitted_by, item.reviewed_by].filter(Boolean) as string[],
           ),
         ),
       ];
       const profilesResult = userIds.length
-        ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
+        ? await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", userIds)
         : { data: [], error: null };
       if (profilesResult.error) throw profilesResult.error;
 
       return {
         submissions: submissionsResult.data,
-        profileById: new Map((profilesResult.data ?? []).map((item) => [item.id, item.full_name])),
+        profileById: new Map(
+          (profilesResult.data ?? []).map((item) => [item.id, item.full_name]),
+        ),
       };
     },
   });
@@ -88,15 +104,24 @@ export function ProjectTaskProgress({
   });
 
   const pendingSubmission = useMemo(
-    () => submissionsQuery.data?.submissions.find((item) => item.status === "pending"),
+    () =>
+      submissionsQuery.data?.submissions.find(
+        (item) => item.status === "pending",
+      ),
     [submissionsQuery.data?.submissions],
   );
 
   const refresh = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["project-task-progress-submissions", task.id] }),
-      queryClient.invalidateQueries({ queryKey: ["project-task-evidence", task.id] }),
-      queryClient.invalidateQueries({ queryKey: ["project-detail", task.project_id] }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-task-progress-submissions", task.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-task-evidence", task.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["project-detail", task.project_id],
+      }),
       queryClient.invalidateQueries({ queryKey: ["my-project-tasks"] }),
       queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
@@ -136,7 +161,13 @@ export function ProjectTaskProgress({
   });
 
   const reviewProgress = useMutation({
-    mutationFn: async ({ submission, approve }: { submission: Submission; approve: boolean }) => {
+    mutationFn: async ({
+      submission,
+      approve,
+    }: {
+      submission: Submission;
+      approve: boolean;
+    }) => {
       const reviewNote = reviewNotes[submission.id]?.trim() || undefined;
       if (!approve && !reviewNote) throw new Error("Revizyon nedenini yazın.");
       const { error } = await supabase.rpc("review_project_task_progress", {
@@ -148,7 +179,9 @@ export function ProjectTaskProgress({
     },
     onSuccess: async (_data, variables) => {
       await refresh();
-      toast.success(variables.approve ? "İlerleme onaylandı" : "Revizyon istendi");
+      toast.success(
+        variables.approve ? "İlerleme onaylandı" : "Revizyon istendi",
+      );
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -166,7 +199,8 @@ export function ProjectTaskProgress({
       (evidenceCountBySubmission.get(item.submission_id) ?? 0) + 1,
     );
   });
-  const profileById = submissionsQuery.data?.profileById ?? new Map<string, string>();
+  const profileById =
+    submissionsQuery.data?.profileById ?? new Map<string, string>();
   const submissionFormVisible =
     canSubmit &&
     !pendingSubmission &&
@@ -188,11 +222,14 @@ export function ProjectTaskProgress({
           <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
             Onaylı Görev İlerlemesi
           </p>
-          <p className="mt-1 text-2xl font-black text-highlight">%{task.approved_progress_pct}</p>
+          <p className="mt-1 text-2xl font-black text-highlight">
+            %{task.approved_progress_pct}
+          </p>
         </div>
         {pendingSubmission ? (
           <Badge className="border-destructive/50 bg-destructive/15 text-destructive animate-pulse">
-            <Clock3 className="mr-1 h-3.5 w-3.5" /> %{pendingSubmission.proposed_pct} onay bekliyor
+            <Clock3 className="mr-1 h-3.5 w-3.5" /> %
+            {pendingSubmission.proposed_pct} onay bekliyor
           </Badge>
         ) : task.approved_progress_pct === 100 ? (
           <Badge className="border-success/40 bg-success/15 text-success">
@@ -206,13 +243,18 @@ export function ProjectTaskProgress({
         <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="font-black">%{pendingSubmission.proposed_pct} ilerleme talebi</p>
+              <p className="font-black">
+                %{pendingSubmission.proposed_pct} ilerleme talebi
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {profileById.get(pendingSubmission.submitted_by) || "Kullanıcı"} ·{" "}
-                {formatProjectDateTime(pendingSubmission.submitted_at)}
+                {profileById.get(pendingSubmission.submitted_by) || "Kullanıcı"}{" "}
+                · {formatProjectDateTime(pendingSubmission.submitted_at)}
               </p>
             </div>
-            <Badge variant="outline" className="border-destructive/40 text-destructive">
+            <Badge
+              variant="outline"
+              className="border-destructive/40 text-destructive"
+            >
               Onay Bekliyor
             </Badge>
           </div>
@@ -235,7 +277,10 @@ export function ProjectTaskProgress({
               type="button"
               variant="outline"
               onClick={() =>
-                reviewProgress.mutate({ submission: pendingSubmission, approve: false })
+                reviewProgress.mutate({
+                  submission: pendingSubmission,
+                  approve: false,
+                })
               }
               disabled={reviewProgress.isPending}
               className="border-warning/40 text-warning"
@@ -245,13 +290,16 @@ export function ProjectTaskProgress({
             <Button
               type="button"
               onClick={() =>
-                reviewProgress.mutate({ submission: pendingSubmission, approve: true })
+                reviewProgress.mutate({
+                  submission: pendingSubmission,
+                  approve: true,
+                })
               }
               disabled={reviewProgress.isPending}
               className="bg-success text-success-foreground hover:bg-success/85"
             >
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Onayla ve %{pendingSubmission.proposed_pct}{" "}
-              Yap
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Onayla ve %
+              {pendingSubmission.proposed_pct} Yap
             </Button>
           </div>
         </div>
@@ -261,8 +309,8 @@ export function ProjectTaskProgress({
         <div className="mt-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
           <p className="font-black">İlerlemeyi onaya gönder</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Onay verilene kadar proje yüzdesi değişmez. Fotoğraf veya belge ve en az 10
-            karakterlik açıklama zorunludur.
+            Onay verilene kadar proje yüzdesi değişmez. Fotoğraf veya belge ve
+            en az 10 karakterlik açıklama zorunludur.
           </p>
           <p
             className={
@@ -311,10 +359,16 @@ export function ProjectTaskProgress({
             type="button"
             className="mt-3 w-full sm:w-auto"
             onClick={() => submitProgress.mutate()}
-            disabled={submitProgress.isPending || evidenceQuery.isLoading || !submissionInputValid}
+            disabled={
+              submitProgress.isPending ||
+              evidenceQuery.isLoading ||
+              !submissionInputValid
+            }
           >
             <Send className="mr-2 h-4 w-4" />
-            {submitProgress.isPending ? "Gönderiliyor..." : "Yönetici Onayına Gönder"}
+            {submitProgress.isPending
+              ? "Gönderiliyor..."
+              : "Yönetici Onayına Gönder"}
           </Button>
         </div>
       ) : null}
@@ -332,18 +386,21 @@ export function ProjectTaskProgress({
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-black">
-                    %{submission.proposed_pct} · {submissionLabel[submission.status]}
+                    %{submission.proposed_pct} ·{" "}
+                    {submissionLabel[submission.status]}
                   </span>
                   <span className="text-muted-foreground">
                     {formatProjectDateTime(submission.submitted_at)}
                   </span>
                 </div>
                 <p className="mt-1 text-muted-foreground">
-                  Gönderen: {profileById.get(submission.submitted_by) || "Kullanıcı"}
+                  Gönderen:{" "}
+                  {profileById.get(submission.submitted_by) || "Kullanıcı"}
                 </p>
                 {(evidenceCountBySubmission.get(submission.id) ?? 0) > 0 ? (
                   <p className="mt-1 flex items-center gap-1 text-highlight">
-                    <Paperclip className="h-3.5 w-3.5" /> Kanıt: {evidenceCountBySubmission.get(submission.id)} dosya
+                    <Paperclip className="h-3.5 w-3.5" /> Kanıt:{" "}
+                    {evidenceCountBySubmission.get(submission.id)} dosya
                   </p>
                 ) : null}
                 {submission.reviewed_by ? (
@@ -354,13 +411,17 @@ export function ProjectTaskProgress({
                         : "mt-1 text-warning"
                     }
                   >
-                    {submission.status === "approved" ? "Onaylayan" : "İnceleyen"}:{" "}
-                    {profileById.get(submission.reviewed_by) || "Yönetici"} ·{" "}
+                    {submission.status === "approved"
+                      ? "Onaylayan"
+                      : "İnceleyen"}
+                    : {profileById.get(submission.reviewed_by) || "Yönetici"} ·{" "}
                     {formatProjectDateTime(submission.reviewed_at)}
                   </p>
                 ) : null}
                 {submission.review_note ? (
-                  <p className="mt-2 whitespace-pre-wrap">{submission.review_note}</p>
+                  <p className="mt-2 whitespace-pre-wrap">
+                    {submission.review_note}
+                  </p>
                 ) : null}
               </div>
             ))}

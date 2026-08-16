@@ -40,7 +40,10 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 type Project = Database["public"]["Tables"]["projects"]["Row"];
-type Manager = Pick<Database["public"]["Tables"]["profiles"]["Row"], "id" | "full_name">;
+type Manager = Pick<
+  Database["public"]["Tables"]["profiles"]["Row"],
+  "id" | "full_name"
+>;
 
 type Transition = {
   status: ProjectStatus;
@@ -93,11 +96,21 @@ export function ProjectLifecycleControls({
     queryKey: ["project-deletion-impact", project.id],
     enabled: deleteOpen && isAdmin,
     queryFn: async () => {
-      const [projectTasks, fieldTasks, linkedOperationalTasks] = await Promise.all([
-        supabase.from("project_tasks").select("id", { count: "exact", head: true }).eq("project_id", project.id),
-        supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("project_id", project.id),
-        supabase.from("operational_tasks" as never).select("id", { count: "exact", head: true }).eq("project_id", project.id),
-      ]);
+      const [projectTasks, fieldTasks, linkedOperationalTasks] =
+        await Promise.all([
+          supabase
+            .from("project_tasks")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", project.id),
+          supabase
+            .from("work_orders")
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", project.id),
+          supabase
+            .from("operational_tasks" as never)
+            .select("id", { count: "exact", head: true })
+            .eq("project_id", project.id),
+        ]);
       if (projectTasks.error) throw projectTasks.error;
       if (fieldTasks.error) throw fieldTasks.error;
       if (linkedOperationalTasks.error) throw linkedOperationalTasks.error;
@@ -186,7 +199,9 @@ export function ProjectLifecycleControls({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project-detail", project.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-detail", project.id],
+        }),
         queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
       ]);
       setTransition(null);
@@ -198,17 +213,25 @@ export function ProjectLifecycleControls({
 
   const editMutation = useMutation({
     mutationFn: async () => {
-      const parsedArea = form.area.trim() ? Number(form.area.trim().replace(",", ".")) : undefined;
-      if (parsedArea !== undefined && (!Number.isFinite(parsedArea) || parsedArea <= 0)) {
+      const parsedArea = form.area.trim()
+        ? Number(form.area.trim().replace(",", "."))
+        : undefined;
+      if (
+        parsedArea !== undefined &&
+        (!Number.isFinite(parsedArea) || parsedArea <= 0)
+      ) {
         throw new Error("Alan bilgisini sıfırdan büyük bir sayı olarak girin");
       }
       if (!safeHttpsMapUrl(form.locationUrl)) {
-        throw new Error("Google Maps'ten kopyaladığınız güvenli konum bağlantısını girin");
+        throw new Error(
+          "Google Maps'ten kopyaladığınız güvenli konum bağlantısını girin",
+        );
       }
       const { error } = await supabase.rpc("update_project_details", {
         target_project_id: project.id,
         project_name: form.name.trim(),
-        project_external_reference_no: form.externalReference.trim() || undefined,
+        project_external_reference_no:
+          form.externalReference.trim() || undefined,
         project_location_url: form.locationUrl.trim(),
         project_province: form.province.trim() || undefined,
         project_district: form.district.trim() || undefined,
@@ -216,7 +239,8 @@ export function ProjectLifecycleControls({
         project_block_no: form.blockNo.trim() || undefined,
         project_parcel_no: form.parcelNo.trim() || undefined,
         project_area: parsedArea,
-        target_manager_id: form.managerId === "none" ? undefined : form.managerId,
+        target_manager_id:
+          form.managerId === "none" ? undefined : form.managerId,
         project_start_date: form.startDate || undefined,
         project_target_end_date: form.targetEndDate || undefined,
         visible_to_customer: form.showToCustomer,
@@ -227,7 +251,9 @@ export function ProjectLifecycleControls({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["project-detail", project.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-detail", project.id],
+        }),
         queryClient.invalidateQueries({ queryKey: ["projects-page"] }),
       ]);
       setEditOpen(false);
@@ -238,9 +264,12 @@ export function ProjectLifecycleControls({
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.rpc("delete_project_permanently" as never, {
-        target_project_id: project.id,
-      } as never);
+      const { error } = await supabase.rpc(
+        "delete_project_permanently" as never,
+        {
+          target_project_id: project.id,
+        } as never,
+      );
       if (error) throw error;
     },
     onSuccess: async () => {
@@ -257,7 +286,9 @@ export function ProjectLifecycleControls({
   });
 
   const editable =
-    project.status === "draft" || project.status === "active" || project.status === "on_hold";
+    project.status === "draft" ||
+    project.status === "active" ||
+    project.status === "on_hold";
 
   return (
     <>
@@ -310,11 +341,15 @@ export function ProjectLifecycleControls({
           </DialogHeader>
           <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm">
             <span className="text-muted-foreground">Yeni durum: </span>
-            <strong>{transition ? projectStatusLabel[transition.status] : "—"}</strong>
+            <strong>
+              {transition ? projectStatusLabel[transition.status] : "—"}
+            </strong>
           </div>
           <label className="grid gap-1.5 text-sm font-bold">
             Açıklama{" "}
-            {transition?.requiresReason ? <span className="text-destructive">*</span> : null}
+            {transition?.requiresReason ? (
+              <span className="text-destructive">*</span>
+            ) : null}
             <Textarea
               value={transitionNote}
               onChange={(event) => setTransitionNote(event.target.value)}
@@ -331,7 +366,9 @@ export function ProjectLifecycleControls({
               Vazgeç
             </Button>
             <Button
-              variant={transition?.tone === "destructive" ? "destructive" : "default"}
+              variant={
+                transition?.tone === "destructive" ? "destructive" : "default"
+              }
               onClick={() => lifecycleMutation.mutate()}
               disabled={
                 lifecycleMutation.isPending ||
@@ -352,17 +389,34 @@ export function ProjectLifecycleControls({
             </div>
             <DialogTitle>Proje kalıcı olarak silinsin mi?</DialogTitle>
             <DialogDescription>
-              {project.project_no} numaralı proje ve yalnızca bu projeye bağlı kayıtlar silinir. Bu işlem geri alınamaz.
+              {project.project_no} numaralı proje ve yalnızca bu projeye bağlı
+              kayıtlar silinir. Bu işlem geri alınamaz.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 rounded-xl border border-destructive/35 bg-destructive/5 p-4 text-sm">
             <p className="font-bold">Silinecek bağlı kayıtlar</p>
-            {deletionImpactQuery.isLoading ? <p className="text-muted-foreground">Kayıtlar hesaplanıyor...</p> : <>
-              <p>• {deletionImpactQuery.data?.projectTasks ?? 0} proje görevi ve süreç kaydı</p>
-              <p>• {deletionImpactQuery.data?.fieldTasks ?? 0} bağlı saha görevi</p>
-              <p>• {deletionImpactQuery.data?.linkedOperationalTasks ?? 0} projeye bağlı operasyon görevi</p>
-              <p className="pt-1 text-xs text-muted-foreground">Proje seçilmeden açılmış bağımsız görevler silinmez; Görevler ekranından ayrı silinir.</p>
-            </>}
+            {deletionImpactQuery.isLoading ? (
+              <p className="text-muted-foreground">Kayıtlar hesaplanıyor...</p>
+            ) : (
+              <>
+                <p>
+                  • {deletionImpactQuery.data?.projectTasks ?? 0} proje görevi
+                  ve süreç kaydı
+                </p>
+                <p>
+                  • {deletionImpactQuery.data?.fieldTasks ?? 0} bağlı saha
+                  görevi
+                </p>
+                <p>
+                  • {deletionImpactQuery.data?.linkedOperationalTasks ?? 0}{" "}
+                  projeye bağlı operasyon görevi
+                </p>
+                <p className="pt-1 text-xs text-muted-foreground">
+                  Proje seçilmeden açılmış bağımsız görevler silinmez; Görevler
+                  ekranından ayrı silinir.
+                </p>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -395,7 +449,8 @@ export function ProjectLifecycleControls({
           <DialogHeader>
             <DialogTitle>Proje bilgilerini düzenle</DialogTitle>
             <DialogDescription>
-              Müşteri ve proje süreçleri korunur; proje kartındaki bilgiler güncellenir.
+              Müşteri ve proje süreçleri korunur; proje kartındaki bilgiler
+              güncellenir.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -403,7 +458,9 @@ export function ProjectLifecycleControls({
               Proje Adı <span className="text-destructive">*</span>
               <Input
                 value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, name: event.target.value })
+                }
                 maxLength={180}
               />
             </label>
@@ -411,7 +468,9 @@ export function ProjectLifecycleControls({
               Google Maps Konumu <span className="text-destructive">*</span>
               <Input
                 value={form.locationUrl}
-                onChange={(event) => setForm({ ...form, locationUrl: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, locationUrl: event.target.value })
+                }
                 placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
               />
             </label>
@@ -429,7 +488,9 @@ export function ProjectLifecycleControls({
               Dış Referans Numarası
               <Input
                 value={form.externalReference}
-                onChange={(event) => setForm({ ...form, externalReference: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, externalReference: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
@@ -455,35 +516,45 @@ export function ProjectLifecycleControls({
               İl
               <Input
                 value={form.province}
-                onChange={(event) => setForm({ ...form, province: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, province: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               İlçe
               <Input
                 value={form.district}
-                onChange={(event) => setForm({ ...form, district: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, district: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Mahalle
               <Input
                 value={form.neighborhood}
-                onChange={(event) => setForm({ ...form, neighborhood: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, neighborhood: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Ada
               <Input
                 value={form.blockNo}
-                onChange={(event) => setForm({ ...form, blockNo: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, blockNo: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Parsel
               <Input
                 value={form.parcelNo}
-                onChange={(event) => setForm({ ...form, parcelNo: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, parcelNo: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
@@ -491,7 +562,9 @@ export function ProjectLifecycleControls({
               <Input
                 inputMode="decimal"
                 value={form.area}
-                onChange={(event) => setForm({ ...form, area: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, area: event.target.value })
+                }
               />
             </label>
             <div />
@@ -500,7 +573,9 @@ export function ProjectLifecycleControls({
               <Input
                 type="date"
                 value={form.startDate}
-                onChange={(event) => setForm({ ...form, startDate: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, startDate: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
@@ -508,31 +583,41 @@ export function ProjectLifecycleControls({
               <Input
                 type="date"
                 value={form.targetEndDate}
-                onChange={(event) => setForm({ ...form, targetEndDate: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, targetEndDate: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Proje Açıklaması
               <Textarea
                 value={form.description}
-                onChange={(event) => setForm({ ...form, description: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, description: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Yönetici Notu
               <Textarea
                 value={form.adminNotes}
-                onChange={(event) => setForm({ ...form, adminNotes: event.target.value })}
+                onChange={(event) =>
+                  setForm({ ...form, adminNotes: event.target.value })
+                }
               />
             </label>
             <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 p-4 sm:col-span-2">
               <div>
                 <p className="text-sm font-bold">Müşteri panelinde göster</p>
-                <p className="text-xs text-muted-foreground">Müşteri erişim ayarını günceller.</p>
+                <p className="text-xs text-muted-foreground">
+                  Müşteri erişim ayarını günceller.
+                </p>
               </div>
               <Switch
                 checked={form.showToCustomer}
-                onCheckedChange={(showToCustomer) => setForm({ ...form, showToCustomer })}
+                onCheckedChange={(showToCustomer) =>
+                  setForm({ ...form, showToCustomer })
+                }
               />
             </div>
           </div>
@@ -547,10 +632,14 @@ export function ProjectLifecycleControls({
             <Button
               onClick={() => editMutation.mutate()}
               disabled={
-                !form.name.trim() || !safeHttpsMapUrl(form.locationUrl) || editMutation.isPending
+                !form.name.trim() ||
+                !safeHttpsMapUrl(form.locationUrl) ||
+                editMutation.isPending
               }
             >
-              {editMutation.isPending ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
+              {editMutation.isPending
+                ? "Kaydediliyor..."
+                : "Değişiklikleri Kaydet"}
             </Button>
           </DialogFooter>
         </DialogContent>

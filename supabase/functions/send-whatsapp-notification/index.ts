@@ -13,7 +13,8 @@ const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
 const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
 // Twilio WhatsApp sandbox numarası; kendi onaylı WhatsApp gönderen numaranız
 // olduğunda TWILIO_WHATSAPP_FROM secret'ını değiştirin.
-const TWILIO_WHATSAPP_FROM = Deno.env.get("TWILIO_WHATSAPP_FROM") || "whatsapp:+14155238886";
+const TWILIO_WHATSAPP_FROM =
+  Deno.env.get("TWILIO_WHATSAPP_FROM") || "whatsapp:+14155238886";
 
 type Recipient = { phone: string; name?: string | null };
 
@@ -51,7 +52,9 @@ function maskAddress(address: string): string {
 
 async function sendViaTwilio(toAddress: string, body: string) {
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
-    throw new Error("TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN yapılandırılmamış.");
+    throw new Error(
+      "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN yapılandırılmamış.",
+    );
   }
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
   const form = new URLSearchParams({
@@ -81,7 +84,12 @@ async function sendViaTwilio(toAddress: string, body: string) {
   // Twilio 201 döndürse bile mesaj kuyruğa alınmış olabilir; sid/status ve
   // varsa error_code/error_message'ı ayrıca logla — "200 ama aslında
   // gitmedi" durumlarını (örn. sandbox oturumu kapanmış) görünür kılmak için.
-  let parsed: { sid?: string; status?: string; error_code?: unknown; error_message?: unknown } = {};
+  let parsed: {
+    sid?: string;
+    status?: string;
+    error_code?: unknown;
+    error_message?: unknown;
+  } = {};
   try {
     parsed = JSON.parse(responseText);
   } catch {
@@ -99,11 +107,16 @@ async function sendViaTwilio(toAddress: string, body: string) {
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST kullanın." }, 405);
 
-  if (!WEBHOOK_SECRET || req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
+  if (
+    !WEBHOOK_SECRET ||
+    req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET
+  ) {
     return json({ error: "Yetkisiz." }, 401);
   }
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
-    console.error("TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN yapılandırılmamış; WhatsApp mesajı gönderilemedi.");
+    console.error(
+      "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN yapılandırılmamış; WhatsApp mesajı gönderilemedi.",
+    );
     return json({ error: "WhatsApp gönderimi yapılandırılmamış." }, 500);
   }
 
@@ -114,20 +127,30 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Geçersiz istek gövdesi." }, 400);
   }
 
-  const message = typeof payload.message === "string" ? payload.message.trim() : "";
-  const recipients = Array.isArray(payload.recipients) ? payload.recipients : [];
+  const message =
+    typeof payload.message === "string" ? payload.message.trim() : "";
+  const recipients = Array.isArray(payload.recipients)
+    ? payload.recipients
+    : [];
   console.log(`WhatsApp bildirim isteği alındı: ${recipients.length} alıcı.`);
-  if (!message || recipients.length === 0) return json({ sent: 0, failed: 0, errors: [] });
+  if (!message || recipients.length === 0)
+    return json({ sent: 0, failed: 0, errors: [] });
 
   const results = await Promise.allSettled(
     recipients.map(async (recipient) => {
-      const address = typeof recipient?.phone === "string" ? toWhatsAppAddress(recipient.phone) : null;
-      if (!address) throw new Error(`Geçersiz telefon numarası: ${recipient?.phone}`);
+      const address =
+        typeof recipient?.phone === "string"
+          ? toWhatsAppAddress(recipient.phone)
+          : null;
+      if (!address)
+        throw new Error(`Geçersiz telefon numarası: ${recipient?.phone}`);
       await sendViaTwilio(address, message);
     }),
   );
 
-  const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+  const failures = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
   if (failures.length > 0) {
     for (const failure of failures) {
       console.error("WhatsApp bildirimi gönderilemedi:", failure.reason);

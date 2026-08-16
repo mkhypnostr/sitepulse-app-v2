@@ -36,10 +36,11 @@ export function MapPreview({
     retry: false,
     staleTime: 24 * 60 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke<ResolveMapResponse>(
-        "resolve-map-location",
-        { body: { url: safeUrl } },
-      );
+      const { data, error } =
+        await supabase.functions.invoke<ResolveMapResponse>(
+          "resolve-map-location",
+          { body: { url: safeUrl } },
+        );
       if (error) throw error;
       if (
         data?.latitude == null ||
@@ -49,7 +50,10 @@ export function MapPreview({
       ) {
         return null;
       }
-      return { latitude: data.latitude, longitude: data.longitude } satisfies MapCoordinates;
+      return {
+        latitude: data.latitude,
+        longitude: data.longitude,
+      } satisfies MapCoordinates;
     },
   });
 
@@ -80,7 +84,12 @@ export function MapPreview({
     : googleMapsEmbedUrl(fallbackQuery);
 
   return (
-    <div className={cn("overflow-hidden rounded-xl border border-border bg-muted/20", className)}>
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border border-border bg-muted/20",
+        className,
+      )}
+    >
       <div className={cn("relative bg-primary/5", compact ? "h-32" : "h-48")}>
         {embedUrl ? (
           <iframe
