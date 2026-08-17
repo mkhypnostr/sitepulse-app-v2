@@ -22,6 +22,25 @@ type GoogleCredentials = {
   expires_at: string | null;
 };
 
+type DriveItem = {
+  id: string;
+  name: string;
+  mimeType: string;
+  parents?: string[];
+  driveId?: string;
+};
+
+type DrivePermission = {
+  id: string;
+  type?: string;
+  emailAddress?: string;
+  role?: string;
+  permissionDetails?: Array<{
+    inherited?: boolean;
+    inheritedFrom?: string;
+  }>;
+};
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/nes-workspace-control`;
 const RESOURCE_METADATA_URL = `${FUNCTION_URL}/.well-known/oauth-protected-resource`;
@@ -63,6 +82,47 @@ const FINANCE_ROOT_FOLDERS = [
   "03 Bütçe, Maliyet ve Hakediş",
   "99 Mali Arşiv",
 ];
+
+const LEGACY_NES_FOLDER_ID = "1YRO8CHplMssqsXdO_Ci_Ee52hHGubq3t";
+const LEGACY_NES_FOLDER_NAME = "NES ENERJİ";
+const LEGACY_MIGRATION_MAX_ITEMS = 5000;
+
+type LegacyDestination =
+  | "operations_projects"
+  | "operations_stock"
+  | "operations_library"
+  | "operations_general"
+  | "finance_invoices";
+
+const LEGACY_NES_MIGRATION_MAP: Record<string, LegacyDestination> = {
+  YANGINASON: "operations_projects",
+  KATALOG: "operations_library",
+  "BİLİRKİŞİ RAPOR": "operations_projects",
+  "AYLIK TAKVİM.xlsx": "operations_general",
+  AYDINLATMA: "operations_projects",
+  İHALE: "operations_projects",
+  GES: "operations_projects",
+  "evrak-teslim-formu.xls": "operations_general",
+  TAAHHÜT: "operations_projects",
+  "ENERJİ KİMLİK BELGESİ": "operations_library",
+  PROJE: "operations_projects",
+  "EV CHARGE": "operations_projects",
+  "ÖLÇÜM RAPORLAMA": "operations_projects",
+  "TR İŞLETME SORUMLULUĞU": "operations_projects",
+  "MALZEME TEKLİF": "operations_stock",
+  "NES Enerji ABB Şarj İstasyon Fiyatlar.pdf": "operations_library",
+  FATURA: "finance_invoices",
+  "ŞİRKET BELGELERİ": "operations_library",
+  "LOGO ÇALIŞMALARI": "operations_library",
+};
+
+const LEGACY_DESTINATION_LABELS: Record<LegacyDestination, string> = {
+  operations_projects: "NES Operasyon / 01 Projeler",
+  operations_stock: "NES Operasyon / 02 Merkezi Stok, Ekipman ve Lojistik",
+  operations_library: "NES Operasyon / 03 Ortak Teknik Kütüphane ve Şablonlar",
+  operations_general: "NES Operasyon / 04 Genel Operasyon ve Toplantılar",
+  finance_invoices: "NES Yönetim ve Finans / 01 Faturalar ve Muhasebe",
+};
 
 const PROJECT_OPERATIONS_FOLDERS = [
   "01 Teklif ve Sözleşme",
@@ -512,6 +572,251 @@ async function ensurePermission(
     },
   );
   return { id: created.id, email, role, changed: true };
+}
+
+async function getDriveItem(ownerUserId: string, fileId: string) {
+  return await googleFetch<DriveItem>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id,name,mimeType,parents,driveId`,
+  );
+}
+
+async function listDriveFolderChildren(ownerUserId: string, parentId: string) {
+  const files: DriveItem[] = [];
+  let pageToken = "";
+  do {
+    const q = encodeURIComponent(
+      `'${parentId}' in parents and trashed = false`,
+    );
+    const pageTokenQuery = pageToken
+      ? `&pageToken=${encodeURIComponent(pageToken)}`
+      : "";
+    const result = await googleFetch<{
+      files?: DriveItem[];
+      nextPageToken?: string;
+    }>(
+      ownerUserId,
+      `https://www.googleapis.com/drive/v3/files?q=${q}&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,parents,driveId)${pageTokenQuery}`,
+    );
+    files.push(...(result.files ?? []));
+    pageToken = result.nextPageToken ?? "";
+    if (files.length > LEGACY_MIGRATION_MAX_ITEMS) {
+      throw new Error(
+        `Eski Drive'da ${LEGACY_MIGRATION_MAX_ITEMS} öğeden fazla içerik var; güvenli taşıma durduruldu.`,
+      );
+    }
+  } while (pageToken);
+  return files;
+}
+
+async function listDrivePermissions(ownerUserId: string, fileId: string) {
+  const result = await googleFetch<{ permissions?: DrivePermission[] }>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions?supportsAllDrives=true&useDomainAdminAccess=true&pageSize=100&fields=permissions(id,type,emailAddress,role,permissionDetails(inherited,inheritedFrom))`,
+  );
+  return result.permissions ?? [];
+}
+
+function isDirectPermission(permission: DrivePermission) {
+  const details = permission.permissionDetails ?? [];
+  return details.some((detail) => detail.inherited === false);
+}
+
+async function removeDirectPermissions(ownerUserId: string, fileId: string) {
+  const permissions = await listDrivePermissions(ownerUserId, fileId);
+  const directPermissions = permissions.filter(isDirectPermission);
+  for (const permission of directPermissions) {
+    await googleFetch(
+      ownerUserId,
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions/${encodeURIComponent(permission.id)}?supportsAllDrives=true&useDomainAdminAccess=true`,
+      { method: "DELETE" },
+    );
+  }
+  return directPermissions.length;
+}
+
+async function removeLegacyDirectPermissionsRecursively(
+  ownerUserId: string,
+  root: DriveItem,
+) {
+  const pending: DriveItem[] = [root];
+  let inspected = 0;
+  let removedPermissions = 0;
+
+  while (pending.length) {
+    const item = pending.pop()!;
+    inspected += 1;
+    if (inspected > LEGACY_MIGRATION_MAX_ITEMS) {
+      throw new Error(
+        `Bir taşıma dalında ${LEGACY_MIGRATION_MAX_ITEMS} öğeden fazla içerik var; güvenli taşıma durduruldu.`,
+      );
+    }
+    removedPermissions += await removeDirectPermissions(ownerUserId, item.id);
+    if (item.mimeType === "application/vnd.google-apps.folder") {
+      pending.push(...(await listDriveFolderChildren(ownerUserId, item.id)));
+    }
+  }
+
+  return { inspected, removed_permissions: removedPermissions };
+}
+
+async function moveLegacyItem(
+  ownerUserId: string,
+  source: DriveItem,
+  destinationParentId: string,
+  expectedDriveId: string,
+) {
+  const current = await getDriveItem(ownerUserId, source.id);
+  const currentParents = current.parents ?? [];
+  if (
+    current.driveId === expectedDriveId &&
+    currentParents.includes(destinationParentId)
+  ) {
+    return {
+      id: current.id,
+      name: current.name,
+      moved: false,
+      ...(await removeLegacyDirectPermissionsRecursively(ownerUserId, current)),
+    };
+  }
+  if (!currentParents.includes(LEGACY_NES_FOLDER_ID)) {
+    throw new Error(
+      `${current.name} eski NES ana klasöründe değil; taşıma durduruldu.`,
+    );
+  }
+
+  const moved = await googleFetch<DriveItem>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(source.id)}?addParents=${encodeURIComponent(destinationParentId)}&removeParents=${encodeURIComponent(LEGACY_NES_FOLDER_ID)}&supportsAllDrives=true&fields=id,name,mimeType,parents,driveId`,
+    { method: "PATCH", body: JSON.stringify({}) },
+  );
+  if (
+    moved.driveId !== expectedDriveId ||
+    !moved.parents?.includes(destinationParentId)
+  ) {
+    throw new Error(`${source.name} hedef Ortak Drive'a doğrulanamadı.`);
+  }
+  return {
+    id: moved.id,
+    name: moved.name,
+    moved: true,
+    ...(await removeLegacyDirectPermissionsRecursively(ownerUserId, moved)),
+  };
+}
+
+async function legacyMigrationTargets(ownerUserId: string) {
+  const finance = await ensureDrive(
+    ownerUserId,
+    "finance_drive",
+    "NES Yönetim ve Finans",
+  );
+  const [projects, stock, library, general, invoices] = await Promise.all([
+    ensureFolder(ownerUserId, OPERATIONS_DRIVE_ID, "01 Projeler"),
+    ensureFolder(
+      ownerUserId,
+      OPERATIONS_DRIVE_ID,
+      "02 Merkezi Stok, Ekipman ve Lojistik",
+    ),
+    ensureFolder(
+      ownerUserId,
+      OPERATIONS_DRIVE_ID,
+      "03 Ortak Teknik Kütüphane ve Şablonlar",
+    ),
+    ensureFolder(
+      ownerUserId,
+      OPERATIONS_DRIVE_ID,
+      "04 Genel Operasyon ve Toplantılar",
+    ),
+    ensureFolder(ownerUserId, finance.id, "01 Faturalar ve Muhasebe"),
+  ]);
+  return {
+    operations_projects: {
+      parentId: projects.id,
+      driveId: OPERATIONS_DRIVE_ID,
+    },
+    operations_stock: { parentId: stock.id, driveId: OPERATIONS_DRIVE_ID },
+    operations_library: { parentId: library.id, driveId: OPERATIONS_DRIVE_ID },
+    operations_general: { parentId: general.id, driveId: OPERATIONS_DRIVE_ID },
+    finance_invoices: { parentId: invoices.id, driveId: finance.id },
+  } satisfies Record<LegacyDestination, { parentId: string; driveId: string }>;
+}
+
+async function migrateLegacyNesDrive(rawArguments: unknown) {
+  const args = (rawArguments ?? {}) as Record<string, unknown>;
+  const mode = args.mode ?? "preview";
+  if (mode !== "preview" && mode !== "execute") {
+    throw new Error("mode preview veya execute olmalıdır.");
+  }
+  const workspaceOwnerUserId = await getWorkspaceOwnerUserId();
+  const sourceFolder = await getDriveItem(
+    workspaceOwnerUserId,
+    LEGACY_NES_FOLDER_ID,
+  );
+  if (
+    sourceFolder.mimeType !== "application/vnd.google-apps.folder" ||
+    sourceFolder.name !== LEGACY_NES_FOLDER_NAME
+  ) {
+    throw new Error("Eski NES Drive kaynağı doğrulanamadı.");
+  }
+  const sourceItems = await listDriveFolderChildren(
+    workspaceOwnerUserId,
+    LEGACY_NES_FOLDER_ID,
+  );
+  const unmapped = sourceItems.filter(
+    (item) => !LEGACY_NES_MIGRATION_MAP[item.name],
+  );
+  const planned = sourceItems.map((item) => ({
+    id: item.id,
+    name: item.name,
+    destination: LEGACY_NES_MIGRATION_MAP[item.name]
+      ? LEGACY_DESTINATION_LABELS[LEGACY_NES_MIGRATION_MAP[item.name]]
+      : null,
+  }));
+  if (unmapped.length) {
+    return {
+      success: false,
+      mode,
+      source_folder: LEGACY_NES_FOLDER_NAME,
+      planned,
+      unmapped: unmapped.map((item) => item.name),
+      message:
+        "Yeni veya eşleştirilmemiş öğeler bulundu; hiçbir öğe taşınmadı.",
+    };
+  }
+  if (mode === "preview") {
+    return {
+      success: true,
+      mode,
+      source_folder: LEGACY_NES_FOLDER_NAME,
+      item_count: planned.length,
+      planned,
+      message:
+        "Onaydan sonra öğeler hedef Ortak Drive'lara taşınacak ve eski doğrudan yetkiler temizlenecek.",
+    };
+  }
+
+  const targets = await legacyMigrationTargets(workspaceOwnerUserId);
+  const migrated = [];
+  for (const item of sourceItems) {
+    const destination = LEGACY_NES_MIGRATION_MAP[item.name];
+    migrated.push(
+      await moveLegacyItem(
+        workspaceOwnerUserId,
+        item,
+        targets[destination].parentId,
+        targets[destination].driveId,
+      ),
+    );
+  }
+  return {
+    success: true,
+    mode,
+    source_folder: LEGACY_NES_FOLDER_NAME,
+    migrated_count: migrated.length,
+    migrated,
+    message:
+      "Eski NES Drive içerikleri Ortak Drive'lara taşındı; doğrudan eski yetkiler temizlendi.",
+  };
 }
 
 async function startGoogleConnection(actor: Actor) {
@@ -1209,6 +1514,31 @@ const tools = [
     },
   },
   {
+    name: "migrate_legacy_nes_drive",
+    title: "Eski NES Drive'ını güvenli taşı",
+    description:
+      "Eski NES ENERJİ klasöründeki doğrulanmış içerikleri Operasyon ve Finans Ortak Drive'larına taşır. FATURA yalnız Finans'a gider; taşıma sonrasında eski doğrudan kullanıcı yetkilerini kaldırır. preview salt okunurdur, execute yazma işlemidir ve açık onaydan hemen sonra çalıştırılmalıdır.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["preview", "execute"],
+          description:
+            "Önce preview ile listeyi doğrulayın; açık onaydan sonra execute kullanın.",
+        },
+      },
+      required: ["mode"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
     name: "ensure_nes_workspace_member",
     title: "NES Drive üyesini yetkilendir",
     description:
@@ -1305,7 +1635,7 @@ Deno.serve(async (req: Request) => {
     return rpcResult(request.id, {
       protocolVersion: "2025-06-18",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.1.0" },
+      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.2.0" },
     });
   }
   if (request.method === "notifications/initialized") {
@@ -1363,7 +1693,13 @@ Deno.serve(async (req: Request) => {
           summary: (params.arguments as Record<string, unknown> | undefined)
             ?.summary,
         }
-      : {};
+      : toolName === "migrate_legacy_nes_drive"
+        ? {
+            source_folder: LEGACY_NES_FOLDER_NAME,
+            mode: (params.arguments as Record<string, unknown> | undefined)
+              ?.mode,
+          }
+        : {};
   try {
     const result =
       toolName === "get_google_workspace_status"
@@ -1378,7 +1714,9 @@ Deno.serve(async (req: Request) => {
                 ? await ensureWorkspaceMember(actor, params.arguments)
                 : toolName === "create_project_workspace"
                   ? await createProjectWorkspace(params.arguments)
-                  : await createCalendarEvent(actor, params.arguments);
+                  : toolName === "migrate_legacy_nes_drive"
+                    ? await migrateLegacyNesDrive(params.arguments)
+                    : await createCalendarEvent(actor, params.arguments);
     if (!(
       toolName === "get_google_workspace_status" ||
       toolName === "list_nes_workspace_candidates"
