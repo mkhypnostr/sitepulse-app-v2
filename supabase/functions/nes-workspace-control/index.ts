@@ -91,6 +91,8 @@ const LEGACY_NES_FOLDER_ID = "1YRO8CHplMssqsXdO_Ci_Ee52hHGubq3t";
 const LEGACY_NES_FOLDER_NAME = "NES ENERJİ";
 const LEGACY_MIGRATION_MAX_ITEMS = 5000;
 const LEGACY_COPY_SOURCE_PROPERTY = "nes_legacy_source_id";
+const LEGACY_COPY_COMPLETE_PROPERTY = "nes_legacy_copy_complete";
+const LEGACY_COPY_EXECUTE_BUDGET_MS = 40_000;
 
 type LegacyDestination =
   | "operations_projects"
@@ -785,6 +787,27 @@ async function copyLegacyFile(
   );
 }
 
+async function markLegacyCopyComplete(
+  ownerUserId: string,
+  destination: DriveItem,
+  source: DriveItem,
+) {
+  return await googleFetch<DriveItem>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(destination.id)}?supportsAllDrives=true&fields=id,name,mimeType,parents,driveId,size,md5Checksum,appProperties,trashed`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        appProperties: {
+          ...(destination.appProperties ?? {}),
+          [LEGACY_COPY_SOURCE_PROPERTY]: source.id,
+          [LEGACY_COPY_COMPLETE_PROPERTY]: "true",
+        },
+      }),
+    },
+  );
+}
+
 type LegacyCopySummary = {
   source_items: number;
   folders_created: number;
@@ -798,6 +821,12 @@ type LegacyCopyContext = {
   ownerUserId: string;
   expectedDriveId: string;
   counter: { seen: number };
+  deadlineAt: number;
+};
+
+type LegacyCopyResult = {
+  summary: LegacyCopySummary;
+  completed: boolean;
 };
 
 function emptyLegacyCopySummary(): LegacyCopySummary {
@@ -824,7 +853,10 @@ async function copyLegacyItem(
   context: LegacyCopyContext,
   source: DriveItem,
   destinationParentId: string,
-): Promise<LegacyCopySummary> {
+): Promise<LegacyCopyResult> {
+  if (Date.now() >= context.deadlineAt) {
+    return { summary: emptyLegacyCopySummary(), completed: false };
+  }
   context.counter.seen += 1;
   if (context.counter.seen > LEGACY_MIGRATION_MAX_ITEMS) {
     throw new Error(
@@ -857,25 +889,45 @@ async function copyLegacyItem(
     context.expectedDriveId,
   );
   summary.verified_items = 1;
+  const alreadyComplete =
+    verified.appProperties?.[LEGACY_COPY_COMPLETE_PROPERTY] === "true";
   if (isFolder(source)) {
     if (reused) summary.folders_reused += 1;
     else summary.folders_created += 1;
+    if (alreadyComplete) return { summary, completed: true };
     const children = await listDriveFolderChildren(
       context.ownerUserId,
       source.id,
     );
     for (const child of children) {
-      combineLegacyCopySummary(
-        summary,
-        await copyLegacyItem(context, child, verified.id),
-      );
+      const childResult = await copyLegacyItem(context, child, verified.id);
+      combineLegacyCopySummary(summary, childResult.summary);
+      if (!childResult.completed) return { summary, completed: false };
     }
   } else if (reused) {
     summary.files_reused += 1;
   } else {
     summary.files_copied += 1;
   }
-  return summary;
+  if (!alreadyComplete) {
+    await markLegacyCopyComplete(context.ownerUserId, verified, source);
+  }
+  return { summary, completed: true };
+}
+
+async function legacyCopyIsComplete(
+  ownerUserId: string,
+  source: DriveItem,
+  destinationParentId: string,
+  expectedDriveId: string,
+) {
+  const destination = await findLegacyCopiedItem(
+    ownerUserId,
+    destinationParentId,
+    expectedDriveId,
+    source.id,
+  );
+  return destination?.appProperties?.[LEGACY_COPY_COMPLETE_PROPERTY] === "true";
 }
 
 async function trashLegacySourceItem(ownerUserId: string, source: DriveItem) {
@@ -987,38 +1039,81 @@ async function migrateLegacyNesDrive(rawArguments: unknown) {
   }
 
   const targets = await legacyMigrationTargets(workspaceOwnerUserId);
-  const copied = [];
-  const copyCounter = { seen: 0 };
-  for (const item of sourceItems) {
-    const destination = LEGACY_NES_MIGRATION_MAP[item.name];
-    const copy = await copyLegacyItem(
-      {
-        ownerUserId: workspaceOwnerUserId,
-        expectedDriveId: targets[destination].driveId,
-        counter: copyCounter,
-      },
-      item,
-      targets[destination].parentId,
-    );
-    copied.push({
-      id: item.id,
-      name: item.name,
-      destination: LEGACY_DESTINATION_LABELS[destination],
-      ...copy,
-    });
-  }
+  const completionStates = await Promise.all(
+    sourceItems.map(async (item) => {
+      const destination = LEGACY_NES_MIGRATION_MAP[item.name];
+      return [
+        item.id,
+        await legacyCopyIsComplete(
+          workspaceOwnerUserId,
+          item,
+          targets[destination].parentId,
+          targets[destination].driveId,
+        ),
+      ] as const;
+    }),
+  );
+  const completeBySourceId = new Map(completionStates);
 
   if (mode === "execute") {
+    const copied = [];
+    const copyCounter = { seen: 0 };
+    const deadlineAt = Date.now() + LEGACY_COPY_EXECUTE_BUDGET_MS;
+    while (Date.now() < deadlineAt) {
+      const item = sourceItems.find(
+        (candidate) => !completeBySourceId.get(candidate.id),
+      );
+      if (!item) break;
+      const destination = LEGACY_NES_MIGRATION_MAP[item.name];
+      const copy = await copyLegacyItem(
+        {
+          ownerUserId: workspaceOwnerUserId,
+          expectedDriveId: targets[destination].driveId,
+          counter: copyCounter,
+          deadlineAt,
+        },
+        item,
+        targets[destination].parentId,
+      );
+      copied.push({
+        id: item.id,
+        name: item.name,
+        destination: LEGACY_DESTINATION_LABELS[destination],
+        completed: copy.completed,
+        ...copy.summary,
+      });
+      if (!copy.completed) break;
+      completeBySourceId.set(item.id, true);
+    }
+    const remaining = sourceItems
+      .filter((item) => !completeBySourceId.get(item.id))
+      .map((item) => item.name);
     return {
       success: true,
       mode,
       source_folder: LEGACY_NES_FOLDER_NAME,
-      copied_count: copied.length,
+      progress: {
+        completed_top_level_count: sourceItems.length - remaining.length,
+        total_top_level_count: sourceItems.length,
+        remaining_top_level_names: remaining,
+      },
+      processed_this_run: copied,
       copied,
       source_cleanup_pending: true,
       message:
-        "Kopyalar hedef Ortak Drive'larda oluşturuldu ve doğrulandı. Eski kaynaklar henüz değişmedi; temizlemek için finalize açık onayı gerekir.",
+        remaining.length === 0
+          ? "Tüm kaynaklar hedef Ortak Drive'larda kopyalandı ve doğrulandı. Eski kaynaklar henüz değişmedi; temizlemek için finalize açık onayı gerekir."
+          : "Zaman sınırı dolmadan güvenli bir kopyalama bölümü tamamlandı. execute tekrar çağrıldığında yalnız eksik kalanlar kaldığı yerden devam eder; eski kaynaklar değişmedi.",
     };
+  }
+
+  const remaining = sourceItems.filter(
+    (item) => !completeBySourceId.get(item.id),
+  );
+  if (remaining.length) {
+    throw new Error(
+      `Kaynak temizliği başlamadan önce ${remaining.length} üst seviye öğenin kopyası tamamlanmalıdır: ${remaining.map((item) => item.name).join(", ")}`,
+    );
   }
 
   const protectedEmails = new Set([WORKSPACE_OWNER_EMAIL]);
@@ -1039,7 +1134,7 @@ async function migrateLegacyNesDrive(rawArguments: unknown) {
     success: true,
     mode,
     source_folder: LEGACY_NES_FOLDER_NAME,
-    copied_count: copied.length,
+    copied_count: sourceItems.length,
     finalized_count: finalized.length,
     finalized,
     message:
@@ -1745,7 +1840,7 @@ const tools = [
     name: "migrate_legacy_nes_drive",
     title: "Eski NES Drive'ını güvenli kopyala",
     description:
-      "Eski NES ENERJİ klasörünün içeriklerini hedef Ortak Drive'larda yeniden oluşturur, dosyaları kopyalar ve doğrular. FATURA yalnız Finans'a gider. preview salt okunurdur; execute kaynakları değiştirmez. finalize yalnız açık onayla kaynak kopyaları çöp kutusuna alır ve temizlenebilir eski doğrudan yetkileri kaldırır.",
+      "Eski NES ENERJİ klasörünün içeriklerini hedef Ortak Drive'larda yeniden oluşturur, dosyaları kopyalar ve doğrular. execute, zaman aşımını önlemek için güvenli bölümler halinde ilerler; her çağrı eksik kalan yerden devam eder ve kaynakları değiştirmez. finalize yalnız açık onayla kaynak kopyaları çöp kutusuna alır ve temizlenebilir eski doğrudan yetkileri kaldırır.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -1868,7 +1963,7 @@ Deno.serve(async (req: Request) => {
     return rpcResult(request.id, {
       protocolVersion: "2025-06-18",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.3.0" },
+      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.4.0" },
     });
   }
   if (request.method === "notifications/initialized") {
