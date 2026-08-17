@@ -28,6 +28,10 @@ type DriveItem = {
   mimeType: string;
   parents?: string[];
   driveId?: string;
+  size?: string;
+  md5Checksum?: string;
+  appProperties?: Record<string, string>;
+  trashed?: boolean;
 };
 
 type DrivePermission = {
@@ -86,6 +90,7 @@ const FINANCE_ROOT_FOLDERS = [
 const LEGACY_NES_FOLDER_ID = "1YRO8CHplMssqsXdO_Ci_Ee52hHGubq3t";
 const LEGACY_NES_FOLDER_NAME = "NES ENERJİ";
 const LEGACY_MIGRATION_MAX_ITEMS = 5000;
+const LEGACY_COPY_SOURCE_PROPERTY = "nes_legacy_source_id";
 
 type LegacyDestination =
   | "operations_projects"
@@ -577,7 +582,7 @@ async function ensurePermission(
 async function getDriveItem(ownerUserId: string, fileId: string) {
   return await googleFetch<DriveItem>(
     ownerUserId,
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id,name,mimeType,parents,driveId`,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=id,name,mimeType,parents,driveId,size,md5Checksum,appProperties,trashed`,
   );
 }
 
@@ -596,7 +601,7 @@ async function listDriveFolderChildren(ownerUserId: string, parentId: string) {
       nextPageToken?: string;
     }>(
       ownerUserId,
-      `https://www.googleapis.com/drive/v3/files?q=${q}&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,parents,driveId)${pageTokenQuery}`,
+      `https://www.googleapis.com/drive/v3/files?q=${q}&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,parents,driveId,size,md5Checksum,appProperties,trashed)${pageTokenQuery}`,
     );
     files.push(...(result.files ?? []));
     pageToken = result.nextPageToken ?? "";
@@ -622,26 +627,40 @@ function isDirectPermission(permission: DrivePermission) {
   return details.some((detail) => detail.inherited === false);
 }
 
-async function removeDirectPermissions(ownerUserId: string, fileId: string) {
+async function removeDirectPermissions(
+  ownerUserId: string,
+  fileId: string,
+  protectedEmails: Set<string>,
+) {
   const permissions = await listDrivePermissions(ownerUserId, fileId);
   const directPermissions = permissions.filter(isDirectPermission);
+  let removed = 0;
+  let skipped = 0;
   for (const permission of directPermissions) {
+    const email = permission.emailAddress?.toLowerCase();
+    if (permission.role === "owner" || (email && protectedEmails.has(email))) {
+      skipped += 1;
+      continue;
+    }
     await googleFetch(
       ownerUserId,
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions/${encodeURIComponent(permission.id)}?supportsAllDrives=true&useDomainAdminAccess=true`,
       { method: "DELETE" },
     );
+    removed += 1;
   }
-  return directPermissions.length;
+  return { removed, skipped };
 }
 
-async function removeLegacyDirectPermissionsRecursively(
+async function cleanLegacyDirectPermissionsRecursively(
   ownerUserId: string,
   root: DriveItem,
+  protectedEmails: Set<string>,
 ) {
   const pending: DriveItem[] = [root];
   let inspected = 0;
   let removedPermissions = 0;
+  let skippedProtectedPermissions = 0;
 
   while (pending.length) {
     const item = pending.pop()!;
@@ -651,57 +670,224 @@ async function removeLegacyDirectPermissionsRecursively(
         `Bir taşıma dalında ${LEGACY_MIGRATION_MAX_ITEMS} öğeden fazla içerik var; güvenli taşıma durduruldu.`,
       );
     }
-    removedPermissions += await removeDirectPermissions(ownerUserId, item.id);
+    const result = await removeDirectPermissions(
+      ownerUserId,
+      item.id,
+      protectedEmails,
+    );
+    removedPermissions += result.removed;
+    skippedProtectedPermissions += result.skipped;
     if (item.mimeType === "application/vnd.google-apps.folder") {
       pending.push(...(await listDriveFolderChildren(ownerUserId, item.id)));
     }
   }
 
-  return { inspected, removed_permissions: removedPermissions };
+  return {
+    inspected,
+    removed_permissions: removedPermissions,
+    skipped_owner_or_workspace_permissions: skippedProtectedPermissions,
+  };
 }
 
-async function moveLegacyItem(
+function isFolder(item: DriveItem) {
+  return item.mimeType === "application/vnd.google-apps.folder";
+}
+
+function legacySourcePropertyQuery(sourceId: string) {
+  return `appProperties has { key = '${LEGACY_COPY_SOURCE_PROPERTY}' and value = '${sourceId}' }`;
+}
+
+async function findLegacyCopiedItem(
+  ownerUserId: string,
+  destinationParentId: string,
+  expectedDriveId: string,
+  sourceId: string,
+) {
+  const q = encodeURIComponent(
+    `'${destinationParentId}' in parents and trashed = false and ${legacySourcePropertyQuery(sourceId)}`,
+  );
+  const result = await googleFetch<{ files?: DriveItem[] }>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files?q=${q}&corpora=drive&driveId=${encodeURIComponent(expectedDriveId)}&includeItemsFromAllDrives=true&supportsAllDrives=true&pageSize=2&fields=files(id,name,mimeType,parents,driveId,size,md5Checksum,appProperties,trashed)`,
+  );
+  const matches = result.files ?? [];
+  if (matches.length > 1) {
+    throw new Error(
+      `Kopya doğrulaması için ${sourceId} kaynağına ait birden fazla hedef bulundu.`,
+    );
+  }
+  return matches[0] ?? null;
+}
+
+async function verifyLegacyCopy(
   ownerUserId: string,
   source: DriveItem,
+  destination: DriveItem,
   destinationParentId: string,
   expectedDriveId: string,
 ) {
-  const current = await getDriveItem(ownerUserId, source.id);
-  const currentParents = current.parents ?? [];
+  const current = await getDriveItem(ownerUserId, destination.id);
   if (
-    current.driveId === expectedDriveId &&
-    currentParents.includes(destinationParentId)
+    current.name !== source.name ||
+    current.mimeType !== source.mimeType ||
+    current.driveId !== expectedDriveId ||
+    !current.parents?.includes(destinationParentId) ||
+    current.appProperties?.[LEGACY_COPY_SOURCE_PROPERTY] !== source.id
   ) {
-    return {
-      id: current.id,
-      name: current.name,
-      moved: false,
-      ...(await removeLegacyDirectPermissionsRecursively(ownerUserId, current)),
-    };
+    throw new Error(`${source.name} hedef kopyası doğrulanamadı.`);
   }
-  if (!currentParents.includes(LEGACY_NES_FOLDER_ID)) {
+  if (
+    !isFolder(source) &&
+    ((source.size && current.size !== source.size) ||
+      (source.md5Checksum && current.md5Checksum !== source.md5Checksum))
+  ) {
+    throw new Error(`${source.name} dosya bütünlüğü doğrulanamadı.`);
+  }
+  return current;
+}
+
+async function createLegacyDestinationFolder(
+  ownerUserId: string,
+  source: DriveItem,
+  destinationParentId: string,
+) {
+  return await googleFetch<DriveItem>(
+    ownerUserId,
+    "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name,mimeType,parents,driveId,size,md5Checksum,appProperties,trashed",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: source.name,
+        mimeType: source.mimeType,
+        parents: [destinationParentId],
+        appProperties: { [LEGACY_COPY_SOURCE_PROPERTY]: source.id },
+      }),
+    },
+  );
+}
+
+async function copyLegacyFile(
+  ownerUserId: string,
+  source: DriveItem,
+  destinationParentId: string,
+) {
+  return await googleFetch<DriveItem>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(source.id)}/copy?supportsAllDrives=true&fields=id,name,mimeType,parents,driveId,size,md5Checksum,appProperties,trashed`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: source.name,
+        parents: [destinationParentId],
+        appProperties: { [LEGACY_COPY_SOURCE_PROPERTY]: source.id },
+      }),
+    },
+  );
+}
+
+type LegacyCopySummary = {
+  source_items: number;
+  folders_created: number;
+  folders_reused: number;
+  files_copied: number;
+  files_reused: number;
+  verified_items: number;
+};
+
+type LegacyCopyContext = {
+  ownerUserId: string;
+  expectedDriveId: string;
+  counter: { seen: number };
+};
+
+function emptyLegacyCopySummary(): LegacyCopySummary {
+  return {
+    source_items: 0,
+    folders_created: 0,
+    folders_reused: 0,
+    files_copied: 0,
+    files_reused: 0,
+    verified_items: 0,
+  };
+}
+
+function combineLegacyCopySummary(
+  target: LegacyCopySummary,
+  addition: LegacyCopySummary,
+) {
+  for (const key of Object.keys(target) as Array<keyof LegacyCopySummary>)
+    target[key] += addition[key];
+  return target;
+}
+
+async function copyLegacyItem(
+  context: LegacyCopyContext,
+  source: DriveItem,
+  destinationParentId: string,
+): Promise<LegacyCopySummary> {
+  context.counter.seen += 1;
+  if (context.counter.seen > LEGACY_MIGRATION_MAX_ITEMS) {
     throw new Error(
-      `${current.name} eski NES ana klasöründe değil; taşıma durduruldu.`,
+      `Eski Drive'da ${LEGACY_MIGRATION_MAX_ITEMS} öğeden fazla içerik var; güvenli kopyalama durduruldu.`,
     );
   }
-
-  const moved = await googleFetch<DriveItem>(
-    ownerUserId,
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(source.id)}?addParents=${encodeURIComponent(destinationParentId)}&removeParents=${encodeURIComponent(LEGACY_NES_FOLDER_ID)}&supportsAllDrives=true&fields=id,name,mimeType,parents,driveId`,
-    { method: "PATCH", body: JSON.stringify({}) },
+  const summary = emptyLegacyCopySummary();
+  summary.source_items = 1;
+  let destination = await findLegacyCopiedItem(
+    context.ownerUserId,
+    destinationParentId,
+    context.expectedDriveId,
+    source.id,
   );
-  if (
-    moved.driveId !== expectedDriveId ||
-    !moved.parents?.includes(destinationParentId)
-  ) {
-    throw new Error(`${source.name} hedef Ortak Drive'a doğrulanamadı.`);
+  const reused = Boolean(destination);
+  if (!destination) {
+    destination = isFolder(source)
+      ? await createLegacyDestinationFolder(
+          context.ownerUserId,
+          source,
+          destinationParentId,
+        )
+      : await copyLegacyFile(context.ownerUserId, source, destinationParentId);
   }
-  return {
-    id: moved.id,
-    name: moved.name,
-    moved: true,
-    ...(await removeLegacyDirectPermissionsRecursively(ownerUserId, moved)),
-  };
+  const verified = await verifyLegacyCopy(
+    context.ownerUserId,
+    source,
+    destination,
+    destinationParentId,
+    context.expectedDriveId,
+  );
+  summary.verified_items = 1;
+  if (isFolder(source)) {
+    if (reused) summary.folders_reused += 1;
+    else summary.folders_created += 1;
+    const children = await listDriveFolderChildren(
+      context.ownerUserId,
+      source.id,
+    );
+    for (const child of children) {
+      combineLegacyCopySummary(
+        summary,
+        await copyLegacyItem(context, child, verified.id),
+      );
+    }
+  } else if (reused) {
+    summary.files_reused += 1;
+  } else {
+    summary.files_copied += 1;
+  }
+  return summary;
+}
+
+async function trashLegacySourceItem(ownerUserId: string, source: DriveItem) {
+  const trashed = await googleFetch<DriveItem>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(source.id)}?supportsAllDrives=true&fields=id,name,trashed,parents`,
+    { method: "PATCH", body: JSON.stringify({ trashed: true }) },
+  );
+  if (!trashed.trashed) {
+    throw new Error(`${source.name} kaynak kopyası çöp kutusuna alınamadı.`);
+  }
+  return trashed;
 }
 
 async function legacyMigrationTargets(ownerUserId: string) {
@@ -744,8 +930,13 @@ async function legacyMigrationTargets(ownerUserId: string) {
 async function migrateLegacyNesDrive(rawArguments: unknown) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const mode = args.mode ?? "preview";
-  if (mode !== "preview" && mode !== "execute") {
-    throw new Error("mode preview veya execute olmalıdır.");
+  if (mode !== "preview" && mode !== "execute" && mode !== "finalize") {
+    throw new Error("mode preview, execute veya finalize olmalıdır.");
+  }
+  if (mode === "finalize" && args.confirm_source_cleanup !== true) {
+    throw new Error(
+      "Kaynak kopyalarını çöp kutusuna almak için confirm_source_cleanup true olmalıdır.",
+    );
   }
   const workspaceOwnerUserId = await getWorkspaceOwnerUserId();
   const sourceFolder = await getDriveItem(
@@ -791,31 +982,68 @@ async function migrateLegacyNesDrive(rawArguments: unknown) {
       item_count: planned.length,
       planned,
       message:
-        "Onaydan sonra öğeler hedef Ortak Drive'lara taşınacak ve eski doğrudan yetkiler temizlenecek.",
+        "execute önce hedef Ortak Drive'larda kopyaları oluşturur ve doğrular; kaynaklar korunur. Kaynakları çöp kutusuna almak için ayrı finalize onayı gerekir.",
     };
   }
 
   const targets = await legacyMigrationTargets(workspaceOwnerUserId);
-  const migrated = [];
+  const copied = [];
+  const copyCounter = { seen: 0 };
   for (const item of sourceItems) {
     const destination = LEGACY_NES_MIGRATION_MAP[item.name];
-    migrated.push(
-      await moveLegacyItem(
+    const copy = await copyLegacyItem(
+      {
+        ownerUserId: workspaceOwnerUserId,
+        expectedDriveId: targets[destination].driveId,
+        counter: copyCounter,
+      },
+      item,
+      targets[destination].parentId,
+    );
+    copied.push({
+      id: item.id,
+      name: item.name,
+      destination: LEGACY_DESTINATION_LABELS[destination],
+      ...copy,
+    });
+  }
+
+  if (mode === "execute") {
+    return {
+      success: true,
+      mode,
+      source_folder: LEGACY_NES_FOLDER_NAME,
+      copied_count: copied.length,
+      copied,
+      source_cleanup_pending: true,
+      message:
+        "Kopyalar hedef Ortak Drive'larda oluşturuldu ve doğrulandı. Eski kaynaklar henüz değişmedi; temizlemek için finalize açık onayı gerekir.",
+    };
+  }
+
+  const protectedEmails = new Set([WORKSPACE_OWNER_EMAIL]);
+  const finalized = [];
+  for (const item of sourceItems) {
+    finalized.push({
+      id: item.id,
+      name: item.name,
+      permission_cleanup: await cleanLegacyDirectPermissionsRecursively(
         workspaceOwnerUserId,
         item,
-        targets[destination].parentId,
-        targets[destination].driveId,
+        protectedEmails,
       ),
-    );
+      trashed: await trashLegacySourceItem(workspaceOwnerUserId, item),
+    });
   }
   return {
     success: true,
     mode,
     source_folder: LEGACY_NES_FOLDER_NAME,
-    migrated_count: migrated.length,
-    migrated,
+    copied_count: copied.length,
+    finalized_count: finalized.length,
+    finalized,
     message:
-      "Eski NES Drive içerikleri Ortak Drive'lara taşındı; doğrudan eski yetkiler temizlendi.",
+      "Kopyalar doğrulandı; kaynak kopyalar çöp kutusuna alındı ve temizlenebilir eski doğrudan yetkiler kaldırıldı. Eski NES ENERJİ ana klasörü silinmedi.",
   };
 }
 
@@ -1515,18 +1743,23 @@ const tools = [
   },
   {
     name: "migrate_legacy_nes_drive",
-    title: "Eski NES Drive'ını güvenli taşı",
+    title: "Eski NES Drive'ını güvenli kopyala",
     description:
-      "Eski NES ENERJİ klasöründeki doğrulanmış içerikleri Operasyon ve Finans Ortak Drive'larına taşır. FATURA yalnız Finans'a gider; taşıma sonrasında eski doğrudan kullanıcı yetkilerini kaldırır. preview salt okunurdur, execute yazma işlemidir ve açık onaydan hemen sonra çalıştırılmalıdır.",
+      "Eski NES ENERJİ klasörünün içeriklerini hedef Ortak Drive'larda yeniden oluşturur, dosyaları kopyalar ve doğrular. FATURA yalnız Finans'a gider. preview salt okunurdur; execute kaynakları değiştirmez. finalize yalnız açık onayla kaynak kopyaları çöp kutusuna alır ve temizlenebilir eski doğrudan yetkileri kaldırır.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       properties: {
         mode: {
           type: "string",
-          enum: ["preview", "execute"],
+          enum: ["preview", "execute", "finalize"],
           description:
-            "Önce preview ile listeyi doğrulayın; açık onaydan sonra execute kullanın.",
+            "preview listeleme; execute kopyalama ve doğrulama; finalize kaynak temizliği içindir.",
+        },
+        confirm_source_cleanup: {
+          type: "boolean",
+          description:
+            "Yalnız finalize için true olmalıdır; eski kaynaklar çöp kutusuna alınır.",
         },
       },
       required: ["mode"],
@@ -1635,7 +1868,7 @@ Deno.serve(async (req: Request) => {
     return rpcResult(request.id, {
       protocolVersion: "2025-06-18",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.2.0" },
+      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.3.0" },
     });
   }
   if (request.method === "notifications/initialized") {
