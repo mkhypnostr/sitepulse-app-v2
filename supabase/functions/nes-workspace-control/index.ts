@@ -742,6 +742,9 @@ async function legacyMigrationTargets(ownerUserId: string) {
 }
 
 async function migrateLegacyNesDrive(rawArguments: unknown) {
+  throw new Error(
+    "Eski Drive aktarımı tamamlandı ve araç arşivlendi. Yeni aktarım çalıştırılamaz.",
+  );
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const mode = args.mode ?? "preview";
   if (mode !== "preview" && mode !== "execute") {
