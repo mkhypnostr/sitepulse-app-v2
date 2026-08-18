@@ -114,6 +114,104 @@ export type Database = {
         };
         Relationships: [];
       };
+      offer_line_items: {
+        Row: {
+          applied_sale_amount: number;
+          brand: string | null;
+          category: string;
+          computed_sale_amount: number;
+          created_at: string;
+          description: string;
+          id: string;
+          labor_cost: number;
+          logistics_cost: number;
+          manual_sale_amount: number | null;
+          markup_rate: number;
+          material_cost: number;
+          offer_id: string;
+          quantity: number;
+          risk_cost: number;
+          sort_order: number;
+          subcontractor_cost: number;
+          total_cost: number;
+          unit: string;
+          unit_cost: number;
+          updated_at: string;
+          visible_to_customer: boolean;
+        };
+        Insert: {
+          applied_sale_amount?: number;
+          brand?: string | null;
+          category?: string;
+          computed_sale_amount?: number;
+          created_at?: string;
+          description: string;
+          id?: string;
+          labor_cost?: number;
+          logistics_cost?: number;
+          manual_sale_amount?: number | null;
+          markup_rate?: number;
+          material_cost?: number;
+          offer_id: string;
+          quantity?: number;
+          risk_cost?: number;
+          sort_order?: number;
+          subcontractor_cost?: number;
+          total_cost?: number;
+          unit?: string;
+          unit_cost?: number;
+          updated_at?: string;
+          visible_to_customer?: boolean;
+        };
+        Update: {
+          applied_sale_amount?: number;
+          brand?: string | null;
+          category?: string;
+          computed_sale_amount?: number;
+          created_at?: string;
+          description?: string;
+          id?: string;
+          labor_cost?: number;
+          logistics_cost?: number;
+          manual_sale_amount?: number | null;
+          markup_rate?: number;
+          material_cost?: number;
+          offer_id?: string;
+          quantity?: number;
+          risk_cost?: number;
+          sort_order?: number;
+          subcontractor_cost?: number;
+          total_cost?: number;
+          unit?: string;
+          unit_cost?: number;
+          updated_at?: string;
+          visible_to_customer?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "offer_line_items_offer_id_fkey";
+            columns: ["offer_id"];
+            isOneToOne: false;
+            referencedRelation: "offers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      offer_number_sequences: {
+        Row: {
+          last_value: number;
+          period: string;
+        };
+        Insert: {
+          last_value?: number;
+          period: string;
+        };
+        Update: {
+          last_value?: number;
+          period?: string;
+        };
+        Relationships: [];
+      };
       offers: {
         Row: {
           created_at: string;
@@ -121,6 +219,8 @@ export type Database = {
           currency: string;
           customer_approved_at: string | null;
           customer_id: string | null;
+          drive_excel_url: string | null;
+          drive_folder_url: string | null;
           id: string;
           notes: string | null;
           offer_no: string;
@@ -130,8 +230,10 @@ export type Database = {
           status: string;
           title: string;
           total_amount: number;
+          total_amount_mode: string;
           updated_at: string;
           valid_until: string | null;
+          vat_rate: number;
         };
         Insert: {
           created_at?: string;
@@ -139,6 +241,8 @@ export type Database = {
           currency?: string;
           customer_approved_at?: string | null;
           customer_id?: string | null;
+          drive_excel_url?: string | null;
+          drive_folder_url?: string | null;
           id?: string;
           notes?: string | null;
           offer_no?: string;
@@ -148,8 +252,10 @@ export type Database = {
           status?: string;
           title: string;
           total_amount?: number;
+          total_amount_mode?: string;
           updated_at?: string;
           valid_until?: string | null;
+          vat_rate?: number;
         };
         Update: {
           created_at?: string;
@@ -157,6 +263,8 @@ export type Database = {
           currency?: string;
           customer_approved_at?: string | null;
           customer_id?: string | null;
+          drive_excel_url?: string | null;
+          drive_folder_url?: string | null;
           id?: string;
           notes?: string | null;
           offer_no?: string;
@@ -166,8 +274,10 @@ export type Database = {
           status?: string;
           title?: string;
           total_amount?: number;
+          total_amount_mode?: string;
           updated_at?: string;
           valid_until?: string | null;
+          vat_rate?: number;
         };
         Relationships: [
           {
