@@ -1437,6 +1437,7 @@ async function createOfferWorkspace(rawArguments: unknown) {
     QUOTE_ROOT_FOLDER_NAME,
   );
   const documentName = `${offer.offer_no} - ${offer.title}`.slice(0, 180);
+  const excelFileName = `${documentName}.xlsx`;
   const offerFolder = await ensureFolder(
     workspaceOwnerUserId,
     quoteRoot.id,
@@ -1446,14 +1447,14 @@ async function createOfferWorkspace(rawArguments: unknown) {
   let excelFile = await findFileInFolder(
     workspaceOwnerUserId,
     offerFolder.id,
-    documentName,
+    excelFileName,
   );
   if (!excelFile) {
     excelFile = await copyDriveFile(
       workspaceOwnerUserId,
       templateFile.id,
       offerFolder.id,
-      documentName,
+      excelFileName,
     );
   }
 
