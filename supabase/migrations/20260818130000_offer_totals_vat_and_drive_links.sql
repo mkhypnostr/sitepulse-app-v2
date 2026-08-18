@@ -10,14 +10,18 @@ ALTER TABLE public.offers
   ADD COLUMN vat_rate numeric(5,4) NOT NULL DEFAULT 0.20
     CHECK (vat_rate >= 0 AND vat_rate <= 1),
   ADD COLUMN drive_excel_url text
-    CHECK (drive_excel_url IS NULL OR drive_excel_url ~ '^https?://'),
+    CHECK (drive_excel_url IS NULL OR drive_excel_url ~* '^https?://'),
   ADD COLUMN drive_folder_url text
-    CHECK (drive_folder_url IS NULL OR drive_folder_url ~ '^https?://');
+    CHECK (drive_folder_url IS NULL OR drive_folder_url ~* '^https?://');
 
--- Mevcut kayıtlar: total_amount_mode='computed' varsayılanını alır ama
--- total_amount sütununa dokunulmadığı için eski manuel tutarlar aynen kalır
--- (yalnız o teklife kalem eklenirse, önceki davranışla aynı şekilde, kalem
--- toplamıyla senkrona girer).
+-- Bu migration çalışmadan önce var olan tüm teklifler kalemsiz ve elle
+-- girilmiş tutarlarla oluşturulmuştu. Sütun eklendiği anda hepsi DEFAULT
+-- 'computed' alır; burada onları açıkça 'manual'a çeviriyoruz ki daha sonra
+-- kalem eklenirse sync_offer_total_amount() tetikleyicisi mevcut
+-- total_amount değerlerini asla ezmesin. total_amount'ın kendisine
+-- dokunulmuyor. Bu migration'dan SONRA oluşturulan teklifler sütunun
+-- DEFAULT 'computed' değerini normal şekilde alır.
+UPDATE public.offers SET total_amount_mode = 'manual';
 
 CREATE OR REPLACE FUNCTION public.sync_offer_total_amount()
 RETURNS trigger

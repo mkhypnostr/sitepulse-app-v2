@@ -216,7 +216,12 @@ function previewLineTotals(item: OfferLineItemDraft) {
   return { materialCost, totalCost, computedSale, appliedSale };
 }
 
-function requireNumber(value: string, label: string, min: number): number {
+function requireNumber(
+  value: string,
+  label: string,
+  min: number,
+  max: number = Infinity,
+): number {
   const normalized = value.trim().replace(/\./g, "").replace(",", ".");
   const result = Number(normalized === "" ? "0" : normalized);
   if (!Number.isFinite(result)) {
@@ -226,6 +231,9 @@ function requireNumber(value: string, label: string, min: number): number {
     throw new Error(
       min > 0 ? `${label} 0'dan büyük olmalı.` : `${label} negatif olamaz.`,
     );
+  }
+  if (result > max) {
+    throw new Error(`${label} en fazla ${max} olabilir.`);
   }
   return result;
 }
@@ -525,7 +533,8 @@ function OffersPage() {
         throw new Error("Elle nihai teklif bedeli girin.");
       }
 
-      const vatRate = requireNumber(form.vatRatePercent, "KDV oranı (%)", 0) / 100;
+      const vatRate =
+        requireNumber(form.vatRatePercent, "KDV oranı (%)", 0, 100) / 100;
       const driveExcelUrl = normalizeOptionalUrl(
         form.driveExcelUrl,
         "Drive Excel bağlantısı",
