@@ -225,6 +225,9 @@ export type Database = {
           notes: string | null;
           offer_no: string;
           offer_type: string;
+          primary_item_description: string | null;
+          primary_item_quantity: number;
+          primary_item_unit: string;
           project_id: string | null;
           source_summary: string | null;
           status: string;
@@ -247,6 +250,9 @@ export type Database = {
           notes?: string | null;
           offer_no?: string;
           offer_type?: string;
+          primary_item_description?: string | null;
+          primary_item_quantity?: number;
+          primary_item_unit?: string;
           project_id?: string | null;
           source_summary?: string | null;
           status?: string;
@@ -269,6 +275,9 @@ export type Database = {
           notes?: string | null;
           offer_no?: string;
           offer_type?: string;
+          primary_item_description?: string | null;
+          primary_item_quantity?: number;
+          primary_item_unit?: string;
           project_id?: string | null;
           source_summary?: string | null;
           status?: string;

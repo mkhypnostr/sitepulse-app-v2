@@ -135,6 +135,21 @@ const PROJECT_OPERATIONS_FOLDERS = [
 
 const PROJECT_FINANCE_FOLDERS = ["01 Bütçe", "02 Maliyet", "03 Hakediş"];
 
+const TEMPLATES_FOLDER_NAME = "03 Ortak Teknik Kütüphane ve Şablonlar";
+const QUOTE_ROOT_FOLDER_NAME = "05 Teklifler";
+type QuoteTemplateKey =
+  | "hizli_teklif"
+  | "siva_alti"
+  | "montaj"
+  | "tkf_proje_taahhut";
+const QUOTE_TEMPLATE_FILE_NAMES: Record<QuoteTemplateKey, string> = {
+  hizli_teklif: "NES Hızlı Teklif Şablonu.xlsx",
+  siva_alti: "NES Sıva Altı Teklif Şablonu.xlsx",
+  montaj: "NES Montaj Teklif Şablonu.xlsx",
+  tkf_proje_taahhut: "NES TKF Proje Taahhüt Teklif Şablonu.xlsx",
+};
+const OFFER_TYPES_WITHOUT_TEMPLATE = new Set(["ek_is", "diger"]);
+
 function readAdminKey() {
   const secretKeysJson = Deno.env.get("SUPABASE_SECRET_KEYS");
   if (secretKeysJson) {
@@ -525,6 +540,40 @@ async function ensureFolder(
     },
   );
   return { ...created, created: true };
+}
+
+async function findFileInFolder(
+  ownerUserId: string,
+  parentId: string,
+  name: string,
+) {
+  const escaped = name.replace(/'/g, "\\'");
+  const q = encodeURIComponent(
+    `'${parentId}' in parents and name = '${escaped}' and mimeType != 'application/vnd.google-apps.folder' and trashed = false`,
+  );
+  const result = await googleFetch<{
+    files?: Array<{ id: string; name: string; webViewLink?: string }>;
+  }>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files?q=${q}&corpora=allDrives&includeItemsFromAllDrives=true&supportsAllDrives=true&pageSize=20&fields=files(id,name,webViewLink)`,
+  );
+  return result.files?.find((file) => file.name === name) ?? null;
+}
+
+async function copyDriveFile(
+  ownerUserId: string,
+  sourceFileId: string,
+  destinationParentId: string,
+  name: string,
+) {
+  return await googleFetch<{ id: string; name: string; webViewLink?: string }>(
+    ownerUserId,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(sourceFileId)}/copy?supportsAllDrives=true&fields=id,name,webViewLink`,
+    {
+      method: "POST",
+      body: JSON.stringify({ name, parents: [destinationParentId] }),
+    },
+  );
 }
 
 async function ensureFolders(
@@ -1329,6 +1378,109 @@ async function createProjectWorkspace(rawArguments: unknown) {
   };
 }
 
+async function createOfferWorkspace(rawArguments: unknown) {
+  const args = (rawArguments ?? {}) as Record<string, unknown>;
+  const offerId = requireText(args.offer_id, "Teklif kimliği", 36);
+  if (!/^[0-9a-f-]{36}$/i.test(offerId))
+    throw new Error("Geçerli bir teklif kimliği girin.");
+
+  const { data: offer, error } = await admin
+    .from("offers")
+    .select("id,offer_no,title,offer_type,drive_excel_url,drive_folder_url")
+    .eq("id", offerId)
+    .maybeSingle();
+  if (error || !offer) throw new Error("Teklif bulunamadı.");
+
+  if (offer.drive_excel_url && offer.drive_folder_url) {
+    return {
+      success: true,
+      created: false,
+      offer_id: offerId,
+      drive_excel_url: offer.drive_excel_url,
+      drive_folder_url: offer.drive_folder_url,
+    };
+  }
+
+  if (offer.offer_type === "ek_is") {
+    throw new Error("Ek İş Excel şablonu henüz tanımlanmadı.");
+  }
+  if (OFFER_TYPES_WITHOUT_TEMPLATE.has(offer.offer_type)) {
+    throw new Error("Bu teklif türü için Excel şablonu tanımlı değil.");
+  }
+  const templateKey = offer.offer_type as QuoteTemplateKey;
+  const templateFileName = QUOTE_TEMPLATE_FILE_NAMES[templateKey];
+  if (!templateFileName) {
+    throw new Error("Bu teklif türü için Excel şablonu tanımlı değil.");
+  }
+
+  const workspaceOwnerUserId = await getWorkspaceOwnerUserId();
+
+  const templatesFolder = await ensureFolder(
+    workspaceOwnerUserId,
+    OPERATIONS_DRIVE_ID,
+    TEMPLATES_FOLDER_NAME,
+  );
+  const templateFile = await findFileInFolder(
+    workspaceOwnerUserId,
+    templatesFolder.id,
+    templateFileName,
+  );
+  if (!templateFile) {
+    throw new Error(
+      `"${templateFileName}" dosyası "NES Operasyon / ${TEMPLATES_FOLDER_NAME}" klasöründe bulunamadı. Şablon Excel dosyasını bu klasöre yükleyip tekrar deneyin.`,
+    );
+  }
+
+  const quoteRoot = await ensureFolder(
+    workspaceOwnerUserId,
+    OPERATIONS_DRIVE_ID,
+    QUOTE_ROOT_FOLDER_NAME,
+  );
+  const documentName = `${offer.offer_no} - ${offer.title}`.slice(0, 180);
+  const offerFolder = await ensureFolder(
+    workspaceOwnerUserId,
+    quoteRoot.id,
+    documentName,
+  );
+
+  let excelFile = await findFileInFolder(
+    workspaceOwnerUserId,
+    offerFolder.id,
+    documentName,
+  );
+  if (!excelFile) {
+    excelFile = await copyDriveFile(
+      workspaceOwnerUserId,
+      templateFile.id,
+      offerFolder.id,
+      documentName,
+    );
+  }
+
+  const driveFolderUrl = `https://drive.google.com/drive/folders/${offerFolder.id}`;
+  const driveExcelUrl =
+    excelFile.webViewLink ?? `https://drive.google.com/file/d/${excelFile.id}/view`;
+
+  const { error: updateError } = await admin
+    .from("offers")
+    .update({
+      drive_excel_url: driveExcelUrl,
+      drive_folder_url: driveFolderUrl,
+    })
+    .eq("id", offerId);
+  if (updateError) throw new Error("Teklif Drive bağlantıları kaydedilemedi.");
+
+  return {
+    success: true,
+    created: true,
+    offer_id: offerId,
+    offer_folder_id: offerFolder.id,
+    excel_file_id: excelFile.id,
+    drive_excel_url: driveExcelUrl,
+    drive_folder_url: driveFolderUrl,
+  };
+}
+
 async function createCalendarEvent(actor: Actor, rawArguments: unknown) {
   const args = (rawArguments ?? {}) as Record<string, unknown>;
   const summary = requireText(args.summary, "Etkinlik başlığı", 180);
@@ -1517,6 +1669,30 @@ const tools = [
     },
   },
   {
+    name: "create_offer_workspace",
+    title: "Teklif Drive klasörünü ve Excel dosyasını oluştur",
+    description:
+      "NES uygulamasındaki teklif için Operasyon Drive'ında '05 Teklifler' altında teklif klasörü oluşturur ve teklif türüne uygun Excel şablonunu bu klasöre kopyalar. Şablon dosyası '03 Ortak Teknik Kütüphane ve Şablonlar' klasöründe bulunmalıdır. İdempotenttir: teklifin zaten Drive bağlantıları varsa hiçbir şey oluşturmadan bunları döner. Yazma işlemidir; çalıştırılmadan hemen önce açık onay gerekir.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        offer_id: {
+          type: "string",
+          format: "uuid",
+          description: "NES uygulamasındaki teklif kimliği",
+        },
+      },
+      required: ["offer_id"],
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
     name: "migrate_legacy_nes_drive",
     title: "Eski NES Drive'ını güvenli taşı",
     description:
@@ -1638,7 +1814,7 @@ Deno.serve(async (req: Request) => {
     return rpcResult(request.id, {
       protocolVersion: "2025-06-18",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.2.0" },
+      serverInfo: { name: "NES Google Workspace Yönetimi", version: "1.3.0" },
     });
   }
   if (request.method === "notifications/initialized") {
@@ -1717,9 +1893,11 @@ Deno.serve(async (req: Request) => {
                 ? await ensureWorkspaceMember(actor, params.arguments)
                 : toolName === "create_project_workspace"
                   ? await createProjectWorkspace(params.arguments)
-                  : toolName === "migrate_legacy_nes_drive"
-                    ? await migrateLegacyNesDrive(params.arguments)
-                    : await createCalendarEvent(actor, params.arguments);
+                  : toolName === "create_offer_workspace"
+                    ? await createOfferWorkspace(params.arguments)
+                    : toolName === "migrate_legacy_nes_drive"
+                      ? await migrateLegacyNesDrive(params.arguments)
+                      : await createCalendarEvent(actor, params.arguments);
     if (!(
       toolName === "get_google_workspace_status" ||
       toolName === "list_nes_workspace_candidates"

@@ -14,6 +14,7 @@ import {
   ListChecks,
   LogOut,
   Menu,
+  Receipt,
   Search,
   ShieldAlert,
   UserCog,
@@ -176,6 +177,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
           { to: "/dashboard", label: "Finans", icon: Wallet, hash: "finance" },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
+          { to: "/offers", label: "Teklifler", icon: Receipt },
           { separator: true },
           {
             to: "/approvals",
