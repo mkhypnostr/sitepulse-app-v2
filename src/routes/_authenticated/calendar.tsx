@@ -540,6 +540,29 @@ function CalendarPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const deleteEvent = useMutation({
+    mutationFn: async (eventId: string) => {
+      const { error } = await supabase
+        .from("calendar_events")
+        .delete()
+        .eq("id", eventId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["calendar-tasks"] });
+      setEventDialogOpen(false);
+      setEditingEventId(null);
+      toast.success("Kayıt takvimden silindi.");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  function confirmDeleteEvent() {
+    if (!editingEventId) return;
+    if (!window.confirm("Bu plan veya not kalıcı olarak silinsin mi?")) return;
+    deleteEvent.mutate(editingEventId);
+  }
+
   if (!canView) return <AccessDenied />;
 
   return (
@@ -672,7 +695,19 @@ function CalendarPage() {
               <Textarea value={eventForm.notes} maxLength={2000} placeholder="Görüşme notu, hazırlık veya hatırlatma..." onChange={(event) => setEventForm((form) => ({ ...form, notes: event.target.value }))} />
             </label>
           </div>
-          <DialogFooter><Button onClick={() => saveEvent.mutate()} disabled={saveEvent.isPending}>{saveEvent.isPending ? "Kaydediliyor..." : editingEventId ? "Değişiklikleri Kaydet" : "Planı Kaydet"}</Button></DialogFooter>
+          <DialogFooter className="gap-2 sm:justify-between">
+            {isManager && editingEventId ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={confirmDeleteEvent}
+                disabled={deleteEvent.isPending || saveEvent.isPending}
+              >
+                {deleteEvent.isPending ? "Siliniyor..." : "Planı Sil"}
+              </Button>
+            ) : <span />}
+            <Button onClick={() => saveEvent.mutate()} disabled={saveEvent.isPending || deleteEvent.isPending}>{saveEvent.isPending ? "Kaydediliyor..." : editingEventId ? "Değişiklikleri Kaydet" : "Planı Kaydet"}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
