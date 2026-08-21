@@ -299,7 +299,7 @@ function OffersPage() {
                   </SelectItem>
                 ))}
                 {!creatableOfferTypes.includes(form.offerType) ? (
-                  <SelectItem value={form.offerType}>
+                  <SelectItem className="text-slate-100 focus:bg-slate-800 focus:text-white" value={form.offerType}>
                     {offerTypeLabels[form.offerType]} (eski kayıt)
                   </SelectItem>
                 ) : null}
@@ -336,9 +336,9 @@ function OffersPage() {
                 <SelectValue placeholder="Müşteri seçin" />
               </SelectTrigger>
               <SelectContent className="border-slate-600 bg-slate-900 text-slate-50">
-                <SelectItem value="none">Müşteri seçilmedi</SelectItem>
+                <SelectItem className="text-slate-100 focus:bg-slate-800 focus:text-white" value="none">Müşteri seçilmedi</SelectItem>
                 {(pageQuery.data?.customers ?? []).map((customer) => (
-                  <SelectItem key={customer.id} value={customer.id}>
+                  <SelectItem className="text-slate-100 focus:bg-slate-800 focus:text-white" key={customer.id} value={customer.id}>
                     {customer.name}
                   </SelectItem>
                 ))}
@@ -393,9 +393,9 @@ function OffersPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="border-slate-600 bg-slate-900 text-slate-50">
-              <SelectItem value="all">Tüm durumlar</SelectItem>
+              <SelectItem className="text-slate-100 focus:bg-slate-800 focus:text-white" value="all">Tüm durumlar</SelectItem>
               {Object.entries(statuses).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
+                <SelectItem className="text-slate-100 focus:bg-slate-800 focus:text-white" key={value} value={value}>
                   {label}
                 </SelectItem>
               ))}
