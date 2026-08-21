@@ -67,6 +67,7 @@ type CalendarEventStatus = "planned" | "completed" | "cancelled";
 type CalendarEventForm = {
   title: string;
   scheduledDate: string;
+  endDate: string;
   scheduledTime: string;
   eventType: CalendarEventType;
   projectId: string;
@@ -136,6 +137,7 @@ function initialEventForm(scheduledDate: string): CalendarEventForm {
   return {
     title: "",
     scheduledDate,
+    endDate: scheduledDate,
     scheduledTime: "",
     eventType: "plan",
     projectId: "",
@@ -163,6 +165,9 @@ function CalendarPage() {
   );
   const now = new Date();
   const todayKey = toDateKey(now);
+  const eventNeedsDateRange =
+    eventForm.eventType !== "reminder" &&
+    (eventForm.eventType === "plan" || Boolean(eventForm.projectId));
 
   const { gridStart, gridEnd, cells, periodLabel } = useMemo(() => {
     if (view === "week") {
@@ -272,10 +277,12 @@ function CalendarPage() {
       let calendarEventsQuery = supabase
         .from("calendar_events")
         .select(
-          "id, title, event_type, scheduled_date, scheduled_time, project_id, work_order_id, responsible_id, notes, status",
+          "id, title, event_type, scheduled_date, end_date, scheduled_time, project_id, work_order_id, responsible_id, notes, status",
         )
-        .gte("scheduled_date", gridStartKey)
         .lte("scheduled_date", gridEndKey)
+        .or(
+          `and(end_date.is.null,scheduled_date.gte.${gridStartKey}),end_date.gte.${gridStartKey}`,
+        )
         .order("scheduled_date")
         .order("scheduled_time");
 
@@ -361,20 +368,34 @@ function CalendarPage() {
 
       for (const event of calendarEventsResult.data ?? []) {
         const status = event.status as CalendarEventStatus;
-        items.push({
-          id: `ce-${event.id}`,
-          eventId: event.id,
-          title: event.title,
-          date: event.scheduled_date,
-          time: event.scheduled_time,
-          eventType: event.event_type as CalendarEventType,
-          notes: event.notes,
-          colorState: colorStateFor(
-            event.scheduled_date,
-            todayKey,
-            status === "completed" || status === "cancelled",
-          ),
-        });
+        const firstVisibleDate =
+          event.scheduled_date < gridStartKey
+            ? gridStartKey
+            : event.scheduled_date;
+        const lastVisibleDate =
+          (event.end_date ?? event.scheduled_date) > gridEndKey
+            ? gridEndKey
+            : (event.end_date ?? event.scheduled_date);
+        const cursor = new Date(`${firstVisibleDate}T12:00:00`);
+
+        while (toDateKey(cursor) <= lastVisibleDate) {
+          const dateKey = toDateKey(cursor);
+          items.push({
+            id: `ce-${event.id}-${dateKey}`,
+            eventId: event.id,
+            title: event.title,
+            date: dateKey,
+            time: event.scheduled_time,
+            eventType: event.event_type as CalendarEventType,
+            notes: event.notes,
+            colorState: colorStateFor(
+              dateKey,
+              todayKey,
+              status === "completed" || status === "cancelled",
+            ),
+          });
+          cursor.setDate(cursor.getDate() + 1);
+        }
       }
 
       const byDate = new Map<string, CalendarItem[]>();
@@ -430,9 +451,12 @@ function CalendarPage() {
     month: "long",
   });
 
-  function openCreateEvent(date = todayKey) {
+  function openCreateEvent(
+    date = todayKey,
+    eventType: CalendarEventType = "plan",
+  ) {
     setEditingEventId(null);
-    setEventForm(initialEventForm(date));
+    setEventForm({ ...initialEventForm(date), eventType });
     setEventDialogOpen(true);
   }
 
@@ -445,6 +469,7 @@ function CalendarPage() {
     setEventForm({
       title: event.title,
       scheduledDate: event.scheduled_date,
+      endDate: event.end_date ?? event.scheduled_date,
       scheduledTime: event.scheduled_time ?? "",
       eventType: event.event_type as CalendarEventType,
       projectId: event.project_id ?? "",
@@ -460,14 +485,30 @@ function CalendarPage() {
     mutationFn: async () => {
       if (!user) throw new Error("Oturum bulunamadı.");
       if (eventForm.title.trim().length < 3) {
-        throw new Error("Plan başlığı en az 3 karakter olmalıdır.");
+        throw new Error("Başlık en az 3 karakter olmalıdır.");
       }
       if (!eventForm.scheduledDate) {
         throw new Error("Plan tarihi gereklidir.");
       }
+      if (eventNeedsDateRange && !eventForm.endDate) {
+        throw new Error("Bitiş tarihi gereklidir.");
+      }
+      if (
+        eventNeedsDateRange &&
+        eventForm.endDate < eventForm.scheduledDate
+      ) {
+        throw new Error("Bitiş tarihi başlangıç tarihinden önce olamaz.");
+      }
+      if (
+        eventForm.scheduledTime &&
+        !/^\d{2}:(00|30)$/.test(eventForm.scheduledTime)
+      ) {
+        throw new Error("Saat yalnızca 00 veya 30 dakika ile girilebilir.");
+      }
       const payload = {
         title: eventForm.title.trim(),
         scheduled_date: eventForm.scheduledDate,
+        end_date: eventNeedsDateRange ? eventForm.endDate : null,
         scheduled_time: eventForm.scheduledTime || null,
         event_type: eventForm.eventType,
         project_id: eventForm.projectId || null,
@@ -578,12 +619,18 @@ function CalendarPage() {
               <Input value={eventForm.title} maxLength={180} placeholder="Örn. Müşteriyle keşif toplantısı" onChange={(event) => setEventForm((form) => ({ ...form, title: event.target.value }))} />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
-              Tarih
+              {eventNeedsDateRange ? "Başlangıç tarihi" : "Tarih"}
               <Input type="date" value={eventForm.scheduledDate} onChange={(event) => setEventForm((form) => ({ ...form, scheduledDate: event.target.value }))} />
             </label>
+            {eventNeedsDateRange ? (
+              <label className="grid gap-1.5 text-sm font-medium">
+                Bitiş tarihi
+                <Input type="date" min={eventForm.scheduledDate} value={eventForm.endDate} onChange={(event) => setEventForm((form) => ({ ...form, endDate: event.target.value }))} />
+              </label>
+            ) : null}
             <label className="grid gap-1.5 text-sm font-medium">
               Saat (opsiyonel)
-              <Input type="time" value={eventForm.scheduledTime} onChange={(event) => setEventForm((form) => ({ ...form, scheduledTime: event.target.value }))} />
+              <Input type="time" step={1800} value={eventForm.scheduledTime} onChange={(event) => setEventForm((form) => ({ ...form, scheduledTime: event.target.value }))} />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Tür
@@ -685,10 +732,28 @@ function CalendarPage() {
                 return (
                   <div
                     key={cell.key}
-                    className={`surface-panel flex min-h-[92px] flex-col gap-1 p-1.5 sm:min-h-[120px] sm:p-2 ${
+                    className={`surface-panel group relative flex min-h-[92px] flex-col gap-1 p-1.5 transition-colors hover:border-blue-400 hover:bg-blue-500/5 sm:min-h-[120px] sm:p-2 ${
                       cell.inCurrentMonth ? "" : "opacity-40"
                     } ${isToday ? "border-highlight/60" : ""}`}
                   >
+                    {isManager ? (
+                      <div className="absolute right-1 top-1 z-10 hidden gap-1 group-hover:flex group-focus-within:flex">
+                        <button
+                          type="button"
+                          onClick={() => openCreateEvent(cell.key, "plan")}
+                          className="rounded border border-blue-400/60 bg-slate-950/95 px-1.5 py-1 text-[10px] font-bold text-blue-100 shadow-sm hover:bg-blue-600 hover:text-white"
+                        >
+                          + Plan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openCreateEvent(cell.key, "reminder")}
+                          className="rounded border border-slate-500 bg-slate-950/95 px-1.5 py-1 text-[10px] font-bold text-slate-100 shadow-sm hover:bg-slate-700"
+                        >
+                          + Not
+                        </button>
+                      </div>
+                    ) : null}
                     {isManager ? (
                       <button type="button" onClick={() => openCreateEvent(cell.key)} className={`w-fit rounded px-1 text-xs font-bold hover:bg-muted ${isToday ? "text-highlight" : "text-muted-foreground"}`}>
                         {cell.date.getDate()}
@@ -700,11 +765,11 @@ function CalendarPage() {
                     )}
                     <div className="flex flex-col gap-1 overflow-hidden">
                       {visibleItems.map((item) => item.link ? (
-                        <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} title={item.title} className={`truncate rounded border px-1 py-0.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
+                        <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} title={item.title} className={`line-clamp-2 rounded border px-1.5 py-1 text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
                           {item.title}
                         </Link>
                       ) : (
-                        <button key={item.id} type="button" onClick={() => item.eventId && openEditEvent(item.eventId)} title={item.notes ?? item.title} className={`truncate rounded border px-1 py-0.5 text-left text-[10px] font-semibold transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
+                        <button key={item.id} type="button" onClick={() => item.eventId && openEditEvent(item.eventId)} title={item.notes ?? item.title} className={`line-clamp-2 rounded border px-1.5 py-1 text-left text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
                           {item.time ? `${item.time.slice(0, 5)} · ` : ""}{item.title}
                         </button>
                       ))}
