@@ -289,6 +289,7 @@ function OffersPage() {
               <SelectContent className="border-slate-600 bg-slate-900 text-slate-50">
                 {creatableOfferTypes.map((value) => (
                   <SelectItem
+                    className="text-slate-100 focus:bg-slate-800 focus:text-white"
                     key={value}
                     value={value}
                     disabled={disabledOfferTypes.has(value)}
@@ -414,7 +415,7 @@ function OffersPage() {
                 <TableHead>TKF No</TableHead>
                 <TableHead>Başlık</TableHead>
                 <TableHead>Tür</TableHead>
-                  <TableHead>Müşteri</TableHead>
+                <TableHead>Müşteri</TableHead>
                 <TableHead>Durum</TableHead>
                 <TableHead className="text-right">İşlem</TableHead>
               </TableRow>
