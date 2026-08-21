@@ -75,6 +75,83 @@ export type Database = {
           },
         ];
       };
+      calendar_events: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          event_type: string;
+          id: string;
+          notes: string | null;
+          project_id: string | null;
+          responsible_id: string | null;
+          scheduled_date: string;
+          scheduled_time: string | null;
+          status: string;
+          title: string;
+          updated_at: string;
+          work_order_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          created_by: string;
+          event_type?: string;
+          id?: string;
+          notes?: string | null;
+          project_id?: string | null;
+          responsible_id?: string | null;
+          scheduled_date: string;
+          scheduled_time?: string | null;
+          status?: string;
+          title: string;
+          updated_at?: string;
+          work_order_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          event_type?: string;
+          id?: string;
+          notes?: string | null;
+          project_id?: string | null;
+          responsible_id?: string | null;
+          scheduled_date?: string;
+          scheduled_time?: string | null;
+          status?: string;
+          title?: string;
+          updated_at?: string;
+          work_order_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "calendar_events_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_events_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_events_responsible_id_fkey";
+            columns: ["responsible_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_events_work_order_id_fkey";
+            columns: ["work_order_id"];
+            isOneToOne: false;
+            referencedRelation: "work_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       customers: {
         Row: {
           billing_address: string | null;
