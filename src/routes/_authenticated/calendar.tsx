@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
@@ -12,6 +13,23 @@ import {
   PageHeader,
 } from "@/components/page-states";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/calendar")({
   component: CalendarPage,
@@ -37,7 +55,38 @@ type CalendarItem = {
   title: string;
   date: string;
   colorState: ColorState;
-  link: LinkTarget;
+  link?: LinkTarget;
+  eventId?: string;
+  time?: string | null;
+  eventType?: CalendarEventType;
+  notes?: string | null;
+};
+
+type CalendarEventType = "plan" | "meeting" | "site_visit" | "reminder";
+type CalendarEventStatus = "planned" | "completed" | "cancelled";
+type CalendarEventForm = {
+  title: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  eventType: CalendarEventType;
+  projectId: string;
+  workOrderId: string;
+  responsibleId: string;
+  notes: string;
+  status: CalendarEventStatus;
+};
+
+const eventTypeLabels: Record<CalendarEventType, string> = {
+  plan: "İş planı",
+  meeting: "Toplantı",
+  site_visit: "Saha ziyareti / keşif",
+  reminder: "Hatırlatma",
+};
+
+const eventStatusLabels: Record<CalendarEventStatus, string> = {
+  planned: "Planlandı",
+  completed: "Tamamlandı",
+  cancelled: "İptal edildi",
 };
 
 const colorClasses: Record<ColorState, string> = {
@@ -83,15 +132,35 @@ function colorStateFor(
   return "future";
 }
 
+function initialEventForm(scheduledDate: string): CalendarEventForm {
+  return {
+    title: "",
+    scheduledDate,
+    scheduledTime: "",
+    eventType: "plan",
+    projectId: "",
+    workOrderId: "",
+    responsibleId: "",
+    notes: "",
+    status: "planned",
+  };
+}
+
 function CalendarPage() {
   const { role, user } = useAuth();
   const canView =
     role === "admin" || role === "technical_office" || role === "contractor";
   const isManager = isOperationalManager(role);
   const isContractor = role === "contractor";
+  const queryClient = useQueryClient();
 
   const [view, setView] = useState<ViewMode>("month");
   const [anchor, setAnchor] = useState(() => new Date());
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [eventForm, setEventForm] = useState<CalendarEventForm>(() =>
+    initialEventForm(toDateKey(new Date())),
+  );
   const now = new Date();
   const todayKey = toDateKey(now);
 
@@ -200,15 +269,39 @@ function CalendarPage() {
         );
       }
 
-      const [workOrdersResult, projectTasksResult, operationalTasksResult] =
+      let calendarEventsQuery = supabase
+        .from("calendar_events")
+        .select(
+          "id, title, event_type, scheduled_date, scheduled_time, project_id, work_order_id, responsible_id, notes, status",
+        )
+        .gte("scheduled_date", gridStartKey)
+        .lte("scheduled_date", gridEndKey)
+        .order("scheduled_date")
+        .order("scheduled_time");
+
+      const [workOrdersResult, projectTasksResult, operationalTasksResult, calendarEventsResult, projectsResult, allWorkOrdersResult, profilesResult] =
         await Promise.all([
           workOrdersQuery,
           projectTasksQuery,
           operationalTasksQuery,
+          calendarEventsQuery,
+          isManager
+            ? supabase.from("projects").select("id, project_no, name").order("name")
+            : Promise.resolve({ data: [], error: null }),
+          isManager
+            ? supabase.from("work_orders").select("id, work_order_no, title").order("title")
+            : Promise.resolve({ data: [], error: null }),
+          isManager
+            ? supabase.from("profiles").select("id, full_name").order("full_name")
+            : Promise.resolve({ data: [], error: null }),
         ]);
       if (workOrdersResult.error) throw workOrdersResult.error;
       if (projectTasksResult.error) throw projectTasksResult.error;
       if (operationalTasksResult.error) throw operationalTasksResult.error;
+      if (calendarEventsResult.error) throw calendarEventsResult.error;
+      if (projectsResult.error) throw projectsResult.error;
+      if (allWorkOrdersResult.error) throw allWorkOrdersResult.error;
+      if (profilesResult.error) throw profilesResult.error;
 
       const items: CalendarItem[] = [];
 
@@ -266,19 +359,41 @@ function CalendarPage() {
         });
       }
 
+      for (const event of calendarEventsResult.data ?? []) {
+        const status = event.status as CalendarEventStatus;
+        items.push({
+          id: `ce-${event.id}`,
+          eventId: event.id,
+          title: event.title,
+          date: event.scheduled_date,
+          time: event.scheduled_time,
+          eventType: event.event_type as CalendarEventType,
+          notes: event.notes,
+          colorState: colorStateFor(
+            event.scheduled_date,
+            todayKey,
+            status === "completed" || status === "cancelled",
+          ),
+        });
+      }
+
       const byDate = new Map<string, CalendarItem[]>();
       for (const item of items) {
         const list = byDate.get(item.date) ?? [];
         list.push(item);
         byDate.set(item.date, list);
       }
-      return byDate;
+      return {
+        itemsByDate: byDate,
+        calendarEvents: calendarEventsResult.data ?? [],
+        projects: projectsResult.data ?? [],
+        workOrders: allWorkOrdersResult.data ?? [],
+        profiles: profilesResult.data ?? [],
+      };
     },
   });
 
-  if (!canView) return <AccessDenied />;
-
-  const itemsByDate = query.data ?? new Map<string, CalendarItem[]>();
+  const itemsByDate = query.data?.itemsByDate ?? new Map<string, CalendarItem[]>();
   const maxVisiblePerCell = view === "week" ? 6 : 3;
 
   const goPrev = () => {
@@ -315,6 +430,77 @@ function CalendarPage() {
     month: "long",
   });
 
+  function openCreateEvent(date = todayKey) {
+    setEditingEventId(null);
+    setEventForm(initialEventForm(date));
+    setEventDialogOpen(true);
+  }
+
+  function openEditEvent(eventId: string) {
+    const event = (query.data?.calendarEvents ?? []).find(
+      (item) => item.id === eventId,
+    );
+    if (!event) return;
+    setEditingEventId(event.id);
+    setEventForm({
+      title: event.title,
+      scheduledDate: event.scheduled_date,
+      scheduledTime: event.scheduled_time ?? "",
+      eventType: event.event_type as CalendarEventType,
+      projectId: event.project_id ?? "",
+      workOrderId: event.work_order_id ?? "",
+      responsibleId: event.responsible_id ?? "",
+      notes: event.notes ?? "",
+      status: event.status as CalendarEventStatus,
+    });
+    setEventDialogOpen(true);
+  }
+
+  const saveEvent = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("Oturum bulunamadı.");
+      if (eventForm.title.trim().length < 3) {
+        throw new Error("Plan başlığı en az 3 karakter olmalıdır.");
+      }
+      if (!eventForm.scheduledDate) {
+        throw new Error("Plan tarihi gereklidir.");
+      }
+      const payload = {
+        title: eventForm.title.trim(),
+        scheduled_date: eventForm.scheduledDate,
+        scheduled_time: eventForm.scheduledTime || null,
+        event_type: eventForm.eventType,
+        project_id: eventForm.projectId || null,
+        work_order_id: eventForm.workOrderId || null,
+        responsible_id: eventForm.responsibleId || null,
+        notes: eventForm.notes.trim() || null,
+        status: eventForm.status,
+        updated_at: new Date().toISOString(),
+      };
+      if (editingEventId) {
+        const { error } = await supabase
+          .from("calendar_events")
+          .update(payload)
+          .eq("id", editingEventId);
+        if (error) throw error;
+        return "updated";
+      }
+      const { error } = await supabase
+        .from("calendar_events")
+        .insert({ ...payload, created_by: user.id });
+      if (error) throw error;
+      return "created";
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["calendar-tasks"] });
+      setEventDialogOpen(false);
+      toast.success(result === "created" ? "Plan takvime eklendi." : "Plan güncellendi.");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  if (!canView) return <AccessDenied />;
+
   return (
     <>
       <PageHeader
@@ -326,6 +512,11 @@ function CalendarPage() {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {isManager ? (
+              <Button type="button" onClick={() => openCreateEvent()}>
+                <Plus className="mr-2 h-4 w-4" /> Plan Ekle
+              </Button>
+            ) : null}
             <div className="inline-flex overflow-hidden rounded-md border border-input">
               <Button
                 type="button"
@@ -373,6 +564,70 @@ function CalendarPage() {
           </div>
         }
       />
+      <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{editingEventId ? "Planı düzenle" : "Takvime plan ekle"}</DialogTitle>
+            <DialogDescription>
+              Aynı gün için istediğiniz kadar plan veya not ekleyebilirsiniz.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+              Başlık
+              <Input value={eventForm.title} maxLength={180} placeholder="Örn. Müşteriyle keşif toplantısı" onChange={(event) => setEventForm((form) => ({ ...form, title: event.target.value }))} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Tarih
+              <Input type="date" value={eventForm.scheduledDate} onChange={(event) => setEventForm((form) => ({ ...form, scheduledDate: event.target.value }))} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Saat (opsiyonel)
+              <Input type="time" value={eventForm.scheduledTime} onChange={(event) => setEventForm((form) => ({ ...form, scheduledTime: event.target.value }))} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Tür
+              <Select value={eventForm.eventType} onValueChange={(eventType) => setEventForm((form) => ({ ...form, eventType: eventType as CalendarEventType }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.entries(eventTypeLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Durum
+              <Select value={eventForm.status} onValueChange={(status) => setEventForm((form) => ({ ...form, status: status as CalendarEventStatus }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{Object.entries(eventStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+              Proje (opsiyonel)
+              <Select value={eventForm.projectId || "none"} onValueChange={(projectId) => setEventForm((form) => ({ ...form, projectId: projectId === "none" ? "" : projectId }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="none">Proje seçilmedi</SelectItem>{(query.data?.projects ?? []).map((project) => <SelectItem key={project.id} value={project.id}>{project.project_no} · {project.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+              İş emri (opsiyonel)
+              <Select value={eventForm.workOrderId || "none"} onValueChange={(workOrderId) => setEventForm((form) => ({ ...form, workOrderId: workOrderId === "none" ? "" : workOrderId }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="none">İş emri seçilmedi</SelectItem>{(query.data?.workOrders ?? []).map((workOrder) => <SelectItem key={workOrder.id} value={workOrder.id}>#{workOrder.work_order_no} · {workOrder.title}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+              Sorumlu kişi (opsiyonel)
+              <Select value={eventForm.responsibleId || "none"} onValueChange={(responsibleId) => setEventForm((form) => ({ ...form, responsibleId: responsibleId === "none" ? "" : responsibleId }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="none">Sorumlu atanmadı</SelectItem>{(query.data?.profiles ?? []).map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.full_name}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+              Not
+              <Textarea value={eventForm.notes} maxLength={2000} placeholder="Görüşme notu, hazırlık veya hatırlatma..." onChange={(event) => setEventForm((form) => ({ ...form, notes: event.target.value }))} />
+            </label>
+          </div>
+          <DialogFooter><Button onClick={() => saveEvent.mutate()} disabled={saveEvent.isPending}>{saveEvent.isPending ? "Kaydediliyor..." : editingEventId ? "Değişiklikleri Kaydet" : "Planı Kaydet"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
@@ -434,23 +689,24 @@ function CalendarPage() {
                       cell.inCurrentMonth ? "" : "opacity-40"
                     } ${isToday ? "border-highlight/60" : ""}`}
                   >
-                    <span
-                      className={`text-xs font-bold ${isToday ? "text-highlight" : "text-muted-foreground"}`}
-                    >
-                      {cell.date.getDate()}
-                    </span>
+                    {isManager ? (
+                      <button type="button" onClick={() => openCreateEvent(cell.key)} className={`w-fit rounded px-1 text-xs font-bold hover:bg-muted ${isToday ? "text-highlight" : "text-muted-foreground"}`}>
+                        {cell.date.getDate()}
+                      </button>
+                    ) : (
+                      <span className={`text-xs font-bold ${isToday ? "text-highlight" : "text-muted-foreground"}`}>
+                        {cell.date.getDate()}
+                      </span>
+                    )}
                     <div className="flex flex-col gap-1 overflow-hidden">
-                      {visibleItems.map((item) => (
-                        <Link
-                          key={item.id}
-                          to={item.link.to}
-                          params={item.link.params}
-                          hash={item.link.hash}
-                          title={item.title}
-                          className={`truncate rounded border px-1 py-0.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}
-                        >
+                      {visibleItems.map((item) => item.link ? (
+                        <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} title={item.title} className={`truncate rounded border px-1 py-0.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
                           {item.title}
                         </Link>
+                      ) : (
+                        <button key={item.id} type="button" onClick={() => item.eventId && openEditEvent(item.eventId)} title={item.notes ?? item.title} className={`truncate rounded border px-1 py-0.5 text-left text-[10px] font-semibold transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
+                          {item.time ? `${item.time.slice(0, 5)} · ` : ""}{item.title}
+                        </button>
                       ))}
                       {hiddenCount > 0 ? (
                         <span className="px-1 text-[10px] text-muted-foreground">
@@ -489,16 +745,14 @@ function CalendarPage() {
                       </p>
                     ) : (
                       <div className="flex flex-col gap-1.5">
-                        {items.map((item) => (
-                          <Link
-                            key={item.id}
-                            to={item.link.to}
-                            params={item.link.params}
-                            hash={item.link.hash}
-                            className={`truncate rounded border px-2 py-1.5 text-xs font-semibold transition-colors ${colorClasses[item.colorState]}`}
-                          >
+                        {items.map((item) => item.link ? (
+                          <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} className={`truncate rounded border px-2 py-1.5 text-xs font-semibold transition-colors ${colorClasses[item.colorState]}`}>
                             {item.title}
                           </Link>
+                        ) : (
+                          <button key={item.id} type="button" onClick={() => item.eventId && openEditEvent(item.eventId)} className={`truncate rounded border px-2 py-1.5 text-left text-xs font-semibold transition-colors ${colorClasses[item.colorState]}`}>
+                            {item.time ? `${item.time.slice(0, 5)} · ` : ""}{item.title}
+                          </button>
                         ))}
                       </div>
                     )}
