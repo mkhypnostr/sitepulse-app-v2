@@ -45,7 +45,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/offers")({
   component: OffersPage,
@@ -98,45 +97,16 @@ function statusVariant(status: keyof typeof statuses) {
   return "outline";
 }
 
-function formatQuantity(value: number) {
-  const rounded = Math.round(value * 1000) / 1000;
-  return Number.isInteger(rounded)
-    ? String(rounded)
-    : String(rounded).replace(".", ",");
-}
-
-function requireNumber(value: string, label: string, min: number): number {
-  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
-  const result = Number(normalized === "" ? "0" : normalized);
-  if (!Number.isFinite(result)) {
-    throw new Error(`${label} geçerli bir sayı olmalı.`);
-  }
-  if (result < min) {
-    throw new Error(
-      min > 0 ? `${label} 0'dan büyük olmalı.` : `${label} negatif olamaz.`,
-    );
-  }
-  return result;
-}
-
 type OfferFormState = {
   customerId: string;
   title: string;
   offerType: OfferType;
-  status: keyof typeof statuses;
-  primaryItemDescription: string;
-  primaryItemQuantity: string;
-  primaryItemUnit: string;
 };
 
 const initialForm: OfferFormState = {
   customerId: "",
   title: "",
   offerType: "hizli_teklif",
-  status: "draft",
-  primaryItemDescription: "",
-  primaryItemQuantity: "1",
-  primaryItemUnit: "adet",
 };
 
 type OfferRow = {
@@ -146,9 +116,6 @@ type OfferRow = {
   offer_type: string;
   status: string;
   customer_id: string | null;
-  primary_item_description: string | null;
-  primary_item_quantity: number;
-  primary_item_unit: string;
   drive_excel_url: string | null;
   drive_folder_url: string | null;
   created_at: string;
@@ -174,7 +141,7 @@ function OffersPage() {
         supabase
           .from("offers")
           .select(
-            "id, offer_no, title, offer_type, status, customer_id, primary_item_description, primary_item_quantity, primary_item_unit, drive_excel_url, drive_folder_url, created_at, customers(name)",
+            "id, offer_no, title, offer_type, status, customer_id, drive_excel_url, drive_folder_url, created_at, customers(name)",
           )
           .order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name").order("name"),
@@ -206,13 +173,6 @@ function OffersPage() {
       customerId: offer.customer_id ?? "",
       title: offer.title,
       offerType: (offer.offer_type as OfferType) ?? "diger",
-      status: (offer.status as keyof typeof statuses) ?? "draft",
-      primaryItemDescription: offer.primary_item_description ?? "",
-      primaryItemQuantity: String(offer.primary_item_quantity ?? 1).replace(
-        ".",
-        ",",
-      ),
-      primaryItemUnit: offer.primary_item_unit || "adet",
     });
     setOpen(true);
   }
@@ -240,24 +200,10 @@ function OffersPage() {
       if (form.title.trim().length < 3) {
         throw new Error("Teklif başlığı en az 3 karakter olmalıdır.");
       }
-      if (form.primaryItemDescription.trim().length < 1) {
-        throw new Error("Ana teklif kalemi açıklaması gerekli.");
-      }
-      const quantity = requireNumber(
-        form.primaryItemQuantity,
-        "Miktar",
-        0.001,
-      );
-      const unit = form.primaryItemUnit.trim() || "adet";
-
       const headerPayload = {
         customer_id: form.customerId || null,
         title: form.title.trim(),
         offer_type: form.offerType,
-        status: form.status,
-        primary_item_description: form.primaryItemDescription.trim(),
-        primary_item_quantity: quantity,
-        primary_item_unit: unit,
       };
 
       if (editingOfferId) {
@@ -271,7 +217,7 @@ function OffersPage() {
 
       const { data, error } = await supabase
         .from("offers")
-        .insert({ ...headerPayload, created_by: user.id })
+.insert({ ...headerPayload, status: "draft", created_by: user.id })
         .select("id")
         .single();
       if (error) throw error;
@@ -283,7 +229,7 @@ function OffersPage() {
       const canProvision = !disabledOfferTypes.has(form.offerType);
       closeDialog();
       toast.success(wasEditing ? "Teklif güncellendi." : "Teklif kaydedildi.");
-      if (canProvision) provisionWorkspace.mutate(offerId);
+      if (!wasEditing && canProvision) provisionWorkspace.mutate(offerId);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -313,20 +259,20 @@ function OffersPage() {
         else setOpen(true);
       }}
     >
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto border-slate-700 bg-slate-950 text-slate-100 shadow-2xl sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="text-slate-50">
             {editingOfferId ? "Teklifi düzenle" : "Teklif oluştur"}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-slate-300">
             {editingOfferId
-              ? "Teklif kaydını güncelleyin. Drive'daki Excel dosyası ve klasörü buradan değişmez."
-              : "TKF numarası kaydedildiğinde otomatik atanır. Kaydettikten sonra uygulama Drive'da teklif klasörünü ve Excel dosyasını otomatik oluşturur."}
+              ? "Başlık, tür veya müşteri bilgisini güncelleyin. Drive'daki Excel dosyası değişmez."
+              : "TKF numarası otomatik atanır. Kaydedildiğinde Drive'da doğru Excel şablonu oluşturulur ve açılır."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1.5 text-sm font-medium">
+          <label className="grid gap-1.5 text-sm font-semibold text-slate-100 sm:col-span-2">
             Teklif türü
             <Select
               value={form.offerType}
@@ -337,10 +283,10 @@ function OffersPage() {
                 }))
               }
             >
-              <SelectTrigger className="h-11">
+              <SelectTrigger className="h-11 border-slate-600 bg-slate-900 text-slate-50 hover:border-blue-400 focus:ring-blue-400/30">
                 <SelectValue>{offerTypeLabels[form.offerType]}</SelectValue>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="border-slate-600 bg-slate-900 text-slate-50">
                 {creatableOfferTypes.map((value) => (
                   <SelectItem
                     key={value}
@@ -359,32 +305,10 @@ function OffersPage() {
               </SelectContent>
             </Select>
           </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Durum
-            <Select
-              value={form.status}
-              onValueChange={(status) =>
-                setForm((current) => ({
-                  ...current,
-                  status: status as keyof typeof statuses,
-                }))
-              }
-            >
-              <SelectTrigger className="h-11">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(statuses).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+          <label className="grid gap-1.5 text-sm font-semibold text-slate-100 sm:col-span-2">
             Teklif başlığı
             <Input
+              className="border-slate-600 bg-slate-900 text-slate-50 placeholder:text-slate-400 focus-visible:border-blue-400 focus-visible:ring-blue-400/30"
               value={form.title}
               maxLength={180}
               onChange={(event) =>
@@ -396,7 +320,7 @@ function OffersPage() {
               placeholder="Örn. Kazan dairesi elektrik tesisatı"
             />
           </label>
-          <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
+          <label className="grid gap-1.5 text-sm font-semibold text-slate-100 sm:col-span-2">
             Müşteri (opsiyonel)
             <Select
               value={form.customerId || "none"}
@@ -407,10 +331,10 @@ function OffersPage() {
                 }))
               }
             >
-              <SelectTrigger className="h-11">
+              <SelectTrigger className="h-11 border-slate-600 bg-slate-900 text-slate-50 hover:border-blue-400 focus:ring-blue-400/30">
                 <SelectValue placeholder="Müşteri seçin" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="border-slate-600 bg-slate-900 text-slate-50">
                 <SelectItem value="none">Müşteri seçilmedi</SelectItem>
                 {(pageQuery.data?.customers ?? []).map((customer) => (
                   <SelectItem key={customer.id} value={customer.id}>
@@ -420,46 +344,9 @@ function OffersPage() {
               </SelectContent>
             </Select>
           </label>
-          <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
-            Ana teklif kalemi / kısa kapsam açıklaması
-            <Textarea
-              value={form.primaryItemDescription}
-              maxLength={500}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  primaryItemDescription: event.target.value,
-                }))
-              }
-              placeholder="Örn. Kazan dairesi elektrik tesisatı sıva altı uygulaması"
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Miktar
-            <Input
-              inputMode="decimal"
-              value={form.primaryItemQuantity}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  primaryItemQuantity: event.target.value,
-                }))
-              }
-            />
-          </label>
-          <label className="grid gap-1.5 text-sm font-medium">
-            Birim
-            <Input
-              value={form.primaryItemUnit}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  primaryItemUnit: event.target.value,
-                }))
-              }
-              placeholder="adet"
-            />
-          </label>
+          <div className="rounded-md border border-blue-400/40 bg-blue-500/10 px-4 py-3 text-sm leading-6 text-blue-100 sm:col-span-2">
+            Malzeme, miktar, fiyat ve KDV Excel dosyasında doldurulur.
+          </div>
         </div>
 
         <DialogFooter>
@@ -471,7 +358,7 @@ function OffersPage() {
               ? "Kaydediliyor..."
               : editingOfferId
                 ? "Değişiklikleri Kaydet"
-                : "Teklifi Kaydet"}
+                : "Teklifi Oluştur ve Excel'i Aç"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -504,7 +391,7 @@ function OffersPage() {
             <SelectTrigger className="w-full sm:w-52">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="border-slate-600 bg-slate-900 text-slate-50">
               <SelectItem value="all">Tüm durumlar</SelectItem>
               {Object.entries(statuses).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
@@ -527,8 +414,7 @@ function OffersPage() {
                 <TableHead>TKF No</TableHead>
                 <TableHead>Başlık</TableHead>
                 <TableHead>Tür</TableHead>
-                <TableHead>Ana kalem</TableHead>
-                <TableHead>Müşteri</TableHead>
+                  <TableHead>Müşteri</TableHead>
                 <TableHead>Durum</TableHead>
                 <TableHead className="text-right">İşlem</TableHead>
               </TableRow>
@@ -547,19 +433,6 @@ function OffersPage() {
                     <TableCell>
                       {offerTypeLabels[offer.offer_type as OfferType] ??
                         "Diğer"}
-                    </TableCell>
-                    <TableCell>
-                      {offer.primary_item_description ? (
-                        <>
-                          <p>{offer.primary_item_description}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatQuantity(Number(offer.primary_item_quantity))}{" "}
-                            {offer.primary_item_unit}
-                          </p>
-                        </>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {offer.customers?.name ?? "Müşteri henüz seçilmedi"}
