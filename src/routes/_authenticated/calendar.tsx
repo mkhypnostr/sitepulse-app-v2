@@ -430,9 +430,12 @@ function CalendarPage() {
     month: "long",
   });
 
-  function openCreateEvent(date = todayKey) {
+  function openCreateEvent(
+    date = todayKey,
+    eventType: CalendarEventType = "plan",
+  ) {
     setEditingEventId(null);
-    setEventForm(initialEventForm(date));
+    setEventForm({ ...initialEventForm(date), eventType });
     setEventDialogOpen(true);
   }
 
@@ -685,10 +688,28 @@ function CalendarPage() {
                 return (
                   <div
                     key={cell.key}
-                    className={`surface-panel flex min-h-[92px] flex-col gap-1 p-1.5 sm:min-h-[120px] sm:p-2 ${
+                    className={`surface-panel group relative flex min-h-[92px] flex-col gap-1 p-1.5 transition-colors hover:border-blue-400 hover:bg-blue-500/5 sm:min-h-[120px] sm:p-2 ${
                       cell.inCurrentMonth ? "" : "opacity-40"
                     } ${isToday ? "border-highlight/60" : ""}`}
                   >
+                    {isManager ? (
+                      <div className="absolute right-1 top-1 z-10 hidden gap-1 group-hover:flex group-focus-within:flex">
+                        <button
+                          type="button"
+                          onClick={() => openCreateEvent(cell.key, "plan")}
+                          className="rounded border border-blue-400/60 bg-slate-950/95 px-1.5 py-1 text-[10px] font-bold text-blue-100 shadow-sm hover:bg-blue-600 hover:text-white"
+                        >
+                          + Plan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openCreateEvent(cell.key, "reminder")}
+                          className="rounded border border-slate-500 bg-slate-950/95 px-1.5 py-1 text-[10px] font-bold text-slate-100 shadow-sm hover:bg-slate-700"
+                        >
+                          + Not
+                        </button>
+                      </div>
+                    ) : null}
                     {isManager ? (
                       <button type="button" onClick={() => openCreateEvent(cell.key)} className={`w-fit rounded px-1 text-xs font-bold hover:bg-muted ${isToday ? "text-highlight" : "text-muted-foreground"}`}>
                         {cell.date.getDate()}
@@ -700,11 +721,11 @@ function CalendarPage() {
                     )}
                     <div className="flex flex-col gap-1 overflow-hidden">
                       {visibleItems.map((item) => item.link ? (
-                        <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} title={item.title} className={`truncate rounded border px-1 py-0.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
+                        <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} title={item.title} className={`line-clamp-2 rounded border px-1.5 py-1 text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
                           {item.title}
                         </Link>
                       ) : (
-                        <button key={item.id} type="button" onClick={() => item.eventId && openEditEvent(item.eventId)} title={item.notes ?? item.title} className={`truncate rounded border px-1 py-0.5 text-left text-[10px] font-semibold transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
+                        <button key={item.id} type="button" onClick={() => item.eventId && openEditEvent(item.eventId)} title={item.notes ?? item.title} className={`line-clamp-2 rounded border px-1.5 py-1 text-left text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
                           {item.time ? `${item.time.slice(0, 5)} · ` : ""}{item.title}
                         </button>
                       ))}
