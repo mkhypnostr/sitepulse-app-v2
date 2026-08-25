@@ -79,7 +79,6 @@ export type Database = {
         Row: {
           created_at: string;
           created_by: string;
-          contract_amount: number | null;
           end_date: string | null;
           event_type: string;
           id: string;
@@ -991,6 +990,7 @@ export type Database = {
           neighborhood: string | null;
           parcel_no: string | null;
           project_no: string;
+          contract_amount: number | null;
           quoted_amount: number | null;
           referring_architect: string | null;
           province: string | null;
