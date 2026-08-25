@@ -16,9 +16,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
-import { safeHttpsMapUrl } from "@/lib/map-location";
 import { projectStatusLabel, type ProjectStatus } from "@/lib/projects";
-import { MapPreview } from "@/components/map-preview";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -57,7 +55,9 @@ function editForm(project: Project) {
   return {
     name: project.name,
     externalReference: project.external_reference_no ?? "",
-    locationUrl: project.location_url ?? "",
+    referringArchitect: project.referring_architect ?? "",
+    quotedAmount: project.quoted_amount == null ? "" : String(project.quoted_amount),
+    contractAmount: project.contract_amount == null ? "" : String(project.contract_amount),
     province: project.province ?? "",
     district: project.district ?? "",
     neighborhood: project.neighborhood ?? "",
@@ -222,17 +222,12 @@ export function ProjectLifecycleControls({
       ) {
         throw new Error("Alan bilgisini sıfırdan büyük bir sayı olarak girin");
       }
-      if (!safeHttpsMapUrl(form.locationUrl)) {
-        throw new Error(
-          "Google Maps'ten kopyaladığınız güvenli konum bağlantısını girin",
-        );
-      }
       const { error } = await supabase.rpc("update_project_details", {
         target_project_id: project.id,
         project_name: form.name.trim(),
         project_external_reference_no:
           form.externalReference.trim() || undefined,
-        project_location_url: form.locationUrl.trim(),
+        project_location_url: undefined,
         project_province: form.province.trim() || undefined,
         project_district: form.district.trim() || undefined,
         project_neighborhood: form.neighborhood.trim() || undefined,
@@ -248,6 +243,12 @@ export function ProjectLifecycleControls({
         project_admin_notes: form.adminNotes.trim() || undefined,
       });
       if (error) throw error;
+      const { error: financeError } = await supabase.from("projects").update({
+        referring_architect: form.referringArchitect.trim() || null,
+        quoted_amount: form.quotedAmount.trim() ? Number(form.quotedAmount.replace(",", ".")) : null,
+        contract_amount: form.contractAmount.trim() ? Number(form.contractAmount.replace(",", ".")) : null,
+      }).eq("id", project.id);
+      if (financeError) throw financeError;
     },
     onSuccess: async () => {
       await Promise.all([
@@ -464,26 +465,9 @@ export function ProjectLifecycleControls({
                 maxLength={180}
               />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
-              Google Maps Konumu <span className="text-destructive">*</span>
-              <Input
-                value={form.locationUrl}
-                onChange={(event) =>
-                  setForm({ ...form, locationUrl: event.target.value })
-                }
-                placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
-              />
-            </label>
-            {safeHttpsMapUrl(form.locationUrl) ? (
-              <MapPreview
-                mapUrl={form.locationUrl}
-                fallbackQuery={[form.neighborhood, form.district, form.province]
-                  .filter(Boolean)
-                  .join(", ")}
-                compact
-                className="sm:col-span-2"
-              />
-            ) : null}
+            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">Yönlendiren mimar / mimarlık ofisi<Input value={form.referringArchitect} onChange={(event) => setForm({ ...form, referringArchitect: event.target.value })} /></label>
+            <label className="grid gap-1.5 text-sm font-medium">Teklif bedeli (KDV hariç)<Input inputMode="decimal" value={form.quotedAmount} onChange={(event) => setForm({ ...form, quotedAmount: event.target.value })} /></label>
+            <label className="grid gap-1.5 text-sm font-medium">Sözleşme / onaylanan bedel (KDV hariç)<Input inputMode="decimal" value={form.contractAmount} onChange={(event) => setForm({ ...form, contractAmount: event.target.value })} /></label>
             <label className="grid gap-1.5 text-sm font-medium">
               Dış Referans Numarası
               <Input
@@ -633,7 +617,6 @@ export function ProjectLifecycleControls({
               onClick={() => editMutation.mutate()}
               disabled={
                 !form.name.trim() ||
-                !safeHttpsMapUrl(form.locationUrl) ||
                 editMutation.isPending
               }
             >
