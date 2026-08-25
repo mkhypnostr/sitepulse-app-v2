@@ -21,7 +21,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { createProjectDriveWorkspace } from "@/lib/google-workspace";
-import { safeHttpsMapUrl } from "@/lib/map-location";
 import {
   formatProjectDate,
   projectApprovedProgress,
@@ -38,7 +37,6 @@ import {
   LoadingState,
   PageHeader,
 } from "@/components/page-states";
-import { MapPreview } from "@/components/map-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,7 +77,9 @@ const initialForm = {
   name: "",
   processes: [] as ProjectType[],
   externalReference: "",
-  locationUrl: "",
+  referringArchitect: "",
+  quotedAmount: "",
+  contractAmount: "",
   province: "",
   district: "",
   neighborhood: "",
@@ -161,11 +161,6 @@ function ProjectsPage() {
       ) {
         throw new Error("Alan bilgisini sıfırdan büyük bir sayı olarak girin");
       }
-      if (!safeHttpsMapUrl(form.locationUrl)) {
-        throw new Error(
-          "Google Maps'ten kopyaladığınız güvenli konum bağlantısını girin",
-        );
-      }
 
       const { data, error } = await supabase.rpc(
         "create_project_with_workflow",
@@ -177,7 +172,7 @@ function ProjectsPage() {
           selected_processes: form.processes,
           project_external_reference_no:
             form.externalReference.trim() || undefined,
-          project_location_url: form.locationUrl.trim() || undefined,
+          project_location_url: undefined,
           project_province: form.province.trim() || undefined,
           project_district: form.district.trim() || undefined,
           project_neighborhood: form.neighborhood.trim() || undefined,
@@ -195,6 +190,12 @@ function ProjectsPage() {
         },
       );
       if (error) throw error;
+      const { error: financeError } = await supabase.from("projects").update({
+        referring_architect: form.referringArchitect.trim() || null,
+        quoted_amount: form.quotedAmount.trim() ? Number(form.quotedAmount.replace(",", ".")) : null,
+        contract_amount: form.contractAmount.trim() ? Number(form.contractAmount.replace(",", ".")) : null,
+      }).eq("id", data);
+      if (financeError) throw financeError;
       return data;
     },
     onSuccess: async (projectId) => {
@@ -371,18 +372,8 @@ function ProjectsPage() {
 
           <section className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-medium">
-              Google Maps Konumu <span className="text-destructive">*</span>
-              <Input
-                value={form.locationUrl}
-                onChange={(event) =>
-                  setForm({ ...form, locationUrl: event.target.value })
-                }
-                placeholder="Google Maps > Paylaş > Bağlantıyı kopyala"
-              />
-              <span className="text-xs font-normal text-muted-foreground">
-                Haritadaki yeri paylaşın; proje kartında görsel olarak
-                gösterilecektir.
-              </span>
+              Yönlendiren mimar / mimarlık ofisi
+              <Input value={form.referringArchitect} onChange={(event) => setForm({ ...form, referringArchitect: event.target.value })} placeholder="Örn. Ayşe Yılmaz · ABC Mimarlık" />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Dış Referans Numarası
@@ -421,16 +412,8 @@ function ProjectsPage() {
                 }
               />
             </label>
-            {safeHttpsMapUrl(form.locationUrl) ? (
-              <MapPreview
-                mapUrl={form.locationUrl}
-                fallbackQuery={[form.neighborhood, form.district, form.province]
-                  .filter(Boolean)
-                  .join(", ")}
-                compact
-                className="sm:col-span-2"
-              />
-            ) : null}
+            <label className="grid gap-1.5 text-sm font-medium"><span>Teklif bedeli (KDV hariç)</span><Input inputMode="decimal" value={form.quotedAmount} onChange={(event) => setForm({ ...form, quotedAmount: event.target.value })} placeholder="Örn. 250000" /></label>
+            <label className="grid gap-1.5 text-sm font-medium"><span>Sözleşme / onaylanan bedel (KDV hariç)</span><Input inputMode="decimal" value={form.contractAmount} onChange={(event) => setForm({ ...form, contractAmount: event.target.value })} placeholder="Örn. 235000" /></label>
             <label className="grid gap-1.5 text-sm font-medium">
               Ada
               <Input
@@ -565,7 +548,6 @@ function ProjectsPage() {
             onClick={() => createProject.mutate()}
             disabled={
               !form.name.trim() ||
-              !safeHttpsMapUrl(form.locationUrl) ||
               form.processes.length === 0 ||
               createProject.isPending
             }
