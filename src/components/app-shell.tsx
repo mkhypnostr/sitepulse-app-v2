@@ -181,6 +181,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             label: "Ölçüm ve Tahsilat",
             icon: ClipboardList,
           },
+          {
+            to: "/transformer-responsibility",
+            label: "Trafo Sorumluluğu",
+            icon: ShieldAlert,
+          },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
           { to: "/offers", label: "Teklifler", icon: Receipt },
           { separator: true },
