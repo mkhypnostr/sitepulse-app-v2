@@ -444,7 +444,7 @@ function CalendarPage() {
   const agendaDays =
     view === "week"
       ? cells
-      : cells.filter((cell) => (itemsByDate.get(cell.key) ?? []).length > 0);
+      : cells.filter((cell) => cell.inCurrentMonth);
   const agendaDateFormatter = new Intl.DateTimeFormat("tr-TR", {
     weekday: "long",
     day: "numeric",
@@ -769,7 +769,7 @@ function CalendarPage() {
                     key={cell.key}
                     className={`surface-panel group relative flex min-h-[92px] flex-col gap-1 p-1.5 transition-colors hover:border-blue-400 hover:bg-blue-500/5 sm:min-h-[120px] sm:p-2 ${
                       cell.inCurrentMonth ? "" : "opacity-40"
-                    } ${isToday ? "border-highlight/60" : ""}`}
+                    } ${isToday ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30" : ""}`}
                   >
                     {isManager ? (
                       <div className="absolute right-1 top-1 z-10 hidden gap-1 group-hover:flex group-focus-within:flex">
@@ -790,11 +790,11 @@ function CalendarPage() {
                       </div>
                     ) : null}
                     {isManager ? (
-                      <button type="button" onClick={() => openCreateEvent(cell.key)} className={`w-fit rounded px-1 text-xs font-bold hover:bg-muted ${isToday ? "text-highlight" : "text-muted-foreground"}`}>
+                      <button type="button" onClick={() => openCreateEvent(cell.key)} className={`w-fit rounded px-1 text-xs font-bold hover:bg-muted ${isToday ? "bg-blue-600 text-white hover:bg-blue-600" : "text-muted-foreground"}`}>
                         {cell.date.getDate()}
                       </button>
                     ) : (
-                      <span className={`text-xs font-bold ${isToday ? "text-highlight" : "text-muted-foreground"}`}>
+                      <span className={`text-xs font-bold ${isToday ? "rounded bg-blue-600 px-1 text-white" : "text-muted-foreground"}`}>
                         {cell.date.getDate()}
                       </span>
                     )}
@@ -832,13 +832,40 @@ function CalendarPage() {
                 const items = itemsByDate.get(cell.key) ?? [];
                 const isToday = cell.key === todayKey;
                 return (
-                  <div key={cell.key} className="surface-panel p-3">
-                    <p
-                      className={`mb-2 text-xs font-black capitalize ${isToday ? "text-highlight" : "text-foreground"}`}
-                    >
-                      {agendaDateFormatter.format(cell.date)}
-                      {isToday ? " · Bugün" : ""}
-                    </p>
+                  <div
+                    key={cell.key}
+                    className={`surface-panel p-3 ${
+                      isToday ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30" : ""
+                    }`}
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <p
+                        className={`text-xs font-black capitalize ${
+                          isToday ? "rounded bg-blue-600 px-1.5 py-0.5 text-white" : "text-foreground"
+                        }`}
+                      >
+                        {agendaDateFormatter.format(cell.date)}
+                        {isToday ? " · Bugün" : ""}
+                      </p>
+                      {isManager ? (
+                        <div className="flex shrink-0 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openCreateEvent(cell.key, "plan")}
+                            className="rounded border border-blue-400/60 bg-slate-950 px-2 py-1 text-[11px] font-bold text-blue-100"
+                          >
+                            + Plan
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openCreateEvent(cell.key, "reminder")}
+                            className="rounded border border-slate-500 bg-slate-950 px-2 py-1 text-[11px] font-bold text-slate-100"
+                          >
+                            + Not
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                     {items.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
                         Planlı iş yok
