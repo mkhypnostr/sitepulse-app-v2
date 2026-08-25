@@ -28,6 +28,7 @@ import { Route as AuthenticatedSharedFilesRouteImport } from './routes/_authenti
 import { Route as AuthenticatedStockRouteImport } from './routes/_authenticated/stock'
 import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/tasks'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
+import { Route as AuthenticatedTransformerResponsibilityRouteImport } from './routes/_authenticated/transformer-responsibility'
 import { Route as AuthenticatedWorkOrdersRouteImport } from './routes/_authenticated/work-orders'
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
 import { Route as AuthenticatedJobReportJobIdRouteImport } from './routes/_authenticated/job-report/$jobId'
@@ -132,6 +133,12 @@ const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
   path: '/team',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedTransformerResponsibilityRoute =
+  AuthenticatedTransformerResponsibilityRouteImport.update({
+    id: '/transformer-responsibility',
+    path: '/transformer-responsibility',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedWorkOrdersRoute = AuthenticatedWorkOrdersRouteImport.update({
   id: '/work-orders',
   path: '/work-orders',
@@ -185,6 +192,7 @@ export interface FileRoutesByFullPath {
   '/stock': typeof AuthenticatedStockRoute
   '/tasks': typeof AuthenticatedTasksRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
@@ -211,6 +219,7 @@ export interface FileRoutesByTo {
   '/stock': typeof AuthenticatedStockRoute
   '/tasks': typeof AuthenticatedTasksRoute
   '/team': typeof AuthenticatedTeamRoute
+  '/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
@@ -239,6 +248,7 @@ export interface FileRoutesById {
   '/_authenticated/stock': typeof AuthenticatedStockRoute
   '/_authenticated/tasks': typeof AuthenticatedTasksRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
+  '/_authenticated/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/_authenticated/work-orders': typeof AuthenticatedWorkOrdersRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/_authenticated/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
@@ -267,6 +277,7 @@ export interface FileRouteTypes {
     | '/stock'
     | '/tasks'
     | '/team'
+    | '/transformer-responsibility'
     | '/work-orders'
     | '/oauth/consent'
     | '/job-report/$jobId'
@@ -293,6 +304,7 @@ export interface FileRouteTypes {
     | '/stock'
     | '/tasks'
     | '/team'
+    | '/transformer-responsibility'
     | '/work-orders'
     | '/oauth/consent'
     | '/job-report/$jobId'
@@ -320,6 +332,7 @@ export interface FileRouteTypes {
     | '/_authenticated/stock'
     | '/_authenticated/tasks'
     | '/_authenticated/team'
+    | '/_authenticated/transformer-responsibility'
     | '/_authenticated/work-orders'
     | '/oauth/consent'
     | '/_authenticated/job-report/$jobId'
@@ -470,6 +483,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTeamRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/transformer-responsibility': {
+      id: '/_authenticated/transformer-responsibility'
+      path: '/transformer-responsibility'
+      fullPath: '/transformer-responsibility'
+      preLoaderRoute: typeof AuthenticatedTransformerResponsibilityRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/work-orders': {
       id: '/_authenticated/work-orders'
       path: '/work-orders'
@@ -545,6 +565,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedStockRoute: typeof AuthenticatedStockRoute
   AuthenticatedTasksRoute: typeof AuthenticatedTasksRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
+  AuthenticatedTransformerResponsibilityRoute: typeof AuthenticatedTransformerResponsibilityRoute
   AuthenticatedWorkOrdersRoute: typeof AuthenticatedWorkOrdersRoute
   AuthenticatedJobReportJobIdRoute: typeof AuthenticatedJobReportJobIdRoute
   AuthenticatedJobsJobIdRoute: typeof AuthenticatedJobsJobIdRoute
@@ -568,6 +589,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedStockRoute: AuthenticatedStockRoute,
   AuthenticatedTasksRoute: AuthenticatedTasksRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
+  AuthenticatedTransformerResponsibilityRoute:
+    AuthenticatedTransformerResponsibilityRoute,
   AuthenticatedWorkOrdersRoute: AuthenticatedWorkOrdersRoute,
   AuthenticatedJobReportJobIdRoute: AuthenticatedJobReportJobIdRoute,
   AuthenticatedJobsJobIdRoute: AuthenticatedJobsJobIdRoute,
