@@ -38,7 +38,6 @@ import {
   LoadingState,
   PageHeader,
 } from "@/components/page-states";
-import { MapPreview } from "@/components/map-preview";
 import { ProjectLifecycleControls } from "@/components/project-lifecycle-controls";
 import { ProjectTaskEvidence } from "@/components/project-task-evidence";
 import { ProjectTaskProgress } from "@/components/project-task-progress";
@@ -352,20 +351,6 @@ function ProjectDetailPage() {
             </div>
           ) : null}
 
-          {project.location_url ? (
-            <MapPreview
-              mapUrl={project.location_url}
-              fallbackQuery={[
-                project.neighborhood,
-                project.district,
-                project.province,
-              ]
-                .filter(Boolean)
-                .join(", ")}
-              className="mt-5"
-            />
-          ) : null}
-
           <div className="mt-5 flex flex-wrap gap-3">
             {project.external_reference_no ? (
               <Badge variant="outline" className="px-3 py-2">
@@ -383,6 +368,9 @@ function ProjectDetailPage() {
                 {project.area.toLocaleString("tr-TR")} m²
               </Badge>
             ) : null}
+            {project.referring_architect ? <Badge variant="outline" className="px-3 py-2">Mimar: {project.referring_architect}</Badge> : null}
+            {project.quoted_amount != null ? <Badge variant="outline" className="px-3 py-2">Teklif: {project.quoted_amount.toLocaleString("tr-TR")} ₺</Badge> : null}
+            {project.contract_amount != null ? <Badge variant="secondary" className="px-3 py-2">Sözleşme: {project.contract_amount.toLocaleString("tr-TR")} ₺</Badge> : null}
           </div>
         </div>
 
