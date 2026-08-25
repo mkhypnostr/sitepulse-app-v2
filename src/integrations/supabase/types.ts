@@ -1123,6 +1123,93 @@ export type Database = {
         };
         Relationships: [];
       };
+      transformer_responsibility_contracts: {
+        Row: {
+          id: string;
+          customer_name: string;
+          facility_name: string;
+          location: string | null;
+          transformer_power_kva: number | null;
+          voltage_level: string | null;
+          responsible_engineer: string | null;
+          contract_start_date: string;
+          contract_end_date: string;
+          monthly_fee: number;
+          status: string;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          customer_name: string;
+          facility_name: string;
+          location?: string | null;
+          transformer_power_kva?: number | null;
+          voltage_level?: string | null;
+          responsible_engineer?: string | null;
+          contract_start_date: string;
+          contract_end_date: string;
+          monthly_fee?: number;
+          status?: string;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          customer_name?: string;
+          facility_name?: string;
+          location?: string | null;
+          transformer_power_kva?: number | null;
+          voltage_level?: string | null;
+          responsible_engineer?: string | null;
+          contract_start_date?: string;
+          contract_end_date?: string;
+          monthly_fee?: number;
+          status?: string;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      transformer_monthly_checks: {
+        Row: {
+          id: string;
+          contract_id: string;
+          check_month: string;
+          checked_at: string | null;
+          checker_name: string | null;
+          signed_by: string | null;
+          status: string;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          contract_id: string;
+          check_month: string;
+          checked_at?: string | null;
+          checker_name?: string | null;
+          signed_by?: string | null;
+          status?: string;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          contract_id?: string;
+          check_month?: string;
+          checked_at?: string | null;
+          checker_name?: string | null;
+          signed_by?: string | null;
+          status?: string;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       measurement_service_records: {
         Row: {
           id: string;
