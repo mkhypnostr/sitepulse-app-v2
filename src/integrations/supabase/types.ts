@@ -79,6 +79,7 @@ export type Database = {
         Row: {
           created_at: string;
           created_by: string;
+          contract_amount: number | null;
           end_date: string | null;
           event_type: string;
           id: string;
@@ -990,6 +991,8 @@ export type Database = {
           neighborhood: string | null;
           parcel_no: string | null;
           project_no: string;
+          quoted_amount: number | null;
+          referring_architect: string | null;
           province: string | null;
           show_to_customer: boolean;
           start_date: string | null;
@@ -1005,6 +1008,7 @@ export type Database = {
           block_no?: string | null;
           created_at?: string;
           created_by: string;
+          contract_amount?: number | null;
           customer_id?: string | null;
           description?: string | null;
           district?: string | null;
@@ -1016,6 +1020,8 @@ export type Database = {
           neighborhood?: string | null;
           parcel_no?: string | null;
           project_no: string;
+          quoted_amount?: number | null;
+          referring_architect?: string | null;
           province?: string | null;
           show_to_customer?: boolean;
           start_date?: string | null;
@@ -1031,6 +1037,7 @@ export type Database = {
           block_no?: string | null;
           created_at?: string;
           created_by?: string;
+          contract_amount?: number | null;
           customer_id?: string | null;
           description?: string | null;
           district?: string | null;
@@ -1042,6 +1049,8 @@ export type Database = {
           neighborhood?: string | null;
           parcel_no?: string | null;
           project_no?: string;
+          quoted_amount?: number | null;
+          referring_architect?: string | null;
           province?: string | null;
           show_to_customer?: boolean;
           start_date?: string | null;
