@@ -1123,6 +1123,66 @@ export type Database = {
         };
         Relationships: [];
       };
+      measurement_service_records: {
+        Row: {
+          id: string;
+          service_date: string | null;
+          customer_name: string;
+          contact_name: string | null;
+          contact_phone: string | null;
+          location: string | null;
+          service_type: string;
+          report_status: string;
+          payment_status: string;
+          agreed_amount: number;
+          vat_rate: number;
+          collected_amount: number;
+          due_date: string | null;
+          project_id: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          service_date?: string | null;
+          customer_name: string;
+          contact_name?: string | null;
+          contact_phone?: string | null;
+          location?: string | null;
+          service_type: string;
+          report_status?: string;
+          payment_status?: string;
+          agreed_amount?: number;
+          vat_rate?: number;
+          collected_amount?: number;
+          due_date?: string | null;
+          project_id?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          service_date?: string | null;
+          customer_name?: string;
+          contact_name?: string | null;
+          contact_phone?: string | null;
+          location?: string | null;
+          service_type?: string;
+          report_status?: string;
+          payment_status?: string;
+          agreed_amount?: number;
+          vat_rate?: number;
+          collected_amount?: number;
+          due_date?: string | null;
+          project_id?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       stock_movements: {
         Row: {
           contractor_id: string | null;
