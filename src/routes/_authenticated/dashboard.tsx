@@ -64,7 +64,7 @@ type ProjectSummary = Pick<
 >;
 type ProjectDashboardSummary = Pick<
   Database["public"]["Tables"]["projects"]["Row"],
-  "id" | "name" | "project_no" | "status"
+  "id" | "name" | "project_no" | "status" | "quoted_amount" | "contract_amount"
 > & { customers: { name: string } | null };
 type VisibleProjectTask = Pick<
   Database["public"]["Tables"]["project_tasks"]["Row"],
@@ -218,7 +218,7 @@ function DashboardPage() {
           await Promise.all([
             supabase
               .from("projects")
-              .select("id, name, project_no, status, customers(name)")
+              .select("id, name, project_no, status, quoted_amount, contract_amount, customers(name)")
               .order("created_at", { ascending: false }),
             supabase
               .from("project_tasks")
@@ -894,6 +894,14 @@ function DashboardPage() {
                   {formatTRY(financeTotals.laborSales)}
                 </span>
               </div>
+              <div className="my-3 border-t border-border" />
+              <p className={EYEBROW}>Proje Bedelleri</p>
+              {allProjects.filter((project) => project.quoted_amount != null || project.contract_amount != null).slice(0, 5).map((project) => (
+                <Link key={project.id} to="/projects/$projectId" params={{ projectId: project.id }} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-2 hover:border-primary/50">
+                  <span className="min-w-0 truncate text-xs font-semibold">{project.project_no} · {project.name}</span>
+                  <span className="shrink-0 text-xs font-bold">{formatTRY(project.contract_amount ?? project.quoted_amount ?? 0)}</span>
+                </Link>
+              ))}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Satış Malzeme</span>
                 <span className="font-bold text-foreground">
