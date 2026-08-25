@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
+import ExcelJS from "exceljs";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileUp, Plus, TriangleAlert } from "lucide-react";
+import { Download, FileSpreadsheet, Plus, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -48,12 +49,39 @@ export const Route = createFileRoute("/_authenticated/stock")({
 
 type StockUnit = "adet" | "metre";
 
+type ExcelStockRow = {
+  name: string;
+  brand: string;
+  quantity: number;
+  unit: StockUnit;
+  unitPrice: number;
+  existingId: string | undefined;
+};
+
+function normalized(value: string) {
+  return value.trim().toLocaleLowerCase("tr-TR").replace(/\s+/g, " ");
+}
+
+function numericValue(value: unknown) {
+  if (typeof value === "number") return value;
+  return Number(
+    String(value ?? "")
+      .replace(/[^0-9,.-]/g, "")
+      .replace(",", "."),
+  );
+}
+
 function StockPage() {
   const { role } = useAuth();
   const canManageStock = role === "admin" || role === "technical_office";
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const [excelPreview, setExcelPreview] = useState<ExcelStockRow[] | null>(
+    null,
+  );
+  const [excelFileName, setExcelFileName] = useState("");
+  const [importMode, setImportMode] = useState<"replace" | "add">("replace");
   const [form, setForm] = useState({
     code: "",
     name: "",
@@ -128,6 +156,140 @@ function StockPage() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
+
+  const importExcel = useMutation({
+    mutationFn: async () => {
+      if (!excelPreview?.length)
+        throw new Error("Önce bir Excel dosyası seçin");
+      const existingByName = new Map(
+        items.map((item) => [normalized(item.name), item]),
+      );
+      const inserts = excelPreview
+        .filter((row) => !row.existingId)
+        .map((row) => ({
+          name: row.name,
+          unit: row.unit,
+          quantity: row.quantity,
+          min_quantity: 0,
+          unit_price: row.unitPrice,
+          description: row.brand ? `Marka: ${row.brand}` : null,
+        }));
+      const updates: Array<{
+        id: string;
+        quantity: number;
+        unit_price: number;
+        unit: StockUnit;
+        description: string | null;
+      }> = [];
+      for (const row of excelPreview.filter(
+        (candidate) => candidate.existingId,
+      )) {
+        const existing = existingByName.get(normalized(row.name));
+        if (!existing) continue;
+        updates.push({
+          id: existing.id,
+          quantity:
+            importMode === "add"
+              ? existing.quantity + row.quantity
+              : row.quantity,
+          unit_price: row.unitPrice,
+          unit: row.unit,
+          description: row.brand ? `Marka: ${row.brand}` : existing.description,
+        });
+      }
+      if (inserts.length) {
+        const { error } = await supabase.from("stock_items").insert(inserts);
+        if (error) throw error;
+      }
+      if (updates.length) {
+        for (const update of updates) {
+          const { error } = await supabase
+            .from("stock_items")
+            .update(update)
+            .eq("id", update.id);
+          if (error) throw error;
+        }
+      }
+      return { inserted: inserts.length, updated: updates.length };
+    },
+    onSuccess: async ({ inserted, updated }) => {
+      await queryClient.invalidateQueries({ queryKey: ["stock-items"] });
+      setExcelPreview(null);
+      setExcelFileName("");
+      toast.success(`${inserted} yeni, ${updated} mevcut stok kaydı işlendi`);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  async function previewExcel(file: File) {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(await file.arrayBuffer());
+      const sheet = workbook.worksheets[0];
+      if (!sheet) throw new Error("Excel içinde okunacak sayfa bulunamadı");
+      const rows = sheet
+        .getSheetValues()
+        .slice(1)
+        .map((row) =>
+          (Array.isArray(row) ? row.slice(1) : []).map((cell) =>
+            String(cell ?? "").trim(),
+          ),
+        );
+      const headerIndex = rows.findIndex(
+        (row) =>
+          row.some((cell) => normalized(cell) === "marka") &&
+          row.some((cell) => normalized(cell) === "model"),
+      );
+      if (headerIndex < 0)
+        throw new Error("Excel'de MARKA ve MODEL başlıkları bulunamadı");
+      const headers = rows[headerIndex].map(normalized);
+      const indexOf = (...names: string[]) =>
+        headers.findIndex((header) => names.includes(header));
+      const brandIndex = indexOf("marka");
+      const modelIndex = indexOf("model", "malzeme adı", "malzeme adi");
+      const quantityIndex = indexOf("adet", "miktar", "stok");
+      const priceIndex = indexOf("birim fiyat", "birim fiyat (₺)", "fiyat");
+      if (brandIndex < 0 || modelIndex < 0 || quantityIndex < 0)
+        throw new Error("Zorunlu sütunlar: MARKA, MODEL ve ADET");
+      const existingByName = new Map(
+        items.map((item) => [normalized(item.name), item.id]),
+      );
+      const parsed = rows
+        .slice(headerIndex + 1)
+        .map((row) => {
+          const brand = row[brandIndex] ?? "";
+          const model = row[modelIndex] ?? "";
+          if (!brand && !model) return null;
+          const quantity = numericValue(row[quantityIndex]);
+          const unitPrice = priceIndex >= 0 ? numericValue(row[priceIndex]) : 0;
+          if (
+            !Number.isFinite(quantity) ||
+            quantity < 0 ||
+            !Number.isFinite(unitPrice) ||
+            unitPrice < 0
+          )
+            throw new Error(`${brand} ${model}: miktar veya fiyat geçersiz`);
+          const name = [brand, model].filter(Boolean).join(" · ");
+          return {
+            name,
+            brand,
+            quantity,
+            unit: "adet" as StockUnit,
+            unitPrice,
+            existingId: existingByName.get(normalized(name)),
+          };
+        })
+        .filter((row): row is ExcelStockRow => row !== null);
+      if (!parsed.length)
+        throw new Error("Excel'de aktarılacak malzeme bulunamadı");
+      setExcelPreview(parsed);
+      setExcelFileName(file.name);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
 
   async function importCsv(file: File) {
     try {
@@ -328,10 +490,15 @@ function StockPage() {
             <input
               ref={fileInput}
               type="file"
-              accept=".csv,text/csv"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
               className="hidden"
               onChange={(event) =>
-                event.target.files?.[0] && importCsv(event.target.files[0])
+                event.target.files?.[0] &&
+                (event.target.files[0].name
+                  .toLocaleLowerCase("tr-TR")
+                  .endsWith(".csv")
+                  ? importCsv(event.target.files[0])
+                  : previewExcel(event.target.files[0]))
               }
             />
             <Button
@@ -339,7 +506,7 @@ function StockPage() {
               className="h-12"
               onClick={() => fileInput.current?.click()}
             >
-              <FileUp className="mr-2 h-4 w-4" /> Excel CSV Yükle
+              <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel'den İçe Aktar
             </Button>
             <Button
               variant="outline"
@@ -373,6 +540,91 @@ function StockPage() {
           </div>
         }
       />
+      <Dialog
+        open={Boolean(excelPreview)}
+        onOpenChange={(isOpen) => !isOpen && setExcelPreview(null)}
+      >
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Stok Excel önizlemesi</DialogTitle>
+            <DialogDescription>
+              {excelFileName} · Bu aşamada hiçbir stok kaydı henüz
+              değiştirilmedi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 p-3 text-sm">
+            <span>
+              <strong>
+                {excelPreview?.filter((row) => !row.existingId).length ?? 0}
+              </strong>{" "}
+              yeni ·{" "}
+              <strong>
+                {excelPreview?.filter((row) => row.existingId).length ?? 0}
+              </strong>{" "}
+              mevcut kayıt
+            </span>
+            <Select
+              value={importMode}
+              onValueChange={(value) =>
+                setImportMode(value as "replace" | "add")
+              }
+            >
+              <SelectTrigger className="w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="replace">
+                  Mevcut stok miktarını Excel ile değiştir
+                </SelectItem>
+                <SelectItem value="add">
+                  Excel miktarını mevcut stoğa ekle
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="max-h-80 overflow-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Malzeme</TableHead>
+                  <TableHead className="text-right">Miktar</TableHead>
+                  <TableHead className="text-right">Birim fiyat</TableHead>
+                  <TableHead>İşlem</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(excelPreview ?? []).map((row) => (
+                  <TableRow key={row.name}>
+                    <TableCell className="font-medium">{row.name}</TableCell>
+                    <TableCell className="text-right">
+                      {row.quantity} {row.unit}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatTRY(row.unitPrice)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={row.existingId ? "warning" : "success"}>
+                        {row.existingId ? "Mevcut kayıt" : "Yeni kayıt"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExcelPreview(null)}>
+              Vazgeç
+            </Button>
+            <Button
+              onClick={() => importExcel.mutate()}
+              disabled={importExcel.isPending}
+            >
+              {importExcel.isPending ? "İşleniyor..." : "Stoklara Aktar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
         <Card>
           <CardContent className="p-5">
