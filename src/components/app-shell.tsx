@@ -176,6 +176,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           { separator: true },
           { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
           { to: "/dashboard", label: "Finans", icon: Wallet, hash: "finance" },
+          {
+            to: "/measurement-tracking",
+            label: "Ölçüm ve Tahsilat",
+            icon: ClipboardList,
+          },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
           { to: "/offers", label: "Teklifler", icon: Receipt },
           { separator: true },
