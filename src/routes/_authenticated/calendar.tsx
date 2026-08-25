@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
@@ -163,6 +163,7 @@ function CalendarPage() {
   const [eventForm, setEventForm] = useState<CalendarEventForm>(() =>
     initialEventForm(toDateKey(new Date())),
   );
+  const todayCardRef = useRef<HTMLDivElement | null>(null);
   const now = new Date();
   const todayKey = toDateKey(now);
   const eventNeedsDateRange =
@@ -439,7 +440,17 @@ function CalendarPage() {
     });
   };
 
-  const goToday = () => setAnchor(new Date());
+  const goToday = () => {
+    setAnchor(new Date());
+    if (window.matchMedia("(max-width: 639px)").matches) {
+      requestAnimationFrame(() => {
+        todayCardRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      });
+    }
+  };
 
   const agendaDays =
     view === "week"
@@ -834,6 +845,7 @@ function CalendarPage() {
                 return (
                   <div
                     key={cell.key}
+                    ref={isToday ? todayCardRef : undefined}
                     className={`surface-panel p-3 ${
                       isToday ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30" : ""
                     }`}
