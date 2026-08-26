@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import ExcelJS from "exceljs";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Plus } from "lucide-react";
+import { Download, Plus, RotateCcw, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -44,17 +44,19 @@ import { Textarea } from "@/components/ui/textarea";
 export const Route = createFileRoute(
   "/_authenticated/transformer-responsibility",
 )({ component: TransformerResponsibilityPage });
-const blank = {
-  customer: "",
-  facility: "",
+
+const blankContract = {
+  companyName: "",
+  subscriberNo: "",
   location: "",
   power: "",
-  voltage: "",
+  transformerType: "direk_tipi",
   engineer: "",
   start: "",
   end: "",
   fee: "",
   notes: "",
+  renewedFrom: null as string | null,
 };
 const blankCheck = {
   month: new Date().toISOString().slice(0, 7),
@@ -69,68 +71,138 @@ const checkStatusLabels: Record<string, string> = {
   completed: "Tamamlandı",
   not_completed: "Yapılmadı",
 };
+const transformerTypeLabels: Record<string, string> = {
+  direk_tipi: "Direk tipi",
+  bina_tipi: "Bina tipi",
+  diger: "Diğer",
+};
+const isoDate = (date: Date) => date.toISOString().slice(0, 10);
+function contractMonths(start: string, end: string) {
+  const result: string[] = [];
+  const cursor = new Date(`${start}T12:00:00Z`);
+  const last = new Date(`${end}T12:00:00Z`);
+  cursor.setUTCDate(1);
+  last.setUTCDate(1);
+  while (cursor <= last) {
+    result.push(isoDate(cursor));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return result;
+}
+function nextContractDates(endDate: string) {
+  const start = new Date(`${endDate}T12:00:00Z`);
+  start.setUTCDate(start.getUTCDate() + 1);
+  const end = new Date(start);
+  end.setUTCFullYear(end.getUTCFullYear() + 1);
+  end.setUTCDate(end.getUTCDate() - 1);
+  return { start: isoDate(start), end: isoDate(end) };
+}
+function monthLabel(value: string) {
+  return new Intl.DateTimeFormat("tr-TR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T12:00:00Z`));
+}
+function daysUntil(value: string, today: string) {
+  return Math.ceil(
+    (new Date(`${value}T12:00:00Z`).getTime() -
+      new Date(`${today}T12:00:00Z`).getTime()) /
+      86_400_000,
+  );
+}
+
 function TransformerResponsibilityPage() {
   const { role } = useAuth();
   const allowed = role === "admin";
-  const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(blank);
+  const queryClient = useQueryClient();
+  const [contractOpen, setContractOpen] = useState(false);
+  const [contractForm, setContractForm] = useState(blankContract);
   const [checkOpen, setCheckOpen] = useState(false);
   const [checkContractId, setCheckContractId] = useState<string | null>(null);
   const [checkForm, setCheckForm] = useState(blankCheck);
-  const q = useQuery({
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const [paymentContractId, setPaymentContractId] = useState<string | null>(
+    null,
+  );
+  const query = useQuery({
     queryKey: ["transformer-contracts"],
     enabled: allowed,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transformer_responsibility_contracts")
-        .select("*, transformer_monthly_checks(*)")
+        .select(
+          "*, transformer_monthly_checks(*), transformer_monthly_payments(*)",
+        )
         .order("contract_end_date");
       if (error) throw error;
       return data;
     },
   });
-  const save = useMutation({
+  const rows = useMemo(() => query.data ?? [], [query.data]);
+  const today = isoDate(new Date());
+  const selectedPaymentContract = useMemo(
+    () => rows.find((item) => item.id === paymentContractId) ?? null,
+    [paymentContractId, rows],
+  );
+
+  const saveContract = useMutation({
     mutationFn: async () => {
-      const power = form.power ? Number(form.power.replace(",", ".")) : null,
-        fee = form.fee ? Number(form.fee.replace(",", ".")) : 0;
+      const power = contractForm.power
+        ? Number(contractForm.power.replace(",", "."))
+        : null;
+      const fee = contractForm.fee
+        ? Number(contractForm.fee.replace(",", "."))
+        : 0;
       if (
-        !form.customer.trim() ||
-        !form.facility.trim() ||
-        !form.start ||
-        !form.end
+        !contractForm.companyName.trim() ||
+        !contractForm.subscriberNo.trim() ||
+        !contractForm.start ||
+        !contractForm.end
       )
-        throw new Error("Müşteri, tesis ve sözleşme tarihleri zorunludur");
+        throw new Error("Firma adı, abone no ve sözleşme tarihleri zorunludur");
       if (
         !Number.isFinite(fee) ||
         fee < 0 ||
         (power !== null && (!Number.isFinite(power) || power <= 0))
       )
         throw new Error("Güç veya aylık bedeli kontrol edin");
+      const companyName = contractForm.companyName.trim();
+      const { data: company, error: companyError } = await supabase
+        .from("transformer_companies")
+        .upsert({ company_name: companyName }, { onConflict: "company_name" })
+        .select("id")
+        .single();
+      if (companyError) throw companyError;
       const { error } = await supabase
         .from("transformer_responsibility_contracts")
         .insert({
-          customer_name: form.customer.trim(),
-          facility_name: form.facility.trim(),
-          location: form.location.trim() || null,
+          company_id: company.id,
+          customer_name: companyName,
+          subscriber_no: contractForm.subscriberNo.trim(),
+          location: contractForm.location.trim() || null,
           transformer_power_kva: power,
-          voltage_level: form.voltage.trim() || null,
-          responsible_engineer: form.engineer.trim() || null,
-          contract_start_date: form.start,
-          contract_end_date: form.end,
+          transformer_type: contractForm.transformerType,
+          responsible_engineer: contractForm.engineer.trim() || null,
+          contract_start_date: contractForm.start,
+          contract_end_date: contractForm.end,
           monthly_fee: fee,
-          notes: form.notes.trim() || null,
+          notes: contractForm.notes.trim() || null,
+          renewed_from_contract_id: contractForm.renewedFrom,
         });
       if (error) throw error;
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["transformer-contracts"] });
-      setOpen(false);
-      setForm(blank);
-      toast.success("İşletme sorumluluğu sözleşmesi kaydedildi");
+      await queryClient.invalidateQueries({
+        queryKey: ["transformer-contracts"],
+      });
+      setContractOpen(false);
+      setContractForm(blankContract);
+      toast.success("Yıllık sözleşme kaydedildi");
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (error) => toast.error(errorMessage(error)),
   });
+
   const saveCheck = useMutation({
     mutationFn: async () => {
       if (!checkContractId) throw new Error("Sözleşme seçilemedi");
@@ -138,13 +210,12 @@ function TransformerResponsibilityPage() {
       if (!contract) throw new Error("Sözleşme bulunamadı");
       if (!checkForm.plannedDate)
         throw new Error("Takvim plan tarihi zorunludur");
-      const checkMonth = `${checkForm.month}-01`;
       const { data: savedCheck, error } = await supabase
         .from("transformer_monthly_checks")
         .upsert(
           {
             contract_id: checkContractId,
-            check_month: checkMonth,
+            check_month: `${checkForm.month}-01`,
             planned_date: checkForm.plannedDate,
             checked_at:
               checkForm.status === "completed"
@@ -160,9 +231,8 @@ function TransformerResponsibilityPage() {
         .select()
         .single();
       if (error) throw error;
-
       const calendarPayload = {
-        title: `Trafo aylık kontrol · ${contract.facility_name}`,
+        title: `Trafo aylık kontrol · ${contract.subscriber_no}`,
         event_type: "plan",
         scheduled_date: checkForm.plannedDate,
         end_date: checkForm.plannedDate,
@@ -200,128 +270,275 @@ function TransformerResponsibilityPage() {
       }
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["transformer-contracts"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["transformer-contracts"],
+      });
       setCheckOpen(false);
       setCheckContractId(null);
       setCheckForm(blankCheck);
       toast.success("Aylık kontrol kaydı güncellendi");
     },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (error) => toast.error(errorMessage(error)),
   });
-  const rows = q.data ?? [];
-  const today = new Date().toISOString().slice(0, 10);
+
+  const setPaid = useMutation({
+    mutationFn: async ({ month, paid }: { month: string; paid: boolean }) => {
+      if (!selectedPaymentContract) throw new Error("Sözleşme seçilemedi");
+      const { error } = await supabase
+        .from("transformer_monthly_payments")
+        .upsert(
+          {
+            contract_id: selectedPaymentContract.id,
+            payment_month: month,
+            expected_amount: selectedPaymentContract.monthly_fee,
+            received_amount: paid ? selectedPaymentContract.monthly_fee : 0,
+            paid_at: paid ? today : null,
+            status: paid ? "paid" : "pending",
+          },
+          { onConflict: "contract_id,payment_month" },
+        );
+      if (error) throw error;
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["transformer-contracts"] }),
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   async function excel() {
-    const wb = new ExcelJS.Workbook(),
-      ws = wb.addWorksheet("Aylık Kontrol Takibi");
-    ws.addRow([
-      "Müşteri",
-      "Tesis",
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Kontrol ve Tahsilat Takibi");
+    worksheet.addRow([
+      "Firma",
+      "Abone No",
+      "Trafo Tipi",
       "Sözleşme Bitiş",
       "Sorumlu Mühendis",
       "Aylık Bedel",
-      "Plan Tarihi",
+      "Ödeme Özeti",
       "Bu Ay Kontrol Durumu",
-      "Kontrol Eden",
-      "İmzalayan",
     ]);
-    rows.forEach((r) => {
-      const c = r.transformer_monthly_checks?.find(
-        (x: { check_month: string }) =>
-          x.check_month.slice(0, 7) === today.slice(0, 7),
+    rows.forEach((contract) => {
+      const currentCheck = contract.transformer_monthly_checks?.find(
+        (item: { check_month: string }) =>
+          item.check_month.slice(0, 7) === today.slice(0, 7),
       );
-      ws.addRow([
-        r.customer_name,
-        r.facility_name,
-        r.contract_end_date,
-        r.responsible_engineer,
-        r.monthly_fee,
-        c?.planned_date ?? "",
-        c?.status ?? "Planlanmadı",
-        c?.checker_name ?? "",
-        c?.signed_by ?? "",
+      const months = contractMonths(
+        contract.contract_start_date,
+        contract.contract_end_date,
+      );
+      const paidCount = contract.transformer_monthly_payments?.filter(
+        (item: { status: string }) => item.status === "paid",
+      ).length;
+      worksheet.addRow([
+        contract.customer_name,
+        contract.subscriber_no,
+        transformerTypeLabels[contract.transformer_type ?? "diger"] ?? "Diğer",
+        contract.contract_end_date,
+        contract.responsible_engineer,
+        contract.monthly_fee,
+        `${paidCount ?? 0}/${months.length} ay ödendi`,
+        currentCheck ? checkStatusLabels[currentCheck.status] : "Kayıt yok",
       ]);
     });
-    ws.columns.forEach((c) => (c.width = 24));
-    const b = new Blob([await wb.xlsx.writeBuffer()], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      }),
-      u = URL.createObjectURL(b),
-      a = document.createElement("a");
-    a.href = u;
-    a.download = "nes-trafo-aylik-kontrol-listesi.xlsx";
-    a.click();
-    URL.revokeObjectURL(u);
+    worksheet.columns.forEach((column) => (column.width = 24));
+    const blob = new Blob([await workbook.xlsx.writeBuffer()], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "nes-trafo-kontrol-ve-tahsilat-listesi.xlsx";
+    link.click();
+    URL.revokeObjectURL(url);
   }
+
   if (!allowed) return <AccessDenied />;
-  if (q.isLoading) return <LoadingState label="Sözleşmeler yükleniyor..." />;
+  if (query.isLoading)
+    return <LoadingState label="Sözleşmeler yükleniyor..." />;
+  const openRenewal = (contract: (typeof rows)[number]) => {
+    const dates = nextContractDates(contract.contract_end_date);
+    setContractForm({
+      companyName: contract.customer_name,
+      subscriberNo: contract.subscriber_no,
+      location: contract.location ?? "",
+      power: contract.transformer_power_kva?.toString() ?? "",
+      transformerType: contract.transformer_type ?? "diger",
+      engineer: contract.responsible_engineer ?? "",
+      start: dates.start,
+      end: dates.end,
+      fee: contract.monthly_fee.toString(),
+      notes: "",
+      renewedFrom: contract.id,
+    });
+    setContractOpen(true);
+  };
+
   return (
     <>
       <PageHeader
         title="Trafo İşletme Sorumluluğu"
-        description="Sözleşme bitişi ve aylık kontrol takip kaydı. Teknik rapor veya resmî imza yerine geçmez."
+        description="Firma sözleşmeleri, aylık tahsilat ve kontrol planı. Teknik rapor veya resmî imza yerine geçmez."
         actions={
           <div className="flex gap-2">
             <Button variant="outline" onClick={excel}>
               <Download className="mr-2 h-4 w-4" />
               Excel Listesi
             </Button>
-            <Button onClick={() => setOpen(true)}>
+            <Button
+              onClick={() => {
+                setContractForm(blankContract);
+                setContractOpen(true);
+              }}
+            >
               <Plus className="mr-2 h-4 w-4" />
               Sözleşme Ekle
             </Button>
           </div>
         }
       />
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={contractOpen} onOpenChange={setContractOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>İşletme sorumluluğu sözleşmesi</DialogTitle>
+            <DialogTitle>
+              {contractForm.renewedFrom ? "Sözleşme yenile" : "Yeni sözleşme"}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
-            {[
-              ["Müşteri / Firma", "customer"],
-              ["Tesis / Trafo adı", "facility"],
-              ["Lokasyon", "location"],
-              ["Trafo gücü (kVA)", "power"],
-              ["Gerilim seviyesi", "voltage"],
-              ["Sorumlu mühendis", "engineer"],
-              ["Aylık bedel", "fee"],
-            ].map(([l, k]) => (
-              <label key={k} className="grid gap-1 text-sm">
-                {l}
-                <Input
-                  value={form[k as keyof typeof form]}
-                  onChange={(e) => setForm({ ...form, [k]: e.target.value })}
-                />
-              </label>
-            ))}
-            <label className="grid gap-1 text-sm">
-              Başlangıç
+            <label className="grid gap-1 text-sm sm:col-span-2">
+              Firma şirket adı
               <Input
-                type="date"
-                value={form.start}
-                onChange={(e) => setForm({ ...form, start: e.target.value })}
+                value={contractForm.companyName}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    companyName: event.target.value,
+                  })
+                }
               />
             </label>
             <label className="grid gap-1 text-sm">
-              Bitiş
+              Abone No
+              <Input
+                value={contractForm.subscriberNo}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    subscriberNo: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Trafo tipi
+              <Select
+                value={contractForm.transformerType}
+                onValueChange={(transformerType) =>
+                  setContractForm({ ...contractForm, transformerType })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(transformerTypeLabels).map(
+                    ([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              Adres / lokasyon
+              <Input
+                value={contractForm.location}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    location: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Trafo gücü (kVA)
+              <Input
+                inputMode="decimal"
+                value={contractForm.power}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    power: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Sorumlu mühendis
+              <Input
+                value={contractForm.engineer}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    engineer: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Aylık bedel
+              <Input
+                inputMode="decimal"
+                value={contractForm.fee}
+                onChange={(event) =>
+                  setContractForm({ ...contractForm, fee: event.target.value })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Sözleşme başlangıcı
               <Input
                 type="date"
-                value={form.end}
-                onChange={(e) => setForm({ ...form, end: e.target.value })}
+                value={contractForm.start}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    start: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Sözleşme bitişi
+              <Input
+                type="date"
+                value={contractForm.end}
+                onChange={(event) =>
+                  setContractForm({ ...contractForm, end: event.target.value })
+                }
               />
             </label>
             <label className="grid gap-1 text-sm sm:col-span-2">
               Not
               <Textarea
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                value={contractForm.notes}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    notes: event.target.value,
+                  })
+                }
               />
             </label>
           </div>
           <DialogFooter>
-            <Button onClick={() => save.mutate()} disabled={save.isPending}>
-              {save.isPending ? "Kaydediliyor..." : "Kaydet"}
+            <Button
+              onClick={() => saveContract.mutate()}
+              disabled={saveContract.isPending}
+            >
+              {saveContract.isPending ? "Kaydediliyor..." : "Sözleşmeyi Kaydet"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -347,8 +564,8 @@ function TransformerResponsibilityPage() {
               <Input
                 type="month"
                 value={checkForm.month}
-                onChange={(e) =>
-                  setCheckForm({ ...checkForm, month: e.target.value })
+                onChange={(event) =>
+                  setCheckForm({ ...checkForm, month: event.target.value })
                 }
               />
             </label>
@@ -357,8 +574,11 @@ function TransformerResponsibilityPage() {
               <Input
                 type="date"
                 value={checkForm.plannedDate}
-                onChange={(e) =>
-                  setCheckForm({ ...checkForm, plannedDate: e.target.value })
+                onChange={(event) =>
+                  setCheckForm({
+                    ...checkForm,
+                    plannedDate: event.target.value,
+                  })
                 }
               />
             </label>
@@ -386,8 +606,8 @@ function TransformerResponsibilityPage() {
               Kontrol eden
               <Input
                 value={checkForm.checker}
-                onChange={(e) =>
-                  setCheckForm({ ...checkForm, checker: e.target.value })
+                onChange={(event) =>
+                  setCheckForm({ ...checkForm, checker: event.target.value })
                 }
               />
             </label>
@@ -395,8 +615,8 @@ function TransformerResponsibilityPage() {
               İmzalayan / onaylayan
               <Input
                 value={checkForm.signer}
-                onChange={(e) =>
-                  setCheckForm({ ...checkForm, signer: e.target.value })
+                onChange={(event) =>
+                  setCheckForm({ ...checkForm, signer: event.target.value })
                 }
               />
             </label>
@@ -404,8 +624,8 @@ function TransformerResponsibilityPage() {
               Not
               <Textarea
                 value={checkForm.notes}
-                onChange={(e) =>
-                  setCheckForm({ ...checkForm, notes: e.target.value })
+                onChange={(event) =>
+                  setCheckForm({ ...checkForm, notes: event.target.value })
                 }
               />
             </label>
@@ -420,106 +640,219 @@ function TransformerResponsibilityPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={paymentsOpen} onOpenChange={setPaymentsOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Aylık ödeme takibi</DialogTitle>
+          </DialogHeader>
+          {selectedPaymentContract && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {selectedPaymentContract.customer_name} · Abone No:{" "}
+                {selectedPaymentContract.subscriber_no}
+              </p>
+              <div className="max-h-[55vh] overflow-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ay</TableHead>
+                      <TableHead>Beklenen bedel</TableHead>
+                      <TableHead>Durum</TableHead>
+                      <TableHead className="text-right">İşlem</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {contractMonths(
+                      selectedPaymentContract.contract_start_date,
+                      selectedPaymentContract.contract_end_date,
+                    ).map((month) => {
+                      const payment =
+                        selectedPaymentContract.transformer_monthly_payments?.find(
+                          (item: { payment_month: string }) =>
+                            item.payment_month === month,
+                        );
+                      const paid = payment?.status === "paid";
+                      return (
+                        <TableRow key={month}>
+                          <TableCell className="capitalize">
+                            {monthLabel(month)}
+                          </TableCell>
+                          <TableCell>
+                            {formatTRY(selectedPaymentContract.monthly_fee)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={paid ? "success" : "secondary"}>
+                              {paid ? "Ödendi" : "Bekliyor"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant={paid ? "outline" : "default"}
+                              disabled={setPaid.isPending}
+                              onClick={() =>
+                                setPaid.mutate({ month, paid: !paid })
+                              }
+                            >
+                              {paid
+                                ? "Ödemeyi Geri Al"
+                                : "Ödendi Olarak İşaretle"}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
       {rows.length === 0 ? (
         <EmptyState
-          title="Kayıtlı trafo sorumluluğu yok"
-          description="İlk tesis sözleşmesini ekleyin."
+          title="Kayıtlı trafo sözleşmesi yok"
+          description="İlk firma ve yıllık sözleşme kaydını ekleyin."
         />
       ) : (
         <section className="surface-panel overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Müşteri / Tesis</TableHead>
+                <TableHead>Firma / Abone No</TableHead>
+                <TableHead>Tip</TableHead>
                 <TableHead>Sözleşme</TableHead>
-                <TableHead>Sorumlu</TableHead>
                 <TableHead>Aylık bedel</TableHead>
+                <TableHead>Ödeme</TableHead>
                 <TableHead>Bu ay kontrol</TableHead>
                 <TableHead>Durum</TableHead>
                 <TableHead className="text-right">İşlem</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>
-                    <p className="font-bold">{r.customer_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {r.facility_name}
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    {r.contract_start_date} – {r.contract_end_date}
-                  </TableCell>
-                  <TableCell>{r.responsible_engineer || "—"}</TableCell>
-                  <TableCell>{formatTRY(r.monthly_fee)}</TableCell>
-                  <TableCell>
-                    {(() => {
-                      const check = r.transformer_monthly_checks?.find(
-                        (item: { check_month: string }) =>
-                          item.check_month.slice(0, 7) === today.slice(0, 7),
-                      );
-                      return check ? (
+              {rows.map((contract) => {
+                const currentCheck = contract.transformer_monthly_checks?.find(
+                  (item: { check_month: string }) =>
+                    item.check_month.slice(0, 7) === today.slice(0, 7),
+                );
+                const months = contractMonths(
+                  contract.contract_start_date,
+                  contract.contract_end_date,
+                );
+                const paidCount = contract.transformer_monthly_payments?.filter(
+                  (item: { status: string }) => item.status === "paid",
+                ).length;
+                const renewalSoon =
+                  daysUntil(contract.contract_end_date, today) >= 0 &&
+                  daysUntil(contract.contract_end_date, today) <= 30;
+                return (
+                  <TableRow key={contract.id}>
+                    <TableCell>
+                      <p className="font-bold">{contract.customer_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Abone No: {contract.subscriber_no}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      {transformerTypeLabels[
+                        contract.transformer_type ?? "diger"
+                      ] ?? "Diğer"}
+                    </TableCell>
+                    <TableCell>
+                      {contract.contract_start_date} –{" "}
+                      {contract.contract_end_date}
+                    </TableCell>
+                    <TableCell>{formatTRY(contract.monthly_fee)}</TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPaymentContractId(contract.id);
+                          setPaymentsOpen(true);
+                        }}
+                      >
+                        <WalletCards className="mr-1 h-4 w-4" />
+                        {paidCount ?? 0}/{months.length}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      {currentCheck ? (
                         <Badge
                           variant={
-                            check.status === "completed"
+                            currentCheck.status === "completed"
                               ? "success"
-                              : check.status === "not_completed"
+                              : currentCheck.status === "not_completed"
                                 ? "destructive"
                                 : "secondary"
                           }
                         >
-                          {checkStatusLabels[check.status]}
+                          {checkStatusLabels[currentCheck.status]}
                         </Badge>
                       ) : (
                         <span className="text-muted-foreground">Kayıt yok</span>
-                      );
-                    })()}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        r.contract_end_date < today ? "destructive" : "success"
-                      }
-                    >
-                      {r.contract_end_date < today ? "Süresi geçti" : "Aktif"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const existing = r.transformer_monthly_checks?.find(
-                          (item: { check_month: string }) =>
-                            item.check_month.slice(0, 7) === today.slice(0, 7),
-                        );
-                        setCheckContractId(r.id);
-                        setCheckForm(
-                          existing
-                            ? {
-                                month: today.slice(0, 7),
-                                plannedDate: existing.planned_date ?? today,
-                                status: existing.status,
-                                checker: existing.checker_name ?? "",
-                                signer: existing.signed_by ?? "",
-                                notes: existing.notes ?? "",
-                              }
-                            : blankCheck,
-                        );
-                        setCheckOpen(true);
-                      }}
-                    >
-                      {r.transformer_monthly_checks?.some(
-                        (item: { check_month: string }) =>
-                          item.check_month.slice(0, 7) === today.slice(0, 7),
-                      )
-                        ? "Kontrolü Güncelle"
-                        : "Kontrol Ekle"}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          contract.contract_end_date < today
+                            ? "destructive"
+                            : renewalSoon
+                              ? "warning"
+                              : "success"
+                        }
+                      >
+                        {contract.contract_end_date < today
+                          ? "Süresi geçti"
+                          : renewalSoon
+                            ? "Yenileme yaklaşıyor"
+                            : "Aktif"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="min-w-[280px] text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const existing =
+                              contract.transformer_monthly_checks?.find(
+                                (item: { check_month: string }) =>
+                                  item.check_month.slice(0, 7) ===
+                                  today.slice(0, 7),
+                              );
+                            setCheckContractId(contract.id);
+                            setCheckForm(
+                              existing
+                                ? {
+                                    month: today.slice(0, 7),
+                                    plannedDate: existing.planned_date ?? today,
+                                    status: existing.status,
+                                    checker: existing.checker_name ?? "",
+                                    signer: existing.signed_by ?? "",
+                                    notes: existing.notes ?? "",
+                                  }
+                                : blankCheck,
+                            );
+                            setCheckOpen(true);
+                          }}
+                        >
+                          Kontrol
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openRenewal(contract)}
+                        >
+                          <RotateCcw className="mr-1 h-4 w-4" />
+                          Yenile
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </section>
