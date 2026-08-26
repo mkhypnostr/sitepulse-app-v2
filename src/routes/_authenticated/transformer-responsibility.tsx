@@ -151,7 +151,19 @@ function TransformerResponsibilityPage() {
       return data;
     },
   });
+  const teamQuery = useQuery({
+    queryKey: ["team", "transformer-control-assignees"],
+    enabled: allowed,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc(
+        "list_operational_team_members",
+      );
+      if (error) throw error;
+      return data;
+    },
+  });
   const rows = useMemo(() => query.data ?? [], [query.data]);
+  const teamMembers = useMemo(() => teamQuery.data ?? [], [teamQuery.data]);
   const today = isoDate(new Date());
   const selectedPaymentContract = useMemo(
     () => rows.find((item) => item.id === paymentContractId) ?? null,
@@ -348,7 +360,12 @@ function TransformerResponsibilityPage() {
             signer: existing.signed_by ?? "",
             notes: existing.notes ?? "",
           }
-        : blankCheck,
+        : {
+            ...blankCheck,
+            month: monthDate.slice(0, 7),
+            plannedDate: monthDate,
+            checker: contract.responsible_engineer ?? "",
+          },
     );
     setCheckOpen(true);
   };
@@ -361,6 +378,7 @@ function TransformerResponsibilityPage() {
     worksheet.addRow([
       "Firma",
       "Abone No",
+      "Adres / Lokasyon",
       "Trafo Tipi",
       "Sözleşme Bitiş",
       "Sorumlu Mühendis",
@@ -383,6 +401,7 @@ function TransformerResponsibilityPage() {
       worksheet.addRow([
         contract.customer_name,
         contract.subscriber_no,
+        contract.location,
         transformerTypeLabels[contract.transformer_type ?? "diger"] ?? "Diğer",
         contract.contract_end_date,
         contract.responsible_engineer,
@@ -423,6 +442,9 @@ function TransformerResponsibilityPage() {
     });
     setContractOpen(true);
   };
+  const checkerSelection =
+    teamMembers.find((member) => member.full_name === checkForm.checker)?.id ??
+    (checkForm.checker ? "manual" : "none");
 
   return (
     <>
@@ -654,8 +676,38 @@ function TransformerResponsibilityPage() {
               </Select>
             </label>
             <label className="grid gap-1 text-sm">
-              Kontrol eden
+              Kontrole gidecek kişi
+              <Select
+                value={checkerSelection}
+                onValueChange={(value) =>
+                  setCheckForm({
+                    ...checkForm,
+                    checker:
+                      value === "none" || value === "manual"
+                        ? ""
+                        : (teamMembers.find((member) => member.id === value)
+                            ?.full_name ?? ""),
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Kişi seçilmedi</SelectItem>
+                  {teamMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.full_name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="manual">Elle isim yaz</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              Kontrol eden adı
               <Input
+                placeholder="Ekip dışı kişi için elle yazın"
                 value={checkForm.checker}
                 onChange={(event) =>
                   setCheckForm({ ...checkForm, checker: event.target.value })
@@ -900,6 +952,11 @@ function TransformerResponsibilityPage() {
                         {contract.contract_start_date} –{" "}
                         {contract.contract_end_date}
                       </p>
+                      {contract.location && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Adres: {contract.location}
+                        </p>
+                      )}
                     </div>
                     <Badge
                       className="h-fit w-fit"
@@ -1042,6 +1099,11 @@ function TransformerResponsibilityPage() {
                       <p className="text-xs text-muted-foreground">
                         Abone No: {contract.subscriber_no}
                       </p>
+                      {contract.location && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {contract.location}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell>
                       {transformerTypeLabels[
