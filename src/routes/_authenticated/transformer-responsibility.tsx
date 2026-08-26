@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import ExcelJS from "exceljs";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,8 @@ import {
   ClipboardCheck,
   Download,
   ExternalLink,
+  FileText,
+  Loader2,
   Plus,
   RotateCcw,
   WalletCards,
@@ -91,6 +93,19 @@ const transformerTypeLabels: Record<string, string> = {
   bina_tipi: "Bina tipi",
   diger: "Diğer",
 };
+const maxControlFormSize = 20 * 1024 * 1024;
+const permittedControlFormMimeTypes = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const controlFormExtensionByMimeType: Record<string, string> = {
+  "application/pdf": "pdf",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 const isDriveFolderUrl = (value: string) =>
   /^https:\/\/drive\.google\.com\//i.test(value);
@@ -135,9 +150,13 @@ function daysUntil(value: string, today: string) {
       86_400_000,
   );
 }
+function safeControlFormFileName(mimeType: string) {
+  const extension = controlFormExtensionByMimeType[mimeType] ?? "file";
+  return `${crypto.randomUUID()}.${extension}`;
+}
 
 function TransformerResponsibilityPage() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const allowed = role === "admin";
   const queryClient = useQueryClient();
   const [contractOpen, setContractOpen] = useState(false);
@@ -145,6 +164,15 @@ function TransformerResponsibilityPage() {
   const [checkOpen, setCheckOpen] = useState(false);
   const [checkContractId, setCheckContractId] = useState<string | null>(null);
   const [checkForm, setCheckForm] = useState(blankCheck);
+  const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
+  const [checkFormFile, setCheckFormFile] = useState<File | null>(null);
+  const [existingCheckFormFile, setExistingCheckFormFile] = useState<{
+    storagePath: string;
+    fileName: string;
+  } | null>(null);
+  const [openingCheckFormId, setOpeningCheckFormId] = useState<string | null>(
+    null,
+  );
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [paymentContractId, setPaymentContractId] = useState<string | null>(
     null,
@@ -296,10 +324,22 @@ function TransformerResponsibilityPage() {
   const saveCheck = useMutation({
     mutationFn: async () => {
       if (!checkContractId) throw new Error("Sözleşme seçilemedi");
+      if (!user) throw new Error("Oturum bulunamadı");
       const contract = rows.find((item) => item.id === checkContractId);
       if (!contract) throw new Error("Sözleşme bulunamadı");
+      if (!checkForm.month) throw new Error("Kontrol ayı zorunludur");
       if (!checkForm.plannedDate)
         throw new Error("Takvim plan tarihi zorunludur");
+      if (checkFormFile && checkFormFile.size > maxControlFormSize)
+        throw new Error("Kontrol formu en fazla 20 MB olabilir");
+      if (
+        checkFormFile &&
+        !permittedControlFormMimeTypes.has(checkFormFile.type)
+      )
+        throw new Error(
+          "Kontrol formu yalnızca PDF, JPG, PNG veya WEBP olabilir",
+        );
+
       const { data: savedCheck, error } = await supabase
         .from("transformer_monthly_checks")
         .upsert(
@@ -358,15 +398,72 @@ function TransformerResponsibilityPage() {
           .eq("id", savedCheck.id);
         if (linkError) throw linkError;
       }
+
+      let oldFileCleanupFailed = false;
+      if (checkFormFile) {
+        const uploadedStoragePath = `contracts/${contract.id}/checks/${checkForm.month}/${safeControlFormFileName(checkFormFile.type)}`;
+        const { error: uploadError } = await supabase.storage
+          .from("transformer-control-forms")
+          .upload(uploadedStoragePath, checkFormFile, {
+            contentType: checkFormFile.type,
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+
+        const { error: formUpdateError } = await supabase
+          .from("transformer_monthly_checks")
+          .update({
+            control_form_storage_path: uploadedStoragePath,
+            control_form_file_name: checkFormFile.name,
+            control_form_mime_type: checkFormFile.type,
+            control_form_size_bytes: checkFormFile.size,
+            control_form_uploaded_at: new Date().toISOString(),
+            control_form_uploaded_by: user.id,
+          })
+          .eq("id", savedCheck.id);
+        if (formUpdateError) {
+          await supabase.storage
+            .from("transformer-control-forms")
+            .remove([uploadedStoragePath]);
+          throw formUpdateError;
+        }
+
+        if (
+          existingCheckFormFile?.storagePath &&
+          existingCheckFormFile.storagePath !== uploadedStoragePath
+        ) {
+          const { error: removeError } = await supabase.storage
+            .from("transformer-control-forms")
+            .remove([existingCheckFormFile.storagePath]);
+          oldFileCleanupFailed = Boolean(removeError);
+        }
+      }
+      return {
+        oldFileCleanupFailed,
+        uploadedForm: Boolean(checkFormFile),
+      };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({
         queryKey: ["transformer-contracts"],
       });
       setCheckOpen(false);
       setCheckContractId(null);
       setCheckForm(blankCheck);
-      toast.success("Aylık kontrol kaydı güncellendi");
+      setEditingCheckId(null);
+      setCheckFormFile(null);
+      setExistingCheckFormFile(null);
+      if (result.oldFileCleanupFailed) {
+        toast.warning(
+          "Kontrol kaydedildi; eski form dosyası depodan temizlenemedi",
+        );
+      } else {
+        toast.success(
+          result.uploadedForm
+            ? "Aylık kontrol ve form dosyası kaydedildi"
+            : "Aylık kontrol kaydı güncellendi",
+        );
+      }
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -502,6 +599,16 @@ function TransformerResponsibilityPage() {
       (item: { check_month: string }) => item.check_month === monthDate,
     );
     setCheckContractId(contract.id);
+    setEditingCheckId(existing?.id ?? null);
+    setCheckFormFile(null);
+    setExistingCheckFormFile(
+      existing?.control_form_storage_path && existing.control_form_file_name
+        ? {
+            storagePath: existing.control_form_storage_path,
+            fileName: existing.control_form_file_name,
+          }
+        : null,
+    );
     setCheckForm(
       existing
         ? {
@@ -524,6 +631,27 @@ function TransformerResponsibilityPage() {
   const openMonthlyCheck = (contract: (typeof rows)[number]) =>
     openCheckForMonth(contract, `${today.slice(0, 7)}-01`);
 
+  const chooseCheckFormFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    setCheckFormFile(file);
+  };
+
+  const openCheckFormFile = async (checkId: string, storagePath: string) => {
+    setOpeningCheckFormId(checkId);
+    try {
+      const { data, error } = await supabase.storage
+        .from("transformer-control-forms")
+        .createSignedUrl(storagePath, 60);
+      if (error) throw error;
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setOpeningCheckFormId(null);
+    }
+  };
+
   async function excel() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Kontrol ve Tahsilat Takibi");
@@ -537,6 +665,7 @@ function TransformerResponsibilityPage() {
       "Aylık Bedel",
       "Ödeme Özeti",
       "Bu Ay Kontrol Durumu",
+      "Bu Ay Kontrol Formu",
     ]);
     rows.forEach((contract) => {
       const currentCheck = contract.transformer_monthly_checks?.find(
@@ -560,6 +689,7 @@ function TransformerResponsibilityPage() {
         contract.monthly_fee,
         `${paidCount ?? 0}/${months.length} ay ödendi`,
         currentCheck ? checkStatusLabels[currentCheck.status] : "Kayıt yok",
+        currentCheck?.control_form_storage_path ? "Yüklendi" : "Yok",
       ]);
     });
     worksheet.columns.forEach((column) => (column.width = 24));
@@ -842,7 +972,12 @@ function TransformerResponsibilityPage() {
         open={checkOpen}
         onOpenChange={(value) => {
           setCheckOpen(value);
-          if (!value) setCheckContractId(null);
+          if (!value) {
+            setCheckContractId(null);
+            setEditingCheckId(null);
+            setCheckFormFile(null);
+            setExistingCheckFormFile(null);
+          }
         }}
       >
         <DialogContent>
@@ -859,6 +994,7 @@ function TransformerResponsibilityPage() {
               <Input
                 type="month"
                 value={checkForm.month}
+                disabled={Boolean(editingCheckId)}
                 onChange={(event) =>
                   setCheckForm({ ...checkForm, month: event.target.value })
                 }
@@ -954,6 +1090,52 @@ function TransformerResponsibilityPage() {
                 }
               />
             </label>
+            <div className="grid gap-1 text-sm sm:col-span-2">
+              <span>Kontrol formu</span>
+              <Input
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/webp"
+                onChange={chooseCheckFormFile}
+                disabled={saveCheck.isPending}
+              />
+              <span className="text-xs text-muted-foreground">
+                PDF, JPG, PNG veya WEBP · en fazla 20 MB
+              </span>
+              {existingCheckFormFile && !checkFormFile && (
+                <span className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>
+                    Mevcut form: {existingCheckFormFile.fileName}. Yeni dosya
+                    seçerseniz mevcut form değiştirilir.
+                  </span>
+                  {editingCheckId && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={openingCheckFormId === editingCheckId}
+                      onClick={() =>
+                        openCheckFormFile(
+                          editingCheckId,
+                          existingCheckFormFile.storagePath,
+                        )
+                      }
+                    >
+                      {openingCheckFormId === editingCheckId ? (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileText className="mr-1 h-4 w-4" />
+                      )}
+                      Mevcut Formu Aç
+                    </Button>
+                  )}
+                </span>
+              )}
+              {checkFormFile && (
+                <span className="text-xs font-medium">
+                  Seçilen dosya: {checkFormFile.name}
+                </span>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -993,6 +1175,7 @@ function TransformerResponsibilityPage() {
                       <TableHead>Plan tarihi</TableHead>
                       <TableHead>Durum</TableHead>
                       <TableHead>Kontrol eden</TableHead>
+                      <TableHead>Form</TableHead>
                       <TableHead className="text-right">İşlem</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1028,6 +1211,30 @@ function TransformerResponsibilityPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>{check?.checker_name ?? "—"}</TableCell>
+                          <TableCell>
+                            {check?.control_form_storage_path ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={openingCheckFormId === check.id}
+                                onClick={() =>
+                                  openCheckFormFile(
+                                    check.id,
+                                    check.control_form_storage_path!,
+                                  )
+                                }
+                              >
+                                {openingCheckFormId === check.id ? (
+                                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FileText className="mr-1 h-4 w-4" />
+                                )}
+                                Formu Aç
+                              </Button>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <Button
                               size="sm"

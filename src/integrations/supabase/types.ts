@@ -1257,6 +1257,12 @@ export type Database = {
       transformer_monthly_checks: {
         Row: {
           calendar_event_id: string | null;
+          control_form_file_name: string | null;
+          control_form_mime_type: string | null;
+          control_form_size_bytes: number | null;
+          control_form_storage_path: string | null;
+          control_form_uploaded_at: string | null;
+          control_form_uploaded_by: string | null;
           id: string;
           contract_id: string;
           check_month: string;
@@ -1270,6 +1276,12 @@ export type Database = {
         };
         Insert: {
           calendar_event_id?: string | null;
+          control_form_file_name?: string | null;
+          control_form_mime_type?: string | null;
+          control_form_size_bytes?: number | null;
+          control_form_storage_path?: string | null;
+          control_form_uploaded_at?: string | null;
+          control_form_uploaded_by?: string | null;
           id?: string;
           contract_id: string;
           check_month: string;
@@ -1283,6 +1295,12 @@ export type Database = {
         };
         Update: {
           calendar_event_id?: string | null;
+          control_form_file_name?: string | null;
+          control_form_mime_type?: string | null;
+          control_form_size_bytes?: number | null;
+          control_form_storage_path?: string | null;
+          control_form_uploaded_at?: string | null;
+          control_form_uploaded_by?: string | null;
           id?: string;
           contract_id?: string;
           check_month?: string;
@@ -1295,6 +1313,13 @@ export type Database = {
           created_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "transformer_monthly_checks_control_form_uploaded_by_fkey";
+            columns: ["control_form_uploaded_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "transformer_monthly_checks_calendar_event_id_fkey";
             columns: ["calendar_event_id"];
