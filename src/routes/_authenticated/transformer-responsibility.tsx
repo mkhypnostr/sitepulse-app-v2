@@ -4,6 +4,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
+  CalendarDays,
   ClipboardCheck,
   Download,
   Plus,
@@ -133,6 +134,9 @@ function TransformerResponsibilityPage() {
     null,
   );
   const [companyDetailId, setCompanyDetailId] = useState<string | null>(null);
+  const [checkHistoryContractId, setCheckHistoryContractId] = useState<
+    string | null
+  >(null);
   const query = useQuery({
     queryKey: ["transformer-contracts"],
     enabled: allowed,
@@ -163,6 +167,10 @@ function TransformerResponsibilityPage() {
     [companyDetailId, rows],
   );
   const selectedCompanyName = selectedCompanyContracts[0]?.customer_name ?? "";
+  const selectedCheckHistoryContract = useMemo(
+    () => rows.find((item) => item.id === checkHistoryContractId) ?? null,
+    [checkHistoryContractId, rows],
+  );
 
   const saveContract = useMutation({
     mutationFn: async () => {
@@ -322,17 +330,19 @@ function TransformerResponsibilityPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const openMonthlyCheck = (contract: (typeof rows)[number]) => {
+  const openCheckForMonth = (
+    contract: (typeof rows)[number],
+    monthDate: string,
+  ) => {
     const existing = contract.transformer_monthly_checks?.find(
-      (item: { check_month: string }) =>
-        item.check_month.slice(0, 7) === today.slice(0, 7),
+      (item: { check_month: string }) => item.check_month === monthDate,
     );
     setCheckContractId(contract.id);
     setCheckForm(
       existing
         ? {
-            month: today.slice(0, 7),
-            plannedDate: existing.planned_date ?? today,
+            month: monthDate.slice(0, 7),
+            plannedDate: existing.planned_date ?? monthDate,
             status: existing.status,
             checker: existing.checker_name ?? "",
             signer: existing.signed_by ?? "",
@@ -342,6 +352,8 @@ function TransformerResponsibilityPage() {
     );
     setCheckOpen(true);
   };
+  const openMonthlyCheck = (contract: (typeof rows)[number]) =>
+    openCheckForMonth(contract, `${today.slice(0, 7)}-01`);
 
   async function excel() {
     const workbook = new ExcelJS.Workbook();
@@ -679,6 +691,94 @@ function TransformerResponsibilityPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={Boolean(checkHistoryContractId)}
+        onOpenChange={(open) => {
+          if (!open) setCheckHistoryContractId(null);
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Aylık kontrol takvimi</DialogTitle>
+          </DialogHeader>
+          {selectedCheckHistoryContract && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {selectedCheckHistoryContract.customer_name} · Abone No:{" "}
+                {selectedCheckHistoryContract.subscriber_no}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Kayıtlar takip içindir; teknik rapor veya resmî imza yerine
+                geçmez.
+              </p>
+              <div className="max-h-[55vh] overflow-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ay</TableHead>
+                      <TableHead>Plan tarihi</TableHead>
+                      <TableHead>Durum</TableHead>
+                      <TableHead>Kontrol eden</TableHead>
+                      <TableHead className="text-right">İşlem</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {contractMonths(
+                      selectedCheckHistoryContract.contract_start_date,
+                      selectedCheckHistoryContract.contract_end_date,
+                    ).map((month) => {
+                      const check =
+                        selectedCheckHistoryContract.transformer_monthly_checks?.find(
+                          (item: { check_month: string }) =>
+                            item.check_month === month,
+                        );
+                      return (
+                        <TableRow key={month}>
+                          <TableCell className="capitalize">
+                            {monthLabel(month)}
+                          </TableCell>
+                          <TableCell>{check?.planned_date ?? "—"}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                check?.status === "completed"
+                                  ? "success"
+                                  : check?.status === "not_completed"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                            >
+                              {check
+                                ? checkStatusLabels[check.status]
+                                : "Kayıt yok"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{check?.checker_name ?? "—"}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setCheckHistoryContractId(null);
+                                openCheckForMonth(
+                                  selectedCheckHistoryContract,
+                                  month,
+                                );
+                              }}
+                            >
+                              {check ? "Düzenle" : "Kontrol Ekle"}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
       <Dialog open={paymentsOpen} onOpenChange={setPaymentsOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
@@ -863,6 +963,17 @@ function TransformerResponsibilityPage() {
                     >
                       <ClipboardCheck className="mr-1 h-4 w-4" />
                       Kontrol Kaydı
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setCompanyDetailId(null);
+                        setCheckHistoryContractId(contract.id);
+                      }}
+                    >
+                      <CalendarDays className="mr-1 h-4 w-4" />
+                      Kontrol Takvimi
                     </Button>
                     <Button
                       size="sm"
