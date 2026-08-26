@@ -1133,14 +1133,37 @@ export type Database = {
         };
         Relationships: [];
       };
+      transformer_companies: {
+        Row: {
+          id: string;
+          company_name: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          company_name: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          company_name?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       transformer_responsibility_contracts: {
         Row: {
           id: string;
+          company_id: string;
           customer_name: string;
-          facility_name: string;
+          subscriber_no: string;
           location: string | null;
           transformer_power_kva: number | null;
-          voltage_level: string | null;
+          transformer_type: string | null;
+          renewed_from_contract_id: string | null;
           responsible_engineer: string | null;
           contract_start_date: string;
           contract_end_date: string;
@@ -1152,11 +1175,13 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          company_id: string;
           customer_name: string;
-          facility_name: string;
+          subscriber_no: string;
           location?: string | null;
           transformer_power_kva?: number | null;
-          voltage_level?: string | null;
+          transformer_type?: string | null;
+          renewed_from_contract_id?: string | null;
           responsible_engineer?: string | null;
           contract_start_date: string;
           contract_end_date: string;
@@ -1168,11 +1193,13 @@ export type Database = {
         };
         Update: {
           id?: string;
+          company_id?: string;
           customer_name?: string;
-          facility_name?: string;
+          subscriber_no?: string;
           location?: string | null;
           transformer_power_kva?: number | null;
-          voltage_level?: string | null;
+          transformer_type?: string | null;
+          renewed_from_contract_id?: string | null;
           responsible_engineer?: string | null;
           contract_start_date?: string;
           contract_end_date?: string;
@@ -1182,7 +1209,22 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "transformer_responsibility_contracts_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "transformer_companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "transformer_responsibility_contracts_renewed_from_contract_id_fkey";
+            columns: ["renewed_from_contract_id"];
+            isOneToOne: false;
+            referencedRelation: "transformer_responsibility_contracts";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       transformer_monthly_checks: {
         Row: {
@@ -1234,6 +1276,53 @@ export type Database = {
           },
           {
             foreignKeyName: "transformer_monthly_checks_contract_id_fkey";
+            columns: ["contract_id"];
+            isOneToOne: false;
+            referencedRelation: "transformer_responsibility_contracts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      transformer_monthly_payments: {
+        Row: {
+          id: string;
+          contract_id: string;
+          payment_month: string;
+          expected_amount: number;
+          received_amount: number;
+          paid_at: string | null;
+          status: string;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          contract_id: string;
+          payment_month: string;
+          expected_amount: number;
+          received_amount?: number;
+          paid_at?: string | null;
+          status?: string;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          contract_id?: string;
+          payment_month?: string;
+          expected_amount?: number;
+          received_amount?: number;
+          paid_at?: string | null;
+          status?: string;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "transformer_monthly_payments_contract_id_fkey";
             columns: ["contract_id"];
             isOneToOne: false;
             referencedRelation: "transformer_responsibility_contracts";
