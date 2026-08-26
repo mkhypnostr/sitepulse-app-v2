@@ -1141,6 +1141,7 @@ export type Database = {
           contact_title: string | null;
           contact_phone: string | null;
           contact_email: string | null;
+          drive_folder_url: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1151,6 +1152,7 @@ export type Database = {
           contact_title?: string | null;
           contact_phone?: string | null;
           contact_email?: string | null;
+          drive_folder_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1161,6 +1163,7 @@ export type Database = {
           contact_title?: string | null;
           contact_phone?: string | null;
           contact_email?: string | null;
+          drive_folder_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1180,6 +1183,7 @@ export type Database = {
           contract_start_date: string;
           contract_end_date: string;
           monthly_fee: number;
+          contract_document_url: string | null;
           status: string;
           notes: string | null;
           created_at: string;
@@ -1198,6 +1202,7 @@ export type Database = {
           contract_start_date: string;
           contract_end_date: string;
           monthly_fee?: number;
+          contract_document_url?: string | null;
           status?: string;
           notes?: string | null;
           created_at?: string;
@@ -1216,6 +1221,7 @@ export type Database = {
           contract_start_date?: string;
           contract_end_date?: string;
           monthly_fee?: number;
+          contract_document_url?: string | null;
           status?: string;
           notes?: string | null;
           created_at?: string;
