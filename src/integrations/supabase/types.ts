@@ -89,6 +89,7 @@ export type Database = {
           scheduled_time: string | null;
           status: string;
           title: string;
+          transformer_contract_id: string | null;
           updated_at: string;
           work_order_id: string | null;
         };
@@ -105,6 +106,7 @@ export type Database = {
           scheduled_time?: string | null;
           status?: string;
           title: string;
+          transformer_contract_id?: string | null;
           updated_at?: string;
           work_order_id?: string | null;
         };
@@ -121,6 +123,7 @@ export type Database = {
           scheduled_time?: string | null;
           status?: string;
           title?: string;
+          transformer_contract_id?: string | null;
           updated_at?: string;
           work_order_id?: string | null;
         };
@@ -151,6 +154,13 @@ export type Database = {
             columns: ["work_order_id"];
             isOneToOne: false;
             referencedRelation: "work_orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "calendar_events_transformer_contract_id_fkey";
+            columns: ["transformer_contract_id"];
+            isOneToOne: false;
+            referencedRelation: "transformer_responsibility_contracts";
             referencedColumns: ["id"];
           },
         ];
@@ -1176,6 +1186,7 @@ export type Database = {
       };
       transformer_monthly_checks: {
         Row: {
+          calendar_event_id: string | null;
           id: string;
           contract_id: string;
           check_month: string;
@@ -1184,9 +1195,11 @@ export type Database = {
           signed_by: string | null;
           status: string;
           notes: string | null;
+          planned_date: string | null;
           created_at: string;
         };
         Insert: {
+          calendar_event_id?: string | null;
           id?: string;
           contract_id: string;
           check_month: string;
@@ -1195,9 +1208,11 @@ export type Database = {
           signed_by?: string | null;
           status?: string;
           notes?: string | null;
+          planned_date?: string | null;
           created_at?: string;
         };
         Update: {
+          calendar_event_id?: string | null;
           id?: string;
           contract_id?: string;
           check_month?: string;
@@ -1206,9 +1221,25 @@ export type Database = {
           signed_by?: string | null;
           status?: string;
           notes?: string | null;
+          planned_date?: string | null;
           created_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "transformer_monthly_checks_calendar_event_id_fkey";
+            columns: ["calendar_event_id"];
+            isOneToOne: false;
+            referencedRelation: "calendar_events";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "transformer_monthly_checks_contract_id_fkey";
+            columns: ["contract_id"];
+            isOneToOne: false;
+            referencedRelation: "transformer_responsibility_contracts";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       measurement_service_records: {
         Row: {
