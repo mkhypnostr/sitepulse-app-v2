@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   CalendarDays,
+  CalendarPlus,
   ClipboardCheck,
   Download,
   ExternalLink,
@@ -114,6 +115,11 @@ function nextContractDates(endDate: string) {
   end.setUTCFullYear(end.getUTCFullYear() + 1);
   end.setUTCDate(end.getUTCDate() - 1);
   return { start: isoDate(start), end: isoDate(end) };
+}
+function renewalReminderDate(endDate: string) {
+  const date = new Date(`${endDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - 30);
+  return isoDate(date);
 }
 function monthLabel(value: string) {
   return new Intl.DateTimeFormat("tr-TR", {
@@ -416,6 +422,51 @@ function TransformerResponsibilityPage() {
       });
       setContractDocumentId(null);
       toast.success("Sözleşme bağlantısı güncellendi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const saveRenewalReminder = useMutation({
+    mutationFn: async (contract: (typeof rows)[number]) => {
+      const scheduledDate = renewalReminderDate(contract.contract_end_date);
+      const payload = {
+        title: `Sözleşme yenileme · ${contract.customer_name}`,
+        event_type: "plan",
+        scheduled_date: scheduledDate,
+        end_date: scheduledDate,
+        notes: `Abone No: ${contract.subscriber_no} · Sözleşme bitişi: ${contract.contract_end_date}`,
+        status: "planned",
+        transformer_contract_id: contract.id,
+      };
+      if (contract.renewal_calendar_event_id) {
+        const { error } = await supabase
+          .from("calendar_events")
+          .update(payload)
+          .eq("id", contract.renewal_calendar_event_id);
+        if (error) throw error;
+        return;
+      }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Oturum bulunamadı");
+      const { data: event, error: eventError } = await supabase
+        .from("calendar_events")
+        .insert({ ...payload, created_by: user.id })
+        .select("id")
+        .single();
+      if (eventError) throw eventError;
+      const { error: contractError } = await supabase
+        .from("transformer_responsibility_contracts")
+        .update({ renewal_calendar_event_id: event.id })
+        .eq("id", contract.id);
+      if (contractError) throw contractError;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["transformer-contracts"],
+      });
+      toast.success("Yenileme planı uygulama takvimine eklendi");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -1302,6 +1353,12 @@ function TransformerResponsibilityPage() {
                         {contract.contract_start_date} –{" "}
                         {contract.contract_end_date}
                       </p>
+                      {contract.renewal_calendar_event_id && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Yenileme planı:{" "}
+                          {renewalReminderDate(contract.contract_end_date)}
+                        </p>
+                      )}
                       {contract.location && (
                         <p className="mt-1 text-sm text-muted-foreground">
                           Adres: {contract.location}
@@ -1381,6 +1438,17 @@ function TransformerResponsibilityPage() {
                     >
                       <CalendarDays className="mr-1 h-4 w-4" />
                       Kontrol Takvimi
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={saveRenewalReminder.isPending}
+                      onClick={() => saveRenewalReminder.mutate(contract)}
+                    >
+                      <CalendarPlus className="mr-1 h-4 w-4" />
+                      {contract.renewal_calendar_event_id
+                        ? "Yenileme Planını Güncelle"
+                        : "Yenilemeyi Takvime Ekle"}
                     </Button>
                     <Button
                       size="sm"
