@@ -1137,18 +1137,30 @@ export type Database = {
         Row: {
           id: string;
           company_name: string;
+          contact_name: string | null;
+          contact_title: string | null;
+          contact_phone: string | null;
+          contact_email: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           company_name: string;
+          contact_name?: string | null;
+          contact_title?: string | null;
+          contact_phone?: string | null;
+          contact_email?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           company_name?: string;
+          contact_name?: string | null;
+          contact_title?: string | null;
+          contact_phone?: string | null;
+          contact_email?: string | null;
           created_at?: string;
           updated_at?: string;
         };

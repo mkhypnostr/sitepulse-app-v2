@@ -55,6 +55,10 @@ export const Route = createFileRoute(
 
 const blankContract = {
   companyName: "",
+  contactName: "",
+  contactTitle: "",
+  contactPhone: "",
+  contactEmail: "",
   subscriberNo: "",
   location: "",
   power: "",
@@ -134,6 +138,13 @@ function TransformerResponsibilityPage() {
     null,
   );
   const [companyDetailId, setCompanyDetailId] = useState<string | null>(null);
+  const [companyContactId, setCompanyContactId] = useState<string | null>(null);
+  const [companyContactForm, setCompanyContactForm] = useState({
+    name: "",
+    title: "",
+    phone: "",
+    email: "",
+  });
   const [checkHistoryContractId, setCheckHistoryContractId] = useState<
     string | null
   >(null);
@@ -144,7 +155,7 @@ function TransformerResponsibilityPage() {
       const { data, error } = await supabase
         .from("transformer_responsibility_contracts")
         .select(
-          "*, transformer_monthly_checks(*), transformer_monthly_payments(*)",
+          "*, transformer_companies(*), transformer_monthly_checks(*), transformer_monthly_payments(*)",
         )
         .order("contract_end_date");
       if (error) throw error;
@@ -179,6 +190,7 @@ function TransformerResponsibilityPage() {
     [companyDetailId, rows],
   );
   const selectedCompanyName = selectedCompanyContracts[0]?.customer_name ?? "";
+  const selectedCompany = selectedCompanyContracts[0]?.transformer_companies;
   const selectedCheckHistoryContract = useMemo(
     () => rows.find((item) => item.id === checkHistoryContractId) ?? null,
     [checkHistoryContractId, rows],
@@ -206,9 +218,26 @@ function TransformerResponsibilityPage() {
       )
         throw new Error("Güç veya aylık bedeli kontrol edin");
       const companyName = contractForm.companyName.trim();
+      const companyContact = {
+        ...(contractForm.contactName.trim()
+          ? { contact_name: contractForm.contactName.trim() }
+          : {}),
+        ...(contractForm.contactTitle.trim()
+          ? { contact_title: contractForm.contactTitle.trim() }
+          : {}),
+        ...(contractForm.contactPhone.trim()
+          ? { contact_phone: contractForm.contactPhone.trim() }
+          : {}),
+        ...(contractForm.contactEmail.trim()
+          ? { contact_email: contractForm.contactEmail.trim().toLowerCase() }
+          : {}),
+      };
       const { data: company, error: companyError } = await supabase
         .from("transformer_companies")
-        .upsert({ company_name: companyName }, { onConflict: "company_name" })
+        .upsert(
+          { company_name: companyName, ...companyContact },
+          { onConflict: "company_name" },
+        )
         .select("id")
         .single();
       if (companyError) throw companyError;
@@ -315,6 +344,33 @@ function TransformerResponsibilityPage() {
       setCheckContractId(null);
       setCheckForm(blankCheck);
       toast.success("Aylık kontrol kaydı güncellendi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const saveCompanyContact = useMutation({
+    mutationFn: async () => {
+      if (!companyContactId) throw new Error("Firma seçilemedi");
+      const email = companyContactForm.email.trim().toLowerCase();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+        throw new Error("Geçerli bir e-posta adresi girin");
+      const { error } = await supabase
+        .from("transformer_companies")
+        .update({
+          contact_name: companyContactForm.name.trim() || null,
+          contact_title: companyContactForm.title.trim() || null,
+          contact_phone: companyContactForm.phone.trim() || null,
+          contact_email: email || null,
+        })
+        .eq("id", companyContactId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["transformer-contracts"],
+      });
+      setCompanyContactId(null);
+      toast.success("Firma iletişim bilgileri güncellendi");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -429,6 +485,10 @@ function TransformerResponsibilityPage() {
     const dates = nextContractDates(contract.contract_end_date);
     setContractForm({
       companyName: contract.customer_name,
+      contactName: contract.transformer_companies?.contact_name ?? "",
+      contactTitle: contract.transformer_companies?.contact_title ?? "",
+      contactPhone: contract.transformer_companies?.contact_phone ?? "",
+      contactEmail: contract.transformer_companies?.contact_email ?? "",
       subscriberNo: contract.subscriber_no,
       location: contract.location ?? "",
       power: contract.transformer_power_kva?.toString() ?? "",
@@ -485,6 +545,57 @@ function TransformerResponsibilityPage() {
                   setContractForm({
                     ...contractForm,
                     companyName: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Firma yetkilisi
+              <Input
+                value={contractForm.contactName}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    contactName: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Yetkili unvanı
+              <Input
+                placeholder="Örn. İşletme müdürü"
+                value={contractForm.contactTitle}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    contactTitle: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Muhatap telefon numarası
+              <Input
+                inputMode="tel"
+                value={contractForm.contactPhone}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    contactPhone: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Yetkili e-posta
+              <Input
+                type="email"
+                value={contractForm.contactEmail}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    contactEmail: event.target.value,
                   })
                 }
               />
@@ -901,6 +1012,78 @@ function TransformerResponsibilityPage() {
         </DialogContent>
       </Dialog>
       <Dialog
+        open={Boolean(companyContactId)}
+        onOpenChange={(open) => {
+          if (!open) setCompanyContactId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Firma yetkilisi iletişim bilgileri</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 text-sm">
+              Yetkili adı
+              <Input
+                value={companyContactForm.name}
+                onChange={(event) =>
+                  setCompanyContactForm({
+                    ...companyContactForm,
+                    name: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Unvanı
+              <Input
+                value={companyContactForm.title}
+                onChange={(event) =>
+                  setCompanyContactForm({
+                    ...companyContactForm,
+                    title: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Muhatap telefon numarası
+              <Input
+                inputMode="tel"
+                value={companyContactForm.phone}
+                onChange={(event) =>
+                  setCompanyContactForm({
+                    ...companyContactForm,
+                    phone: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              E-posta
+              <Input
+                type="email"
+                value={companyContactForm.email}
+                onChange={(event) =>
+                  setCompanyContactForm({
+                    ...companyContactForm,
+                    email: event.target.value,
+                  })
+                }
+              />
+            </label>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => saveCompanyContact.mutate()}
+              disabled={saveCompanyContact.isPending}
+            >
+              {saveCompanyContact.isPending ? "Kaydediliyor..." : "Kaydet"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={Boolean(companyDetailId)}
         onOpenChange={(open) => {
           if (!open) setCompanyDetailId(null);
@@ -917,6 +1100,49 @@ function TransformerResponsibilityPage() {
             Bu firmaya ait yıllık sözleşme geçmişi, tahsilat ve bu ayın kontrol
             durumu.
           </p>
+          {selectedCompany && (
+            <section className="rounded-lg border bg-muted/30 p-4">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row">
+                <div>
+                  <p className="text-sm font-medium">Firma yetkilisi</p>
+                  {selectedCompany.contact_name ? (
+                    <p className="mt-1">
+                      {selectedCompany.contact_name}
+                      {selectedCompany.contact_title
+                        ? ` · ${selectedCompany.contact_title}`
+                        : ""}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Yetkili bilgisi eklenmedi.
+                    </p>
+                  )}
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {selectedCompany.contact_phone || "Telefon kaydı yok"}
+                    {selectedCompany.contact_email
+                      ? ` · ${selectedCompany.contact_email}`
+                      : ""}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setCompanyContactForm({
+                      name: selectedCompany.contact_name ?? "",
+                      title: selectedCompany.contact_title ?? "",
+                      phone: selectedCompany.contact_phone ?? "",
+                      email: selectedCompany.contact_email ?? "",
+                    });
+                    setCompanyContactId(selectedCompany.id);
+                    setCompanyDetailId(null);
+                  }}
+                >
+                  İletişimi Düzenle
+                </Button>
+              </div>
+            </section>
+          )}
           <div className="max-h-[65vh] space-y-3 overflow-auto pr-1">
             {selectedCompanyContracts.map((contract) => {
               const months = contractMonths(
@@ -1102,6 +1328,14 @@ function TransformerResponsibilityPage() {
                       {contract.location && (
                         <p className="mt-1 text-xs text-muted-foreground">
                           {contract.location}
+                        </p>
+                      )}
+                      {contract.transformer_companies?.contact_name && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Yetkili: {contract.transformer_companies.contact_name}
+                          {contract.transformer_companies.contact_phone
+                            ? ` · ${contract.transformer_companies.contact_phone}`
+                            : ""}
                         </p>
                       )}
                     </TableCell>
