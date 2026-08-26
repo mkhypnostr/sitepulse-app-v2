@@ -58,6 +58,7 @@ const blank = {
 };
 const blankCheck = {
   month: new Date().toISOString().slice(0, 7),
+  plannedDate: new Date().toISOString().slice(0, 10),
   status: "planned",
   checker: "",
   signer: "",
@@ -133,13 +134,18 @@ function TransformerResponsibilityPage() {
   const saveCheck = useMutation({
     mutationFn: async () => {
       if (!checkContractId) throw new Error("Sözleşme seçilemedi");
+      const contract = rows.find((item) => item.id === checkContractId);
+      if (!contract) throw new Error("Sözleşme bulunamadı");
+      if (!checkForm.plannedDate)
+        throw new Error("Takvim plan tarihi zorunludur");
       const checkMonth = `${checkForm.month}-01`;
-      const { error } = await supabase
+      const { data: savedCheck, error } = await supabase
         .from("transformer_monthly_checks")
         .upsert(
           {
             contract_id: checkContractId,
             check_month: checkMonth,
+            planned_date: checkForm.plannedDate,
             checked_at:
               checkForm.status === "completed"
                 ? new Date().toISOString()
@@ -150,8 +156,48 @@ function TransformerResponsibilityPage() {
             notes: checkForm.notes.trim() || null,
           },
           { onConflict: "contract_id,check_month" },
-        );
+        )
+        .select()
+        .single();
       if (error) throw error;
+
+      const calendarPayload = {
+        title: `Trafo aylık kontrol · ${contract.facility_name}`,
+        event_type: "plan",
+        scheduled_date: checkForm.plannedDate,
+        end_date: checkForm.plannedDate,
+        notes: `${contract.customer_name} · ${checkForm.month} aylık kontrol takibi`,
+        status:
+          checkForm.status === "completed"
+            ? "completed"
+            : checkForm.status === "not_completed"
+              ? "cancelled"
+              : "planned",
+        transformer_contract_id: contract.id,
+      };
+      if (savedCheck.calendar_event_id) {
+        const { error: calendarError } = await supabase
+          .from("calendar_events")
+          .update(calendarPayload)
+          .eq("id", savedCheck.calendar_event_id);
+        if (calendarError) throw calendarError;
+      } else {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) throw new Error("Oturum bulunamadı");
+        const { data: calendarEvent, error: calendarError } = await supabase
+          .from("calendar_events")
+          .insert({ ...calendarPayload, created_by: user.id })
+          .select("id")
+          .single();
+        if (calendarError) throw calendarError;
+        const { error: linkError } = await supabase
+          .from("transformer_monthly_checks")
+          .update({ calendar_event_id: calendarEvent.id })
+          .eq("id", savedCheck.id);
+        if (linkError) throw linkError;
+      }
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["transformer-contracts"] });
@@ -173,6 +219,7 @@ function TransformerResponsibilityPage() {
       "Sözleşme Bitiş",
       "Sorumlu Mühendis",
       "Aylık Bedel",
+      "Plan Tarihi",
       "Bu Ay Kontrol Durumu",
       "Kontrol Eden",
       "İmzalayan",
@@ -188,6 +235,7 @@ function TransformerResponsibilityPage() {
         r.contract_end_date,
         r.responsible_engineer,
         r.monthly_fee,
+        c?.planned_date ?? "",
         c?.status ?? "Planlanmadı",
         c?.checker_name ?? "",
         c?.signed_by ?? "",
@@ -301,6 +349,16 @@ function TransformerResponsibilityPage() {
                 value={checkForm.month}
                 onChange={(e) =>
                   setCheckForm({ ...checkForm, month: e.target.value })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Takvim plan tarihi
+              <Input
+                type="date"
+                value={checkForm.plannedDate}
+                onChange={(e) =>
+                  setCheckForm({ ...checkForm, plannedDate: e.target.value })
                 }
               />
             </label>
@@ -441,6 +499,7 @@ function TransformerResponsibilityPage() {
                           existing
                             ? {
                                 month: today.slice(0, 7),
+                                plannedDate: existing.planned_date ?? today,
                                 status: existing.status,
                                 checker: existing.checker_name ?? "",
                                 signer: existing.signed_by ?? "",
