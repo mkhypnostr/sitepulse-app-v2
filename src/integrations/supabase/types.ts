@@ -1179,6 +1179,7 @@ export type Database = {
           transformer_power_kva: number | null;
           transformer_type: string | null;
           renewed_from_contract_id: string | null;
+          renewal_calendar_event_id: string | null;
           responsible_engineer: string | null;
           contract_start_date: string;
           contract_end_date: string;
@@ -1198,6 +1199,7 @@ export type Database = {
           transformer_power_kva?: number | null;
           transformer_type?: string | null;
           renewed_from_contract_id?: string | null;
+          renewal_calendar_event_id?: string | null;
           responsible_engineer?: string | null;
           contract_start_date: string;
           contract_end_date: string;
@@ -1217,6 +1219,7 @@ export type Database = {
           transformer_power_kva?: number | null;
           transformer_type?: string | null;
           renewed_from_contract_id?: string | null;
+          renewal_calendar_event_id?: string | null;
           responsible_engineer?: string | null;
           contract_start_date?: string;
           contract_end_date?: string;
@@ -1240,6 +1243,13 @@ export type Database = {
             columns: ["renewed_from_contract_id"];
             isOneToOne: false;
             referencedRelation: "transformer_responsibility_contracts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "transformer_responsibility_contracts_renewal_calendar_event_id_fkey";
+            columns: ["renewal_calendar_event_id"];
+            isOneToOne: false;
+            referencedRelation: "calendar_events";
             referencedColumns: ["id"];
           },
         ];
