@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   Download,
+  ExternalLink,
   Plus,
   RotateCcw,
   WalletCards,
@@ -59,6 +60,7 @@ const blankContract = {
   contactTitle: "",
   contactPhone: "",
   contactEmail: "",
+  contractDocumentUrl: "",
   subscriberNo: "",
   location: "",
   power: "",
@@ -89,6 +91,10 @@ const transformerTypeLabels: Record<string, string> = {
   diger: "Diğer",
 };
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
+const isDriveFolderUrl = (value: string) =>
+  /^https:\/\/drive\.google\.com\//i.test(value);
+const isDriveDocumentUrl = (value: string) =>
+  /^https:\/\/(drive|docs)\.google\.com\//i.test(value);
 function contractMonths(start: string, end: string) {
   const result: string[] = [];
   const cursor = new Date(`${start}T12:00:00Z`);
@@ -144,7 +150,12 @@ function TransformerResponsibilityPage() {
     title: "",
     phone: "",
     email: "",
+    driveFolderUrl: "",
   });
+  const [contractDocumentId, setContractDocumentId] = useState<string | null>(
+    null,
+  );
+  const [contractDocumentUrl, setContractDocumentUrl] = useState("");
   const [checkHistoryContractId, setCheckHistoryContractId] = useState<
     string | null
   >(null);
@@ -232,6 +243,11 @@ function TransformerResponsibilityPage() {
           ? { contact_email: contractForm.contactEmail.trim().toLowerCase() }
           : {}),
       };
+      const documentUrl = contractForm.contractDocumentUrl.trim();
+      if (documentUrl && !isDriveDocumentUrl(documentUrl))
+        throw new Error(
+          "Sözleşme dosyası için geçerli bir Google Drive bağlantısı girin",
+        );
       const { data: company, error: companyError } = await supabase
         .from("transformer_companies")
         .upsert(
@@ -254,6 +270,7 @@ function TransformerResponsibilityPage() {
           contract_start_date: contractForm.start,
           contract_end_date: contractForm.end,
           monthly_fee: fee,
+          contract_document_url: documentUrl || null,
           notes: contractForm.notes.trim() || null,
           renewed_from_contract_id: contractForm.renewedFrom,
         });
@@ -352,8 +369,13 @@ function TransformerResponsibilityPage() {
     mutationFn: async () => {
       if (!companyContactId) throw new Error("Firma seçilemedi");
       const email = companyContactForm.email.trim().toLowerCase();
+      const folderUrl = companyContactForm.driveFolderUrl.trim();
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
         throw new Error("Geçerli bir e-posta adresi girin");
+      if (folderUrl && !isDriveFolderUrl(folderUrl))
+        throw new Error(
+          "Firma klasörü için geçerli bir Google Drive bağlantısı girin",
+        );
       const { error } = await supabase
         .from("transformer_companies")
         .update({
@@ -361,6 +383,7 @@ function TransformerResponsibilityPage() {
           contact_title: companyContactForm.title.trim() || null,
           contact_phone: companyContactForm.phone.trim() || null,
           contact_email: email || null,
+          drive_folder_url: folderUrl || null,
         })
         .eq("id", companyContactId);
       if (error) throw error;
@@ -371,6 +394,28 @@ function TransformerResponsibilityPage() {
       });
       setCompanyContactId(null);
       toast.success("Firma iletişim bilgileri güncellendi");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const saveContractDocument = useMutation({
+    mutationFn: async () => {
+      if (!contractDocumentId) throw new Error("Sözleşme seçilemedi");
+      const url = contractDocumentUrl.trim();
+      if (url && !isDriveDocumentUrl(url))
+        throw new Error("Geçerli bir Google Drive sözleşme bağlantısı girin");
+      const { error } = await supabase
+        .from("transformer_responsibility_contracts")
+        .update({ contract_document_url: url || null })
+        .eq("id", contractDocumentId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["transformer-contracts"],
+      });
+      setContractDocumentId(null);
+      toast.success("Sözleşme bağlantısı güncellendi");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -489,6 +534,7 @@ function TransformerResponsibilityPage() {
       contactTitle: contract.transformer_companies?.contact_title ?? "",
       contactPhone: contract.transformer_companies?.contact_phone ?? "",
       contactEmail: contract.transformer_companies?.contact_email ?? "",
+      contractDocumentUrl: "",
       subscriberNo: contract.subscriber_no,
       location: contract.location ?? "",
       power: contract.transformer_power_kva?.toString() ?? "",
@@ -701,6 +747,20 @@ function TransformerResponsibilityPage() {
                 value={contractForm.end}
                 onChange={(event) =>
                   setContractForm({ ...contractForm, end: event.target.value })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm sm:col-span-2">
+              İmzalı sözleşme Drive bağlantısı (opsiyonel)
+              <Input
+                type="url"
+                placeholder="https://drive.google.com/..."
+                value={contractForm.contractDocumentUrl}
+                onChange={(event) =>
+                  setContractForm({
+                    ...contractForm,
+                    contractDocumentUrl: event.target.value,
+                  })
                 }
               />
             </label>
@@ -1012,6 +1072,38 @@ function TransformerResponsibilityPage() {
         </DialogContent>
       </Dialog>
       <Dialog
+        open={Boolean(contractDocumentId)}
+        onOpenChange={(open) => {
+          if (!open) setContractDocumentId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>İmzalı sözleşme Drive bağlantısı</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Bu bağlantı yalnızca ilgili yıllık sözleşmeye aittir.
+          </p>
+          <label className="grid gap-1 text-sm">
+            Google Drive / Doküman bağlantısı
+            <Input
+              type="url"
+              placeholder="https://drive.google.com/..."
+              value={contractDocumentUrl}
+              onChange={(event) => setContractDocumentUrl(event.target.value)}
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              onClick={() => saveContractDocument.mutate()}
+              disabled={saveContractDocument.isPending}
+            >
+              {saveContractDocument.isPending ? "Kaydediliyor..." : "Kaydet"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
         open={Boolean(companyContactId)}
         onOpenChange={(open) => {
           if (!open) setCompanyContactId(null);
@@ -1019,7 +1111,7 @@ function TransformerResponsibilityPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Firma yetkilisi iletişim bilgileri</DialogTitle>
+            <DialogTitle>Firma iletişim ve Drive bilgileri</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm">
@@ -1068,6 +1160,20 @@ function TransformerResponsibilityPage() {
                   setCompanyContactForm({
                     ...companyContactForm,
                     email: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label className="grid gap-1 text-sm sm:col-span-2">
+              Firma Drive klasörü bağlantısı
+              <Input
+                type="url"
+                placeholder="https://drive.google.com/..."
+                value={companyContactForm.driveFolderUrl}
+                onChange={(event) =>
+                  setCompanyContactForm({
+                    ...companyContactForm,
+                    driveFolderUrl: event.target.value,
                   })
                 }
               />
@@ -1123,6 +1229,23 @@ function TransformerResponsibilityPage() {
                       ? ` · ${selectedCompany.contact_email}`
                       : ""}
                   </p>
+                  {selectedCompany.drive_folder_url && (
+                    <Button
+                      asChild
+                      className="mt-3"
+                      size="sm"
+                      variant="outline"
+                    >
+                      <a
+                        href={selectedCompany.drive_folder_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="mr-1 h-4 w-4" />
+                        Firma Klasörünü Aç
+                      </a>
+                    </Button>
+                  )}
                 </div>
                 <Button
                   size="sm"
@@ -1133,6 +1256,7 @@ function TransformerResponsibilityPage() {
                       title: selectedCompany.contact_title ?? "",
                       phone: selectedCompany.contact_phone ?? "",
                       email: selectedCompany.contact_email ?? "",
+                      driveFolderUrl: selectedCompany.drive_folder_url ?? "",
                     });
                     setCompanyContactId(selectedCompany.id);
                     setCompanyDetailId(null);
@@ -1258,6 +1382,31 @@ function TransformerResponsibilityPage() {
                       <CalendarDays className="mr-1 h-4 w-4" />
                       Kontrol Takvimi
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setContractDocumentUrl(
+                          contract.contract_document_url ?? "",
+                        );
+                        setContractDocumentId(contract.id);
+                        setCompanyDetailId(null);
+                      }}
+                    >
+                      Sözleşme Bağlantısı
+                    </Button>
+                    {contract.contract_document_url && (
+                      <Button asChild size="sm" variant="outline">
+                        <a
+                          href={contract.contract_document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <ExternalLink className="mr-1 h-4 w-4" />
+                          Sözleşmeyi Aç
+                        </a>
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
