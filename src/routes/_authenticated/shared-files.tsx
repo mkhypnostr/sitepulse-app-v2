@@ -64,7 +64,7 @@ function SharedFilesPage() {
       <PageHeader
         title="Ortak Dosyalar"
         description="NES Ortak Drive'larına tek yerden geçin. Proje detayındaki Drive düğmesi ise doğrudan o projenin klasörünü açar."
-        action={
+        actions={
           <Button
             variant="outline"
             onClick={() => workspaceQuery.refetch()}
