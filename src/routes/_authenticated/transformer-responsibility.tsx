@@ -111,6 +111,12 @@ const isDriveFolderUrl = (value: string) =>
   /^https:\/\/drive\.google\.com\//i.test(value);
 const isDriveDocumentUrl = (value: string) =>
   /^https:\/\/(drive|docs)\.google\.com\//i.test(value);
+type MonthlyCheckSummary = {
+  status: string;
+  planned_date?: string | null;
+  control_form_storage_path?: string | null;
+};
+
 function contractMonths(start: string, end: string) {
   const result: string[] = [];
   const cursor = new Date(`${start}T12:00:00Z`);
@@ -142,6 +148,58 @@ function monthLabel(value: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${value}T12:00:00Z`));
+}
+function monthEndDate(monthStart: string) {
+  const date = new Date(`${monthStart}T12:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() + 1);
+  date.setUTCDate(0);
+  return isoDate(date);
+}
+function monthlyCheckDisplay(
+  check: MonthlyCheckSummary | undefined,
+  today: string,
+) {
+  if (!check)
+    return {
+      label: "Bu ay için plan yok",
+      variant: "warning" as const,
+      actionRequired: true,
+      priority: 1,
+    };
+  if (check.status === "not_completed")
+    return {
+      label: "Kontrol yapılmadı",
+      variant: "destructive" as const,
+      actionRequired: true,
+      priority: 2,
+    };
+  if (
+    check.status === "planned" &&
+    check.planned_date &&
+    check.planned_date < today
+  )
+    return {
+      label: "Plan tarihi geçti",
+      variant: "destructive" as const,
+      actionRequired: true,
+      priority: 3,
+    };
+  if (check.status === "completed" && !check.control_form_storage_path)
+    return {
+      label: "Kontrol formu eksik",
+      variant: "warning" as const,
+      actionRequired: true,
+      priority: 4,
+    };
+  return {
+    label: checkStatusLabels[check.status] ?? check.status,
+    variant:
+      check.status === "completed"
+        ? ("success" as const)
+        : ("secondary" as const),
+    actionRequired: false,
+    priority: 5,
+  };
 }
 function daysUntil(value: string, today: string) {
   return Math.ceil(
@@ -221,6 +279,46 @@ function TransformerResponsibilityPage() {
   const rows = useMemo(() => query.data ?? [], [query.data]);
   const teamMembers = useMemo(() => teamQuery.data ?? [], [teamQuery.data]);
   const today = isoDate(new Date());
+  const currentMonthStart = `${today.slice(0, 7)}-01`;
+  const currentMonthEnd = monthEndDate(currentMonthStart);
+  const currentMonthTracking = useMemo(() => {
+    const activeContracts = rows.filter(
+      (contract) =>
+        contract.contract_start_date <= currentMonthEnd &&
+        contract.contract_end_date >= currentMonthStart,
+    );
+    const summaries = activeContracts.map((contract) => {
+      const check = contract.transformer_monthly_checks?.find(
+        (item: { check_month: string }) =>
+          item.check_month.slice(0, 7) === today.slice(0, 7),
+      );
+      return {
+        contract,
+        check,
+        display: monthlyCheckDisplay(check, today),
+      };
+    });
+    return {
+      activeCount: activeContracts.length,
+      plannedCount: summaries.filter(({ check }) => check?.status === "planned")
+        .length,
+      completedWithFormCount: summaries.filter(
+        ({ check }) =>
+          check?.status === "completed" &&
+          Boolean(check.control_form_storage_path),
+      ).length,
+      actions: summaries
+        .filter(({ display }) => display.actionRequired)
+        .sort(
+          (left, right) =>
+            left.display.priority - right.display.priority ||
+            left.contract.customer_name.localeCompare(
+              right.contract.customer_name,
+              "tr",
+            ),
+        ),
+    };
+  }, [currentMonthEnd, currentMonthStart, rows, today]);
   const selectedPaymentContract = useMemo(
     () => rows.find((item) => item.id === paymentContractId) ?? null,
     [paymentContractId, rows],
@@ -594,6 +692,7 @@ function TransformerResponsibilityPage() {
   const openCheckForMonth = (
     contract: (typeof rows)[number],
     monthDate: string,
+    defaultPlannedDate = monthDate,
   ) => {
     const existing = contract.transformer_monthly_checks?.find(
       (item: { check_month: string }) => item.check_month === monthDate,
@@ -622,14 +721,14 @@ function TransformerResponsibilityPage() {
         : {
             ...blankCheck,
             month: monthDate.slice(0, 7),
-            plannedDate: monthDate,
+            plannedDate: defaultPlannedDate,
             checker: contract.responsible_engineer ?? "",
           },
     );
     setCheckOpen(true);
   };
   const openMonthlyCheck = (contract: (typeof rows)[number]) =>
-    openCheckForMonth(contract, `${today.slice(0, 7)}-01`);
+    openCheckForMonth(contract, `${today.slice(0, 7)}-01`, today);
 
   const chooseCheckFormFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -756,6 +855,89 @@ function TransformerResponsibilityPage() {
           </div>
         }
       />
+      {rows.length > 0 && (
+        <section className="surface-panel mb-6 p-4">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="font-semibold">Bu Ay Kontrol Takibi</h2>
+              <p className="text-sm capitalize text-muted-foreground">
+                {monthLabel(currentMonthStart)} · aktif sözleşmeler
+              </p>
+            </div>
+            <Badge
+              variant={
+                currentMonthTracking.actions.length > 0 ? "warning" : "success"
+              }
+            >
+              {currentMonthTracking.actions.length > 0
+                ? `${currentMonthTracking.actions.length} aksiyon bekliyor`
+                : "Aylık takip güncel"}
+            </Badge>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Aktif sözleşme</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
+                {currentMonthTracking.activeCount}
+              </p>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Takvimde planlı</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
+                {currentMonthTracking.plannedCount}
+              </p>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Tamamlandı + form</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
+                {currentMonthTracking.completedWithFormCount}
+              </p>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Aksiyon gerekiyor</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">
+                {currentMonthTracking.actions.length}
+              </p>
+            </div>
+          </div>
+
+          {currentMonthTracking.actions.length > 0 && (
+            <div className="mt-4 overflow-hidden rounded-md border">
+              {currentMonthTracking.actions.map(
+                ({ contract, check, display }) => (
+                  <div
+                    key={contract.id}
+                    className="flex flex-col justify-between gap-3 border-b p-3 last:border-b-0 sm:flex-row sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{contract.customer_name}</p>
+                        <Badge variant={display.variant}>{display.label}</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Abone No: {contract.subscriber_no}
+                        {contract.location ? ` · ${contract.location}` : ""}
+                        {check?.planned_date
+                          ? ` · Plan: ${check.planned_date}`
+                          : ""}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openMonthlyCheck(contract)}
+                    >
+                      <ClipboardCheck className="mr-1 h-4 w-4" />
+                      {check ? "Kaydı Aç" : "Planla"}
+                    </Button>
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+        </section>
+      )}
       <Dialog open={contractOpen} onOpenChange={setContractOpen}>
         <DialogContent>
           <DialogHeader>
@@ -1538,6 +1720,10 @@ function TransformerResponsibilityPage() {
                 (item: { check_month: string }) =>
                   item.check_month.slice(0, 7) === today.slice(0, 7),
               );
+              const currentCheckDisplay = monthlyCheckDisplay(
+                currentCheck,
+                today,
+              );
               const renewalSoon =
                 daysUntil(contract.contract_end_date, today) >= 0 &&
                 daysUntil(contract.contract_end_date, today) <= 30;
@@ -1605,9 +1791,7 @@ function TransformerResponsibilityPage() {
                     <div className="rounded-md bg-muted/50 p-3">
                       <p className="text-muted-foreground">Bu ay kontrol</p>
                       <p className="mt-1 font-semibold">
-                        {currentCheck
-                          ? checkStatusLabels[currentCheck.status]
-                          : "Kayıt yok"}
+                        {currentCheckDisplay.label}
                       </p>
                     </div>
                   </div>
@@ -1726,6 +1910,10 @@ function TransformerResponsibilityPage() {
                   (item: { check_month: string }) =>
                     item.check_month.slice(0, 7) === today.slice(0, 7),
                 );
+                const currentCheckDisplay = monthlyCheckDisplay(
+                  currentCheck,
+                  today,
+                );
                 const months = contractMonths(
                   contract.contract_start_date,
                   contract.contract_end_date,
@@ -1787,21 +1975,9 @@ function TransformerResponsibilityPage() {
                       </Button>
                     </TableCell>
                     <TableCell>
-                      {currentCheck ? (
-                        <Badge
-                          variant={
-                            currentCheck.status === "completed"
-                              ? "success"
-                              : currentCheck.status === "not_completed"
-                                ? "destructive"
-                                : "secondary"
-                          }
-                        >
-                          {checkStatusLabels[currentCheck.status]}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">Kayıt yok</span>
-                      )}
+                      <Badge variant={currentCheckDisplay.variant}>
+                        {currentCheckDisplay.label}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge
