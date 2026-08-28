@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -51,6 +51,10 @@ export const Route = createFileRoute("/_authenticated/work-orders")({
     create: search.create === true || search.create === "true",
     projectId:
       typeof search.projectId === "string" ? search.projectId : undefined,
+    serviceRequestId:
+      typeof search.serviceRequestId === "string"
+        ? search.serviceRequestId
+        : undefined,
   }),
   component: WorkOrdersPage,
 });
@@ -59,9 +63,10 @@ function WorkOrdersPage() {
   const { role } = useAuth();
   const canManage = isOperationalManager(role);
   const canSeeAmounts = canSeeFinancials(role);
-  const { create, projectId } = Route.useSearch();
+  const { create, projectId, serviceRequestId } = Route.useSearch();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const prefilledServiceRequestId = useRef<string | null>(null);
   const [open, setOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -95,7 +100,7 @@ function WorkOrdersPage() {
   });
 
   const pageQuery = useQuery({
-    queryKey: ["admin-work-orders"],
+    queryKey: ["admin-work-orders", serviceRequestId],
     enabled: canManage,
     queryFn: async () => {
       const [
@@ -104,6 +109,7 @@ function WorkOrdersPage() {
         projectsResult,
         assigneesResult,
         assignmentsResult,
+        serviceRequestResult,
       ] = await Promise.all([
         supabase
           .from("work_orders")
@@ -130,12 +136,22 @@ function WorkOrdersPage() {
         supabase
           .from("work_order_assignments")
           .select("work_order_id, contractor_id"),
+        serviceRequestId
+          ? supabase
+              .from("technical_service_requests")
+              .select(
+                "id, customer_id, title, description, location, location_url, status, converted_work_order_id",
+              )
+              .eq("id", serviceRequestId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
       ]);
       if (ordersResult.error) throw ordersResult.error;
       if (customersResult.error) throw customersResult.error;
       if (projectsResult.error) throw projectsResult.error;
       if (assigneesResult.error) throw assigneesResult.error;
       if (assignmentsResult.error) throw assignmentsResult.error;
+      if (serviceRequestResult.error) throw serviceRequestResult.error;
 
       return {
         orders: ordersResult.data,
@@ -143,6 +159,7 @@ function WorkOrdersPage() {
         projects: projectsResult.data,
         assignees: assigneesResult.data ?? [],
         assignments: assignmentsResult.data,
+        serviceRequest: serviceRequestResult.data,
       };
     },
   });
@@ -196,6 +213,35 @@ function WorkOrdersPage() {
       billingAddress: projectCustomer?.billing_address ?? "",
     }));
   }, [pageQuery.data, projectId]);
+
+  useEffect(() => {
+    const request = pageQuery.data?.serviceRequest;
+    if (
+      !serviceRequestId ||
+      !request ||
+      prefilledServiceRequestId.current === serviceRequestId
+    ) {
+      return;
+    }
+    const requestCustomer = pageQuery.data?.customers.find(
+      (customer) => customer.id === request.customer_id,
+    );
+    setForm((current) => ({
+      ...current,
+      projectId: "",
+      customerId: request.customer_id,
+      title: request.title,
+      description: `${request.description}\n\nTalep konumu: ${request.location}`,
+      locationUrl: request.location_url ?? "",
+      showToCustomer: true,
+      billingTitle: requestCustomer?.billing_title ?? "",
+      taxNo: requestCustomer?.tax_no ?? "",
+      taxOffice: requestCustomer?.tax_office ?? "",
+      billingAddress: requestCustomer?.billing_address ?? "",
+    }));
+    prefilledServiceRequestId.current = serviceRequestId;
+    setOpen(true);
+  }, [pageQuery.data, serviceRequestId]);
 
   const createOrder = useMutation({
     mutationFn: async (saveAsDraft: boolean) => {
@@ -285,9 +331,50 @@ function WorkOrdersPage() {
         ) {
           throw new Error("Ticari tutarları kontrol edin");
         }
-        const { error } = await supabase.rpc("create_work_order", {
-          // target_customer_id has no SQL default (must be sent even when empty);
-          // the RPC accepts NULL for a customer-less work order.
+        const { data: workOrderId, error } = await supabase.rpc(
+          "create_work_order",
+          {
+            // target_customer_id has no SQL default (must be sent even when empty);
+            // the RPC accepts NULL for a customer-less work order.
+            target_customer_id: (form.customerId || null) as string,
+            order_title: form.title,
+            order_description: form.description,
+            order_location: "",
+            order_location_url: locationUrl ?? undefined,
+            order_scheduled_at: scheduledAt ?? undefined,
+            order_planned_end_at: plannedEndAt ?? undefined,
+            order_customer_labor_amount: customerLaborAmount,
+            order_customer_material_amount: customerMaterialAmount,
+            order_contractor_labor_amount: contractorLaborAmount,
+            order_estimated_material_cost: estimatedMaterialCost,
+            order_work_scope_type: workScopeType,
+            order_default_material_source: materialSource,
+            visible_to_customer: form.showToCustomer,
+            assigned_contractor_id:
+              form.assigneeId === "none" ? undefined : form.assigneeId,
+            target_project_id: form.projectId || undefined,
+            save_as_draft: saveAsDraft,
+          },
+        );
+        if (error) throw error;
+        if (serviceRequestId && workOrderId) {
+          const linkResult = await supabase.rpc(
+            "mark_technical_service_request_converted",
+            {
+              target_request_id: serviceRequestId,
+              target_work_order_id: workOrderId,
+            },
+          );
+          return { linkError: linkResult.error };
+        }
+        return { linkError: null };
+      }
+
+      // Teknik ofis ticari tutar giremez; saha görevi finans kaydı 0 ile
+      // oluşturulur, tutarları yalnızca admin sonradan girer.
+      const { data: workOrderId, error } = await supabase.rpc(
+        "create_work_order_technical",
+        {
           target_customer_id: (form.customerId || null) as string,
           order_title: form.title,
           order_description: form.description,
@@ -295,10 +382,6 @@ function WorkOrdersPage() {
           order_location_url: locationUrl ?? undefined,
           order_scheduled_at: scheduledAt ?? undefined,
           order_planned_end_at: plannedEndAt ?? undefined,
-          order_customer_labor_amount: customerLaborAmount,
-          order_customer_material_amount: customerMaterialAmount,
-          order_contractor_labor_amount: contractorLaborAmount,
-          order_estimated_material_cost: estimatedMaterialCost,
           order_work_scope_type: workScopeType,
           order_default_material_source: materialSource,
           visible_to_customer: form.showToCustomer,
@@ -306,34 +389,27 @@ function WorkOrdersPage() {
             form.assigneeId === "none" ? undefined : form.assigneeId,
           target_project_id: form.projectId || undefined,
           save_as_draft: saveAsDraft,
-        });
-        if (error) throw error;
-        return;
-      }
-
-      // Teknik ofis ticari tutar giremez; saha görevi finans kaydı 0 ile
-      // oluşturulur, tutarları yalnızca admin sonradan girer.
-      const { error } = await supabase.rpc("create_work_order_technical", {
-        target_customer_id: (form.customerId || null) as string,
-        order_title: form.title,
-        order_description: form.description,
-        order_location: "",
-        order_location_url: locationUrl ?? undefined,
-        order_scheduled_at: scheduledAt ?? undefined,
-        order_planned_end_at: plannedEndAt ?? undefined,
-        order_work_scope_type: workScopeType,
-        order_default_material_source: materialSource,
-        visible_to_customer: form.showToCustomer,
-        assigned_contractor_id:
-          form.assigneeId === "none" ? undefined : form.assigneeId,
-        target_project_id: form.projectId || undefined,
-        save_as_draft: saveAsDraft,
-      });
+        },
+      );
       if (error) throw error;
+      if (serviceRequestId && workOrderId) {
+        const linkResult = await supabase.rpc(
+          "mark_technical_service_request_converted",
+          {
+            target_request_id: serviceRequestId,
+            target_work_order_id: workOrderId,
+          },
+        );
+        return { linkError: linkResult.error };
+      }
+      return { linkError: null };
     },
-    onSuccess: async (_data, saveAsDraft) => {
+    onSuccess: async (result, saveAsDraft) => {
       await queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["technical-service-requests"],
+      });
       setOpen(false);
       setForm({
         projectId: "",
@@ -358,9 +434,15 @@ function WorkOrdersPage() {
         taxOffice: "",
         billingAddress: "",
       });
-      toast.success(
-        saveAsDraft ? "Görev taslak olarak kaydedildi" : "Görev oluşturuldu",
-      );
+      if (result.linkError) {
+        toast.warning(
+          "Görev oluşturuldu; teknik servis talebiyle bağlantı kurulamadı.",
+        );
+      } else {
+        toast.success(
+          saveAsDraft ? "Görev taslak olarak kaydedildi" : "Görev oluşturuldu",
+        );
+      }
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
