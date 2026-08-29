@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -275,7 +275,7 @@ function CalendarPage() {
         );
       }
 
-      let calendarEventsQuery = supabase
+      const calendarEventsQuery = supabase
         .from("calendar_events")
         .select(
           "id, title, event_type, scheduled_date, end_date, scheduled_time, project_id, work_order_id, responsible_id, notes, status",
@@ -546,7 +546,7 @@ function CalendarPage() {
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["calendar-tasks"] });
       setEventDialogOpen(false);
-      toast.success(result === "created" ? "Plan takvime eklendi." : "Plan güncellendi.");
+      toast.success(result === "created" ? "Kayıt takvime eklendi." : "Takvim kaydı güncellendi.");
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -587,11 +587,6 @@ function CalendarPage() {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {isManager ? (
-              <Button type="button" onClick={() => openCreateEvent()}>
-                <Plus className="mr-2 h-4 w-4" /> Plan Ekle
-              </Button>
-            ) : null}
             <div className="inline-flex overflow-hidden rounded-md border border-input">
               <Button
                 type="button"
@@ -642,7 +637,7 @@ function CalendarPage() {
       <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingEventId ? "Planı düzenle" : "Takvime plan ekle"}</DialogTitle>
+            <DialogTitle>{editingEventId ? "Takvim kaydını düzenle" : "Takvime kayıt ekle"}</DialogTitle>
             <DialogDescription>
               Aynı gün için istediğiniz kadar plan veya not ekleyebilirsiniz.
             </DialogDescription>
@@ -714,10 +709,10 @@ function CalendarPage() {
                 onClick={confirmDeleteEvent}
                 disabled={deleteEvent.isPending || saveEvent.isPending}
               >
-                {deleteEvent.isPending ? "Siliniyor..." : "Planı Sil"}
+                {deleteEvent.isPending ? "Siliniyor..." : "Kaydı Sil"}
               </Button>
             ) : <span />}
-            <Button onClick={() => saveEvent.mutate()} disabled={saveEvent.isPending || deleteEvent.isPending}>{saveEvent.isPending ? "Kaydediliyor..." : editingEventId ? "Değişiklikleri Kaydet" : "Planı Kaydet"}</Button>
+            <Button onClick={() => saveEvent.mutate()} disabled={saveEvent.isPending || deleteEvent.isPending}>{saveEvent.isPending ? "Kaydediliyor..." : editingEventId ? "Değişiklikleri Kaydet" : "Kaydı Kaydet"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -786,13 +781,6 @@ function CalendarPage() {
                       <div className="absolute right-1 top-1 z-10 hidden gap-1 group-hover:flex group-focus-within:flex">
                         <button
                           type="button"
-                          onClick={() => openCreateEvent(cell.key, "plan")}
-                          className="rounded border border-blue-400/60 bg-slate-950/95 px-1.5 py-1 text-[10px] font-bold text-blue-100 shadow-sm hover:bg-blue-600 hover:text-white"
-                        >
-                          + Plan
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => openCreateEvent(cell.key, "reminder")}
                           className="rounded border border-slate-500 bg-slate-950/95 px-1.5 py-1 text-[10px] font-bold text-slate-100 shadow-sm hover:bg-slate-700"
                         >
@@ -800,15 +788,9 @@ function CalendarPage() {
                         </button>
                       </div>
                     ) : null}
-                    {isManager ? (
-                      <button type="button" onClick={() => openCreateEvent(cell.key)} className={`w-fit rounded px-1 text-xs font-bold hover:bg-muted ${isToday ? "bg-blue-600 text-white hover:bg-blue-600" : "text-muted-foreground"}`}>
-                        {cell.date.getDate()}
-                      </button>
-                    ) : (
-                      <span className={`text-xs font-bold ${isToday ? "rounded bg-blue-600 px-1 text-white" : "text-muted-foreground"}`}>
-                        {cell.date.getDate()}
-                      </span>
-                    )}
+                    <span className={`w-fit px-1 text-xs font-bold ${isToday ? "rounded bg-blue-600 text-white" : "text-muted-foreground"}`}>
+                      {cell.date.getDate()}
+                    </span>
                     <div className="flex flex-col gap-1 overflow-hidden">
                       {visibleItems.map((item) => item.link ? (
                         <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} title={item.title} className={`line-clamp-2 rounded border px-1.5 py-1 text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
@@ -860,22 +842,13 @@ function CalendarPage() {
                         {isToday ? " · Bugün" : ""}
                       </p>
                       {isManager ? (
-                        <div className="flex shrink-0 gap-1">
-                          <button
-                            type="button"
-                            onClick={() => openCreateEvent(cell.key, "plan")}
-                            className="rounded border border-blue-400/60 bg-slate-950 px-2 py-1 text-[11px] font-bold text-blue-100"
-                          >
-                            + Plan
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openCreateEvent(cell.key, "reminder")}
-                            className="rounded border border-slate-500 bg-slate-950 px-2 py-1 text-[11px] font-bold text-slate-100"
-                          >
-                            + Not
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openCreateEvent(cell.key, "reminder")}
+                          className="shrink-0 rounded border border-slate-500 bg-slate-950 px-2 py-1 text-[11px] font-bold text-slate-100"
+                        >
+                          + Not
+                        </button>
                       ) : null}
                     </div>
                     {items.length === 0 ? (

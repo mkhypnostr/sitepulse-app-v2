@@ -1133,6 +1133,123 @@ export type Database = {
         };
         Relationships: [];
       };
+      technical_service_request_media: {
+        Row: {
+          created_at: string;
+          file_name: string;
+          id: string;
+          mime_type: string;
+          request_id: string;
+          size_bytes: number;
+          storage_path: string;
+          uploaded_by: string;
+        };
+        Insert: {
+          created_at?: string;
+          file_name: string;
+          id?: string;
+          mime_type: string;
+          request_id: string;
+          size_bytes: number;
+          storage_path: string;
+          uploaded_by: string;
+        };
+        Update: {
+          created_at?: string;
+          file_name?: string;
+          id?: string;
+          mime_type?: string;
+          request_id?: string;
+          size_bytes?: number;
+          storage_path?: string;
+          uploaded_by?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "technical_service_request_media_request_id_fkey";
+            columns: ["request_id"];
+            isOneToOne: false;
+            referencedRelation: "technical_service_requests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      technical_service_requests: {
+        Row: {
+          admin_note: string | null;
+          contact_name: string;
+          contact_phone: string;
+          converted_work_order_id: string | null;
+          created_at: string;
+          created_by: string;
+          customer_id: string;
+          description: string;
+          equipment_details: string | null;
+          equipment_type: string;
+          id: string;
+          location: string;
+          location_url: string | null;
+          request_no: number;
+          status: string;
+          title: string;
+          updated_at: string;
+          urgency: string;
+        };
+        Insert: {
+          admin_note?: string | null;
+          contact_name: string;
+          contact_phone: string;
+          converted_work_order_id?: string | null;
+          created_at?: string;
+          created_by: string;
+          customer_id: string;
+          description: string;
+          equipment_details?: string | null;
+          equipment_type: string;
+          id?: string;
+          location: string;
+          location_url?: string | null;
+          status?: string;
+          title: string;
+          updated_at?: string;
+          urgency?: string;
+        };
+        Update: {
+          admin_note?: string | null;
+          contact_name?: string;
+          contact_phone?: string;
+          converted_work_order_id?: string | null;
+          created_at?: string;
+          created_by?: string;
+          customer_id?: string;
+          description?: string;
+          equipment_details?: string | null;
+          equipment_type?: string;
+          id?: string;
+          location?: string;
+          location_url?: string | null;
+          status?: string;
+          title?: string;
+          updated_at?: string;
+          urgency?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "technical_service_requests_converted_work_order_id_fkey";
+            columns: ["converted_work_order_id"];
+            isOneToOne: true;
+            referencedRelation: "work_orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "technical_service_requests_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       transformer_companies: {
         Row: {
           id: string;
@@ -2125,6 +2242,13 @@ export type Database = {
           target_task_id: string;
           task_note?: string;
           task_title: string;
+        };
+        Returns: undefined;
+      };
+      mark_technical_service_request_converted: {
+        Args: {
+          target_request_id: string;
+          target_work_order_id: string;
         };
         Returns: undefined;
       };

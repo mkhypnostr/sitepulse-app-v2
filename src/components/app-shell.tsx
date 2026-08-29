@@ -20,6 +20,7 @@ import {
   UserCog,
   UsersRound,
   Wallet,
+  Wrench,
   X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -173,6 +174,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             badgeKey: "tasks",
           },
           { to: "/calendar", label: "Takvim", icon: CalendarDays },
+          {
+            to: "/service-requests",
+            label: "Servis Talepleri",
+            icon: Wrench,
+          },
           { separator: true },
           { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
           { to: "/dashboard", label: "Finans", icon: Wallet, hash: "finance" },
@@ -219,6 +225,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               badgeKey: "tasks",
             },
             { to: "/calendar", label: "Takvim", icon: CalendarDays },
+            {
+              to: "/service-requests",
+              label: "Servis Talepleri",
+              icon: Wrench,
+            },
             { separator: true },
             { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
             { to: "/customers", label: "Müşteriler", icon: UsersRound },
@@ -251,6 +262,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
               { to: "/my-projects", label: "Projelerim", icon: FolderKanban },
               { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
+              {
+                to: "/service-requests",
+                label: "Teknik Servis",
+                icon: Wrench,
+              },
             ];
 
   const handleSignOut = async () => {
