@@ -30,13 +30,20 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// Veritabanındaki numaralar zaten E.164 (+90...) formatında saklanıyor;
-// bu yalnızca boşluk/tire gibi kazara eklenmiş karakterlere karşı bir emniyet.
+// Profil numaraları E.164 saklanıyor; teknik servis formunda müşterinin
+// 05xx xxx xx xx biçiminde giriş yapması da desteklenir.
 function toWhatsAppAddress(rawPhone: string): string | null {
-  const cleaned = rawPhone.replace(/[\s-]/g, "");
-  if (!/^\+?\d{8,15}$/.test(cleaned)) return null;
-  const e164 = cleaned.startsWith("+") ? cleaned : `+${cleaned}`;
-  return `whatsapp:${e164}`;
+  let digits = rawPhone.trim().replace(/\D/g, "");
+
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length === 11 && digits.startsWith("0")) {
+    digits = `90${digits.slice(1)}`;
+  } else if (digits.length === 10 && digits.startsWith("5")) {
+    digits = `90${digits}`;
+  }
+
+  if (!/^\d{8,15}$/.test(digits) || digits.startsWith("0")) return null;
+  return `whatsapp:+${digits}`;
 }
 
 // Loglarda tam numarayı göstermemek için: ülke kodu + ilk 2, son 2 hane
