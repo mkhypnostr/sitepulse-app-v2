@@ -1,7 +1,16 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Pencil, Plus, Trash2, Users } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  FileText,
+  Pencil,
+  Plus,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -43,6 +52,41 @@ export const Route = createFileRoute("/_authenticated/customers")({
   component: CustomersPage,
 });
 
+const emptyAccountForm = {
+  fullName: "",
+  username: "",
+  email: "",
+  phone: "",
+  temporaryPassword: "",
+};
+
+type CreateUserRpcResponse = {
+  error?: { message?: string };
+  result?: {
+    isError?: boolean;
+    structuredContent?: { success?: boolean; error?: string };
+  };
+};
+
+function usernameIsValid(value: string) {
+  return /^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])$/.test(value);
+}
+
+function emailIsValid(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
+}
+
+function passwordIsValid(value: string) {
+  return (
+    value.length >= 12 &&
+    value.length <= 128 &&
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value) &&
+    /\d/.test(value) &&
+    /[^A-Za-z0-9]/.test(value)
+  );
+}
+
 function CustomersPage() {
   const { role } = useAuth();
   const canManageCustomers = role === "admin" || role === "technical_office";
@@ -65,6 +109,12 @@ function CustomersPage() {
   const [taxOffice, setTaxOffice] = useState("");
   const [taxNo, setTaxNo] = useState("");
   const [billingAddress, setBillingAddress] = useState("");
+  const [accountTarget, setAccountTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [accountForm, setAccountForm] = useState(emptyAccountForm);
+  const [showAccountPassword, setShowAccountPassword] = useState(false);
 
   const customersQuery = useQuery({
     queryKey: ["customers"],
@@ -138,6 +188,59 @@ function CustomersPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const createCustomerAccount = useMutation({
+    mutationFn: async () => {
+      if (!accountTarget)
+        throw new Error("Portal hesabı açılacak müşteri seçilmedi.");
+
+      const { data, error } = await supabase.functions.invoke(
+        "nes-user-management",
+        {
+          body: {
+            jsonrpc: "2.0",
+            id: crypto.randomUUID(),
+            method: "tools/call",
+            params: {
+              name: "create_nes_user",
+              arguments: {
+                username: accountForm.username.trim().toLowerCase(),
+                email: accountForm.email.trim().toLowerCase() || null,
+                full_name: accountForm.fullName.trim(),
+                company_name: accountTarget.name,
+                phone: accountForm.phone.trim() || null,
+                role: "customer",
+                customer_id: accountTarget.id,
+                temporary_password: accountForm.temporaryPassword,
+              },
+            },
+          },
+        },
+      );
+
+      if (error) throw error;
+      const response = data as CreateUserRpcResponse | null;
+      const result = response?.result?.structuredContent;
+      if (response?.error?.message) throw new Error(response.error.message);
+      if (response?.result?.isError || !result?.success) {
+        throw new Error(
+          result?.error || "Müşteri portal hesabı oluşturulamadı.",
+        );
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["customers"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-users"] }),
+        queryClient.invalidateQueries({ queryKey: ["team"] }),
+      ]);
+      setAccountTarget(null);
+      setAccountForm(emptyAccountForm);
+      setShowAccountPassword(false);
+      toast.success("Müşteri portal hesabı oluşturuldu ve firmaya bağlandı");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const deleteCustomer = useMutation({
     mutationFn: async (customerId: string) => {
       const [workOrdersResult, projectsResult] = await Promise.all([
@@ -188,6 +291,22 @@ function CustomersPage() {
   const profileById = new Map(
     customerUsers.map((profile) => [profile.id, profile]),
   );
+  const linkedCustomerUserIds = new Set(
+    customers
+      .map((customer) => customer.contact_user_id)
+      .filter((userId): userId is string => Boolean(userId)),
+  );
+  const selectableCustomerUsers = customerUsers.filter(
+    (profile) =>
+      profile.id === editingCustomer?.contact_user_id ||
+      !linkedCustomerUserIds.has(profile.id),
+  );
+  const accountFormIsValid =
+    Boolean(accountTarget) &&
+    accountForm.fullName.trim().length >= 2 &&
+    usernameIsValid(accountForm.username.trim().toLowerCase()) &&
+    (!accountForm.email.trim() || emailIsValid(accountForm.email.trim())) &&
+    passwordIsValid(accountForm.temporaryPassword);
   const beginEdit = (customer: (typeof customers)[number]) => {
     setEditingCustomer(customer);
     setName(customer.name);
@@ -219,8 +338,8 @@ function CustomersPage() {
             {editingCustomer ? "Müşteriyi düzenle" : "Yeni müşteri oluştur"}
           </DialogTitle>
           <DialogDescription>
-            Müşteri hesabı varsa eşleştirin; yoksa daha sonra Ekip ekranından
-            bağlayabilirsiniz.
+            Var olan portal hesabını eşleştirin. Hesap yoksa müşteri kartındaki
+            “Portal Hesabı Aç” işlemini kullanın.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
@@ -248,7 +367,7 @@ function CustomersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Henüz eşleştirme</SelectItem>
-                  {customerUsers.map((profile) => (
+                  {selectableCustomerUsers.map((profile) => (
                     <SelectItem key={profile.id} value={profile.id}>
                       {profile.full_name || "İsimsiz kullanıcı"}
                     </SelectItem>
@@ -386,7 +505,24 @@ function CustomersPage() {
                       : "Eşleştirilmedi"}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {role === "admin" && !customer.contact_user_id ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setAccountTarget({
+                              id: customer.id,
+                              name: customer.name,
+                            });
+                            setAccountForm(emptyAccountForm);
+                            setShowAccountPassword(false);
+                          }}
+                        >
+                          <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Portal
+                          Hesabı Aç
+                        </Button>
+                      ) : null}
                       <Button
                         variant="outline"
                         size="sm"
@@ -421,6 +557,158 @@ function CustomersPage() {
           </Table>
         </section>
       )}
+      <Dialog
+        open={Boolean(accountTarget)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !createCustomerAccount.isPending) {
+            setAccountTarget(null);
+            setAccountForm(emptyAccountForm);
+            setShowAccountPassword(false);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Müşteri portal hesabı aç</DialogTitle>
+            <DialogDescription>
+              Bu hesap doğrudan {accountTarget?.name ?? "seçilen firma"} ile
+              eşleştirilir. Müşteri kullanıcı adı veya e-posta ve geçici
+              şifresiyle giriş yapabilir.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <label className="grid gap-1.5 text-sm font-medium">
+              <span>
+                Yetkili Ad Soyad <span className="text-destructive">*</span>
+              </span>
+              <Input
+                value={accountForm.fullName}
+                onChange={(event) =>
+                  setAccountForm({
+                    ...accountForm,
+                    fullName: event.target.value,
+                  })
+                }
+                maxLength={120}
+                autoComplete="name"
+                placeholder="Örnek: Ahmet Yılmaz"
+              />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-sm font-medium">
+                Telefon
+                <Input
+                  value={accountForm.phone}
+                  onChange={(event) =>
+                    setAccountForm({
+                      ...accountForm,
+                      phone: event.target.value,
+                    })
+                  }
+                  maxLength={40}
+                  autoComplete="tel"
+                  placeholder="+90 5xx xxx xx xx"
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                E-posta
+                <span className="sr-only"> (isteğe bağlı)</span>
+                <Input
+                  type="email"
+                  value={accountForm.email}
+                  onChange={(event) =>
+                    setAccountForm({
+                      ...accountForm,
+                      email: event.target.value,
+                    })
+                  }
+                  maxLength={254}
+                  autoComplete="email"
+                  placeholder="yetkili@firma.com (isteğe bağlı)"
+                />
+              </label>
+            </div>
+            <label className="grid gap-1.5 text-sm font-medium">
+              <span>
+                Kullanıcı Adı <span className="text-destructive">*</span>
+              </span>
+              <Input
+                value={accountForm.username}
+                onChange={(event) =>
+                  setAccountForm({
+                    ...accountForm,
+                    username: event.target.value.toLowerCase(),
+                  })
+                }
+                maxLength={32}
+                autoComplete="username"
+                placeholder="ornek: ahmet.yilmaz"
+              />
+              <span className="text-xs font-normal leading-5 text-muted-foreground">
+                3-32 karakter; küçük harf, rakam, nokta, tire ve alt çizgi.
+              </span>
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              <span>
+                Geçici Şifre <span className="text-destructive">*</span>
+              </span>
+              <div className="relative">
+                <Input
+                  type={showAccountPassword ? "text" : "password"}
+                  value={accountForm.temporaryPassword}
+                  onChange={(event) =>
+                    setAccountForm({
+                      ...accountForm,
+                      temporaryPassword: event.target.value,
+                    })
+                  }
+                  minLength={12}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  className="pr-11"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAccountPassword((value) => !value)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-highlight"
+                  aria-label={
+                    showAccountPassword ? "Şifreyi gizle" : "Şifreyi göster"
+                  }
+                >
+                  {showAccountPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              <span className="text-xs font-normal leading-5 text-muted-foreground">
+                En az 12 karakter; büyük/küçük harf, rakam ve özel karakter.
+                Şifre sistem kayıtlarına yazılmaz.
+              </span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setAccountTarget(null)}
+              disabled={createCustomerAccount.isPending}
+            >
+              Vazgeç
+            </Button>
+            <Button
+              type="button"
+              onClick={() => createCustomerAccount.mutate()}
+              disabled={!accountFormIsValid || createCustomerAccount.isPending}
+            >
+              {createCustomerAccount.isPending
+                ? "Hesap Açılıyor..."
+                : "Hesabı Oluştur ve Bağla"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {customersQuery.error ? (
         <p className="mt-4 text-sm text-destructive">
           {errorMessage(customersQuery.error)}

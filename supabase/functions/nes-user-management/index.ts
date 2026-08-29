@@ -92,6 +92,12 @@ function validUsername(value: string) {
   return /^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])$/.test(value);
 }
 
+function validUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
 function validPassword(value: unknown) {
   if (typeof value !== "string" || value.length < 12 || value.length > 128)
     return false;
@@ -171,9 +177,11 @@ async function createUser(
   const username = normalizedUsername(args.username);
   const fullName =
     typeof args.full_name === "string" ? args.full_name.trim() : "";
-  const companyName = optionalText(args.company_name, 160, "Firma adı");
+  let companyName = optionalText(args.company_name, 160, "Firma adı");
   const phone = optionalText(args.phone, 40, "Telefon");
   const role = args.role as AppRole;
+  const customerId =
+    typeof args.customer_id === "string" ? args.customer_id.trim() : "";
   const temporaryPassword = args.temporary_password;
   const requestId = crypto.randomUUID();
 
@@ -202,6 +210,32 @@ async function createUser(
   if (!validPassword(temporaryPassword)) {
     throw new Error(
       "Geçici şifre en az 12 karakter olmalı; büyük harf, küçük harf, rakam ve özel karakter içermelidir.",
+    );
+  }
+
+  if (role === "customer") {
+    if (!actor.isAdmin)
+      throw new Error("Müşteri hesabını yalnızca yönetici oluşturabilir.");
+    if (!validUuid(customerId))
+      throw new Error("Müşteri hesabının bağlanacağı firma seçilmelidir.");
+
+    const { data: customer, error: customerError } = await admin
+      .from("customers")
+      .select("id, name, contact_user_id")
+      .eq("id", customerId)
+      .maybeSingle();
+
+    if (customerError || !customer)
+      throw new Error("Bağlanacak müşteri kaydı bulunamadı.");
+    if (customer.contact_user_id)
+      throw new Error("Bu müşteriye zaten bir portal hesabı bağlı.");
+
+    // Müşteri hesabındaki firma adı, seçilen müşteri kartından gelir. İstemciden
+    // farklı bir firma adı gönderilerek yanlış eşleştirme yapılamaz.
+    companyName = customer.name;
+  } else if (customerId) {
+    throw new Error(
+      "Firma bağlantısı yalnızca müşteri rolü için kullanılabilir.",
     );
   }
 
@@ -276,6 +310,23 @@ async function createUser(
       throw usernameError;
     }
 
+    if (role === "customer") {
+      const { data: linkedCustomer, error: customerLinkError } = await admin
+        .from("customers")
+        .update({ contact_user_id: createdUserId })
+        .eq("id", customerId)
+        .is("contact_user_id", null)
+        .select("id")
+        .maybeSingle();
+
+      if (customerLinkError) throw customerLinkError;
+      if (!linkedCustomer) {
+        throw new Error(
+          "Müşteri başka bir hesapla eşleştirildi; yeni hesap oluşturulmadı.",
+        );
+      }
+    }
+
     await writeAudit({
       requestId,
       actorUserId: actor.user.id,
@@ -294,6 +345,7 @@ async function createUser(
       company_name: companyName,
       phone,
       role,
+      customer_id: role === "customer" ? customerId : null,
       message: "Kullanıcı oluşturuldu ve rolü atandı.",
       security_note:
         "Geçici şifreyi güvenli bir kanaldan paylaşın ve ilk girişten sonra değiştirin.",
@@ -428,6 +480,20 @@ async function updateUserEmail(actorUserId: string, rawArguments: unknown) {
 
   const finalRole = newRole ?? currentRole;
 
+  if (newRole && newRole !== "customer" && currentRole === "customer") {
+    const { count, error: customerLinkError } = await admin
+      .from("customers")
+      .select("id", { count: "exact", head: true })
+      .eq("contact_user_id", targetUserId);
+    if (customerLinkError)
+      throw new Error("Müşteri hesabı bağlantısı kontrol edilemedi.");
+    if ((count ?? 0) > 0) {
+      throw new Error(
+        "Bu hesap bir müşteriye bağlı. Rolü değiştirmeden önce müşteri eşleştirmesini kaldırın.",
+      );
+    }
+  }
+
   if (previousEmail && previousEmail.toLowerCase() === newEmail) {
     throw new Error("Yeni e-posta mevcut e-posta ile aynı olamaz.");
   }
@@ -523,7 +589,7 @@ const tools = [
     name: "create_nes_user",
     title: "NES kullanıcısı oluştur",
     description:
-      "NES Saha Operasyon sisteminde yeni bir hesap oluşturur. Yöneticiler admin, technical_office, contractor veya customer rolünü; teknik ofis ise yalnızca contractor rolünü atayabilir. Kullanıcı adı zorunludur; e-posta isteğe bağlıdır. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
+      "NES Saha Operasyon sisteminde yeni bir hesap oluşturur. Yöneticiler admin, technical_office, contractor veya customer rolünü; teknik ofis ise yalnızca contractor rolünü atayabilir. Customer rolünde customer_id zorunludur ve hesap seçilen müşteri kartına atomik olarak bağlanır. Kullanıcı adı zorunludur; e-posta isteğe bağlıdır. Bu araç veri yazar ve çağrılmadan hemen önce kullanıcıdan açık onay alınmalıdır.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -561,6 +627,12 @@ const tools = [
           enum: ["admin", "technical_office", "contractor", "customer"],
           description:
             "admin: yönetici, contractor: taşeron, customer: müşteri",
+        },
+        customer_id: {
+          type: "string",
+          format: "uuid",
+          description:
+            "Müşteri rolü için hesabın bağlanacağı customers kaydının kimliği",
         },
         temporary_password: {
           type: "string",
@@ -688,7 +760,7 @@ Deno.serve(async (req: Request) => {
     return rpcResult(request.id, {
       protocolVersion: "2025-06-18",
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "NES Kullanıcı Yönetimi", version: "1.0.0" },
+      serverInfo: { name: "NES Kullanıcı Yönetimi", version: "1.1.0" },
     });
   }
 
