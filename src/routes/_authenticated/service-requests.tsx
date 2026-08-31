@@ -305,7 +305,9 @@ function ServiceRequestsPage() {
   }
 
   function removeSelectedFile(index: number) {
-    setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setFiles((current) =>
+      current.filter((_, itemIndex) => itemIndex !== index),
+    );
   }
 
   const createRequest = useMutation({
