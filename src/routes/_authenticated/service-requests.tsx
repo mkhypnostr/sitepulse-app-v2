@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Camera,
   ExternalLink,
   FileImage,
+  Images,
   MapPin,
   Paperclip,
   Pencil,
   Plus,
   Wrench,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -131,6 +134,13 @@ function safeMediaExtension(file: File) {
   return byMime[file.type] ?? "bin";
 }
 
+function mediaSizeLabel(bytes: number) {
+  const megabytes = bytes / (1024 * 1024);
+  return megabytes >= 1
+    ? megabytes.toFixed(1) + " MB"
+    : Math.max(1, Math.ceil(bytes / 1024)) + " KB";
+}
+
 function ServiceRequestsPage() {
   const { role, user } = useAuth();
   const manager = isOperationalManager(role);
@@ -145,6 +155,8 @@ function ServiceRequestsPage() {
     useState<TechnicalServiceStatus>("reviewing");
   const [managerNote, setManagerNote] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     title: "",
     equipmentType: "other" as TechnicalServiceEquipmentType,
@@ -226,6 +238,8 @@ function ServiceRequestsPage() {
 
   function resetCreateForm() {
     setFiles([]);
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
     setForm({
       title: "",
       equipmentType: "other",
@@ -242,6 +256,56 @@ function ServiceRequestsPage() {
   function openCreateDialog() {
     resetCreateForm();
     setCreateOpen(true);
+  }
+
+  function addSelectedFiles(selectedFiles: FileList | null) {
+    const incoming = Array.from(selectedFiles ?? []);
+    if (incoming.length === 0) return;
+
+    const unsupported = incoming.find(
+      (file) => !ALLOWED_MEDIA_TYPES.has(file.type),
+    );
+    if (unsupported) {
+      toast.error(
+        unsupported.name + " desteklenen bir fotoğraf/video türü değil.",
+      );
+    }
+
+    const oversized = incoming.find((file) => file.size > MAX_MEDIA_BYTES);
+    if (oversized) {
+      toast.error(oversized.name + " 50 MB sınırını aşıyor.");
+    }
+
+    const validFiles = incoming.filter(
+      (file) =>
+        ALLOWED_MEDIA_TYPES.has(file.type) && file.size <= MAX_MEDIA_BYTES,
+    );
+    const nextFiles = [...files];
+    let limitReached = false;
+
+    for (const file of validFiles) {
+      const duplicate = nextFiles.some(
+        (current) =>
+          current.name === file.name &&
+          current.size === file.size &&
+          current.lastModified === file.lastModified,
+      );
+      if (duplicate) continue;
+      if (nextFiles.length >= MAX_MEDIA_FILES) {
+        limitReached = true;
+        break;
+      }
+      nextFiles.push(file);
+    }
+
+    setFiles(nextFiles);
+    if (limitReached) {
+      toast.warning("En fazla 5 fotoğraf veya video eklenebilir.");
+    }
+  }
+
+  function removeSelectedFile(index: number) {
+    setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
   const createRequest = useMutation({
@@ -791,22 +855,89 @@ function ServiceRequestsPage() {
                 }
               />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
-              Fotoğraf veya video (en fazla 5 dosya, dosya başına 50 MB)
-              <Input
+            <div className="grid gap-2 sm:col-span-2">
+              <span className="text-sm font-medium">
+                Fotoğraf veya video (en fazla 5 dosya, dosya başına 50 MB)
+              </span>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="environment"
+                className="hidden"
+                onChange={(event) => addSelectedFiles(event.target.files)}
+              />
+              <input
+                ref={galleryInputRef}
                 type="file"
                 multiple
                 accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
-                onChange={(event) =>
-                  setFiles(Array.from(event.target.files ?? []))
-                }
+                className="hidden"
+                onChange={(event) => addSelectedFiles(event.target.files)}
               />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (!cameraInputRef.current) return;
+                    cameraInputRef.current.value = "";
+                    cameraInputRef.current.click();
+                  }}
+                  disabled={createRequest.isPending}
+                >
+                  <Camera className="mr-2 h-4 w-4" /> Kameradan Çek
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (!galleryInputRef.current) return;
+                    galleryInputRef.current.value = "";
+                    galleryInputRef.current.click();
+                  }}
+                  disabled={createRequest.isPending}
+                >
+                  <Images className="mr-2 h-4 w-4" /> Galeriden Seç
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Kameradan fotoğraf çekebilir veya galeriden birden fazla
+                fotoğraf/video seçebilirsiniz.
+              </p>
               {files.length > 0 ? (
-                <span className="text-xs text-muted-foreground">
-                  {files.length} dosya seçildi
-                </span>
+                <div className="grid gap-2">
+                  {files.map((file, index) => (
+                    <div
+                      key={`${file.name}-${file.size}-${file.lastModified}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {mediaSizeLabel(file.size)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeSelectedFile(index)}
+                        disabled={createRequest.isPending}
+                        aria-label={file.name + " seçimini kaldır"}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <span className="text-xs font-semibold text-highlight">
+                    {files.length} / {MAX_MEDIA_FILES} dosya seçildi
+                  </span>
+                </div>
               ) : null}
-            </label>
+            </div>
           </div>
           <DialogFooter>
             <Button
