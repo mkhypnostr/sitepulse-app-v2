@@ -11,7 +11,6 @@ import {
   FolderKanban,
   FolderOpen,
   LayoutDashboard,
-  ListChecks,
   LogOut,
   Menu,
   Receipt,
@@ -39,7 +38,7 @@ interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
-  badgeKey?: "approvals" | "stock" | "workOrders" | "tasks";
+  badgeKey?: "approvals" | "stock" | "tasks";
   hash?: string;
 }
 type NavEntry = NavItem | { separator: true };
@@ -115,7 +114,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           (projectTasks.count ?? 0);
       }
       let stock = 0;
-      let workOrders = 0;
       let tasks = 0;
       if (operationalManager) {
         const [
@@ -131,7 +129,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             .not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
           supabase
             .from("project_tasks")
-            .select("id", { count: "exact", head: true })
+            .select("id, responsible_id, approved_progress_pct, status")
             .not("status", "in", "(completed,cancelled,not_applicable)"),
           supabase
             .from("operational_tasks")
@@ -141,17 +139,27 @@ export function AppShell({ children }: { children: ReactNode }) {
         stock = (stockResult.data ?? []).filter(
           (item) => item.quantity <= item.min_quantity,
         ).length;
-        workOrders = workOrdersResult.count ?? 0;
         tasks =
-          (projectTasksResult.count ?? 0) + (independentTasksResult.count ?? 0);
+          (workOrdersResult.count ?? 0) +
+          (projectTasksResult.data ?? []).filter(
+            (task) =>
+              Boolean(task.responsible_id) ||
+              task.approved_progress_pct > 0 ||
+              [
+                "in_progress",
+                "external_approval",
+                "revision_required",
+                "blocked",
+              ].includes(task.status),
+          ).length +
+          (independentTasksResult.count ?? 0);
       }
-      return { approvals, stock, workOrders, tasks };
+      return { approvals, stock, tasks };
     },
   });
   const badgeCounts: Record<string, number> = {
     approvals: badgeQuery.data?.approvals ?? 0,
     stock: badgeQuery.data?.stock ?? 0,
-    workOrders: badgeQuery.data?.workOrders ?? 0,
     tasks: badgeQuery.data?.tasks ?? 0,
   };
 
@@ -160,19 +168,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       ? [
           { to: "/dashboard", label: "Genel Bakış", icon: LayoutDashboard },
           {
-            to: "/work-orders",
-            label: "İş Emirleri",
-            icon: ListChecks,
-            badgeKey: "workOrders",
-          },
-          { to: "/projects", label: "Projeler", icon: FolderKanban },
-          { to: "/shared-files", label: "Ortak Dosyalar", icon: FolderOpen },
-          {
             to: "/tasks",
             label: "Görevler",
             icon: ClipboardList,
             badgeKey: "tasks",
           },
+          { to: "/projects", label: "Projeler", icon: FolderKanban },
+          { to: "/shared-files", label: "Ortak Dosyalar", icon: FolderOpen },
           { to: "/calendar", label: "Takvim", icon: CalendarDays },
           {
             to: "/service-requests",
@@ -207,22 +209,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         ? [
             { to: "/dashboard", label: "Genel Bakış", icon: LayoutDashboard },
             {
-              to: "/work-orders",
-              label: "İş Emirleri",
-              icon: ListChecks,
-              badgeKey: "workOrders",
+              to: "/tasks",
+              label: "Görevler",
+              icon: ClipboardList,
+              badgeKey: "tasks",
             },
             { to: "/projects", label: "Projeler", icon: FolderKanban },
             {
               to: "/shared-files",
               label: "Ortak Dosyalar",
               icon: FolderOpen,
-            },
-            {
-              to: "/tasks",
-              label: "Görevler",
-              icon: ClipboardList,
-              badgeKey: "tasks",
             },
             { to: "/calendar", label: "Takvim", icon: CalendarDays },
             {
