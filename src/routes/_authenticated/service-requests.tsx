@@ -5,7 +5,7 @@ import {
   AlertTriangle,
   Camera,
   ExternalLink,
-  FileImage,
+  FileVideo,
   Images,
   MapPin,
   Paperclip,
@@ -13,6 +13,7 @@ import {
   Plus,
   Wrench,
   X,
+  ZoomIn,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -154,6 +155,7 @@ function ServiceRequestsPage() {
   const [managerStatus, setManagerStatus] =
     useState<TechnicalServiceStatus>("reviewing");
   const [managerNote, setManagerNote] = useState("");
+  const [previewMedia, setPreviewMedia] = useState<RequestMedia | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -617,19 +619,40 @@ function ServiceRequestsPage() {
                       <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
                         <Paperclip className="h-3.5 w-3.5" /> Ekler
                       </p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid gap-2 sm:grid-cols-2">
                         {request.technical_service_request_media.map((item) =>
                           item.signedUrl ? (
-                            <a
+                            <button
                               key={item.id}
-                              href={item.signedUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted"
+                              type="button"
+                              onClick={() => setPreviewMedia(item)}
+                              aria-label={`${item.file_name} önizlemesini aç`}
+                              className="group overflow-hidden rounded-lg border border-border bg-muted/20 text-left transition-colors hover:bg-muted/50"
                             >
-                              <FileImage className="h-4 w-4 shrink-0" />
-                              <span className="truncate">{item.file_name}</span>
-                            </a>
+                              {item.mime_type.startsWith("image/") ? (
+                                <img
+                                  src={item.signedUrl}
+                                  alt={item.file_name}
+                                  loading="lazy"
+                                  className="h-32 w-full bg-black/10 object-cover transition-transform group-hover:scale-[1.02]"
+                                />
+                              ) : (
+                                <span className="flex h-32 items-center justify-center bg-black/10">
+                                  <FileVideo className="h-10 w-10 text-highlight" />
+                                </span>
+                              )}
+                              <span className="flex items-center justify-between gap-2 px-3 py-2">
+                                <span className="min-w-0">
+                                  <span className="block truncate text-xs font-semibold">
+                                    {item.file_name}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {mediaSizeLabel(item.size_bytes)}
+                                  </span>
+                                </span>
+                                <ZoomIn className="h-4 w-4 shrink-0 text-highlight" />
+                              </span>
+                            </button>
                           ) : (
                             <span
                               key={item.id}
@@ -696,6 +719,55 @@ function ServiceRequestsPage() {
           })}
         </div>
       )}
+
+      <Dialog
+        open={Boolean(previewMedia)}
+        onOpenChange={(open) => !open && setPreviewMedia(null)}
+      >
+        <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>{previewMedia?.file_name}</DialogTitle>
+            <DialogDescription>
+              {previewMedia ? mediaSizeLabel(previewMedia.size_bytes) : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {previewMedia?.signedUrl ? (
+            <div className="overflow-hidden rounded-xl border border-border bg-black/90">
+              {previewMedia.mime_type.startsWith("video/") ? (
+                <video
+                  key={previewMedia.id}
+                  src={previewMedia.signedUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="max-h-[72vh] w-full"
+                >
+                  Tarayıcınız video önizlemesini desteklemiyor.
+                </video>
+              ) : (
+                <img
+                  src={previewMedia.signedUrl}
+                  alt={previewMedia.file_name}
+                  className="max-h-[72vh] w-full object-contain"
+                />
+              )}
+            </div>
+          ) : null}
+          {previewMedia?.signedUrl ? (
+            <DialogFooter>
+              <Button asChild variant="outline">
+                <a
+                  href={previewMedia.signedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" /> Yeni Sekmede Aç
+                </a>
+              </Button>
+            </DialogFooter>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
