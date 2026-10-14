@@ -585,7 +585,15 @@ function OffersPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {offer.customers?.name ?? "Müşteri henüz seçilmedi"}
+                      {offer.customers?.name ??
+                        (isEnergy &&
+                        (
+                          offer.module_config as {
+                            recipient?: { mode?: string; name?: string };
+                          }
+                        ).recipient?.mode === "aday"
+                          ? `${(offer.module_config as { recipient?: { name?: string } }).recipient?.name ?? ""} (aday)`
+                          : "Müşteri henüz seçilmedi")}
                     </TableCell>
                     <TableCell>
                       <Badge
