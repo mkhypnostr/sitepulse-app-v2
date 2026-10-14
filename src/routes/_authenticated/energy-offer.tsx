@@ -6,12 +6,15 @@ import {
   ArrowLeft,
   BatteryCharging,
   CircleX,
+  FileSpreadsheet,
+  Percent,
   Plus,
   Printer,
   RefreshCw,
   Save,
   Sun,
   Trash2,
+  Wand2,
   Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -19,13 +22,17 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
+import { buildOfferDocument, NES_COMPANY } from "@/lib/energy-offer-document";
 import {
+  applyMarkup,
   buildGesLines,
   buildSarjLines,
   defaultDcCable,
   defaultGes,
   defaultPaymentPlan,
+  defaultRecipient,
   defaultSarj,
+  DEFAULT_SPECIFIC_YIELD,
   formatKwp,
   formatMoney,
   gesBatteryKwh,
@@ -33,13 +40,18 @@ import {
   gesInverterKw,
   isEnergyOfferConfig,
   lineFromCatalog,
+  markupForTargetSale,
   newLineKey,
   panelsForTarget,
   parseDecimal,
   priceLines,
+  productionEstimate,
+  recommendedInverterRange,
   round2,
   runChecks,
+  suggestInverters,
   summarize,
+  type Check,
   type CatalogItem,
   type Currency,
   type DraftLine,
@@ -48,6 +60,7 @@ import {
   type GesConfig,
   type LineCategory,
   type OfferModule,
+  type OfferRecipient,
   type PaymentStep,
   type PricedLine,
   type SarjConfig,
@@ -112,11 +125,27 @@ const statuses = {
 type Status = keyof typeof statuses;
 
 const defaultTerms = [
-  "Fiyatlara KDV dahil değildir; KDV ayrıca gösterilmiştir.",
-  "Döviz bazlı ekipman fiyatları teklif tarihindeki kur ile hesaplanmıştır; ödeme günündeki TCMB efektif satış kuru esas alınır.",
-  "EDAŞ başvuru, proje onay ve kabul süreleri ilgili kurumların iş akışına bağlıdır.",
-  "Çatı/zemin uygunluğu ve statik yeterlilik keşif sonrası kesinleşir.",
+  "Teklif bedeli yalnız teklif kapsamındaki mal ve hizmetlerin anahtar teslim bedelidir; KDV ayrıca gösterilmiştir.",
+  "Döviz bazlı bedeller ödeme günündeki banka döviz satış kuru üzerinden TL'ye çevrilir.",
+  "Paket içeriklerindeki markalar stok durumuna göre muadili ile değişebilir.",
+  "Kabul sürecinde dağıtım şirketi veya resmi kurumlarca istenebilecek öngörülemeyen ek ekipman (çift yönlü sayaç ve modemi, ek sayaç panosu, yangın merdiveni vb.) müşteri sorumluluğundadır.",
+  "Montaj yapılacak çatı/cephe alanlarının uygulama öncesi montaja uygun ve tam izolasyonlu olması müşteri sorumluluğundadır; statik yeterlilik keşif sonrası kesinleşir.",
 ].join("\n");
+
+const fieldIds: Record<NonNullable<Check["field"]>, string> = {
+  genel: "bolum-genel",
+  ges: "bolum-ges",
+  sarj: "bolum-sarj",
+  kalemler: "bolum-kalemler",
+  odeme: "bolum-odeme",
+};
+
+function scrollToField(field: Check["field"]) {
+  if (!field) return;
+  document
+    .getElementById(fieldIds[field])
+    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 function addDays(days: number) {
   const d = new Date();
@@ -277,6 +306,13 @@ function EnergyOfferPage() {
   const [targetKwp, setTargetKwp] = useState(0);
   const [taahhutPick, setTaahhutPick] = useState("");
   const [loadedOfferId, setLoadedOfferId] = useState<string | null>(null);
+  const [recipient, setRecipient] = useState<OfferRecipient>(defaultRecipient);
+  const [projectLocation, setProjectLocation] = useState("");
+  const [markupRate, setMarkupRate] = useState(0.2);
+  const [targetSale, setTargetSale] = useState(0);
+  const [specificYield, setSpecificYield] = useState(DEFAULT_SPECIFIC_YIELD);
+  const [showLinePrices, setShowLinePrices] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const dataQuery = useQuery({
     queryKey: ["energy-offer", offerId ?? "new"],
@@ -352,6 +388,11 @@ function EnergyOfferPage() {
       const cfg = offer.module_config as EnergyOfferConfig;
       setGes({ ...defaultGes, ...cfg.ges });
       setSarj({ ...defaultSarj, ...cfg.sarj });
+      setRecipient({ ...defaultRecipient, ...cfg.recipient });
+      setProjectLocation(cfg.projectLocation ?? "");
+      if (typeof cfg.markupRate === "number") setMarkupRate(cfg.markupRate);
+      setSpecificYield(cfg.specificYield ?? DEFAULT_SPECIFIC_YIELD);
+      setShowLinePrices(Boolean(cfg.showLinePrices));
     }
     if (Array.isArray(offer.payment_plan)) {
       setPaymentPlan(offer.payment_plan as unknown as PaymentStep[]);
@@ -405,6 +446,7 @@ function EnergyOfferPage() {
   const totals = useMemo(() => summarize(priced, vatRate), [priced, vatRate]);
   const checks = runChecks({
     customerId,
+    recipient,
     ges,
     sarj,
     catalog,
@@ -416,19 +458,67 @@ function EnergyOfferPage() {
   if (title.trim().length < 3) {
     checks.unshift({
       level: "error",
-      message: "Teklif başlığı en az 3 karakter olmalı.",
+      field: "genel",
+      message: "Teklif başlığı eksik.",
+      fix: "Genel bilgiler > Teklif başlığı alanına en az 3 karakter yazın.",
     });
   }
   const errors = checks.filter((c) => c.level === "error");
 
   function regenerate() {
     const manual = lines.filter((line) => !line.auto);
-    const generated = [
-      ...buildGesLines(ges, catalog),
-      ...buildSarjLines(sarj, catalog),
-    ];
+    const generated = applyMarkup(
+      [...buildGesLines(ges, catalog), ...buildSarjLines(sarj, catalog)],
+      markupRate,
+    );
     setLines([...generated, ...manual]);
-    toast.success(`${generated.length} kalem modül ayarlarından oluşturuldu.`);
+    toast.success(
+      `${generated.length} kalem oluşturuldu; kâr oranı %${fmtNum(markupRate * 100)} uygulandı.`,
+    );
+  }
+
+  function applyGlobalMarkup() {
+    setLines((current) => applyMarkup(current, markupRate));
+    toast.success(`Tüm kalemlere %${fmtNum(markupRate * 100)} kâr uygulandı.`);
+  }
+
+  function applyTargetSale() {
+    const rate = markupForTargetSale(lines, currency, rates, targetSale);
+    if (rate === null) {
+      toast.error("Önce kalem ve kurları girin, sonra hedef tutarı yazın.");
+      return;
+    }
+    if (rate < 0) {
+      toast.error(
+        `Hedef tutar maliyetin altında (maliyet ${formatMoney(totals.cost, currency)}).`,
+      );
+      return;
+    }
+    const rounded = Math.round(rate * 10000) / 10000;
+    setMarkupRate(rounded);
+    setLines((current) => applyMarkup(current, rounded));
+    toast.success(
+      `Hedefe ulaşmak için tüm kalemlere %${fmtNum(rounded * 100)} kâr uygulandı.`,
+    );
+  }
+
+  function pickSuggestedInverter() {
+    const best = suggestInverters(ges, catalog)[0];
+    if (!best) {
+      toast.error(
+        "Katalogda bu DC güce uygun tek inverter yok; adedi artırmayı deneyin.",
+      );
+      return;
+    }
+    setGes((g) => ({ ...g, inverterId: best.id, inverterCount: 1 }));
+    toast.success(`${best.brand ?? ""} ${best.name} seçildi.`);
+  }
+
+  function recipientName() {
+    return recipient.mode === "aday"
+      ? recipient.name.trim()
+      : (dataQuery.data?.customers.find((c) => c.id === customerId)?.name ??
+          "");
   }
 
   function updateLine(key: string, patch: Partial<DraftLine>) {
@@ -461,7 +551,7 @@ function EnergyOfferPage() {
         quantity: 1,
         sourceUnitCost: 0,
         sourceCurrency: currency,
-        markupRate: 0.25,
+        markupRate,
         auto: false,
         visibleToCustomer: true,
       },
@@ -492,10 +582,15 @@ function EnergyOfferPage() {
         version: 1,
         ges,
         sarj,
+        recipient,
+        projectLocation: projectLocation.trim(),
+        markupRate,
+        specificYield,
+        showLinePrices,
       };
       const header = {
         title: title.trim(),
-        customer_id: customerId || null,
+        customer_id: recipient.mode === "kayitli" ? customerId || null : null,
         offer_type: "diger",
         status,
         currency,
@@ -570,66 +665,86 @@ function EnergyOfferPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  function printCustomerView() {
-    const customerName =
-      dataQuery.data?.customers.find((c) => c.id === customerId)?.name ?? "";
-    const offerNo = dataQuery.data?.offer?.offer_no ?? "Taslak (kaydedilmedi)";
-    const esc = (s: string) =>
-      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const visible = priced.filter((l) => l.visibleToCustomer);
-    const sections = (["ges", "sarj", "taahhut", "genel"] as OfferModule[])
-      .map((module) => {
-        const rows = visible.filter((l) => l.module === module);
-        if (rows.length === 0) return "";
-        const sub = rows.reduce((s, l) => s + l.saleAmount, 0);
-        return `<h2>${esc(moduleLabels[module])}</h2>
-<table><thead><tr><th>#</th><th>Açıklama</th><th>Marka</th><th class="r">Miktar</th><th class="r">Birim fiyat</th><th class="r">Tutar</th></tr></thead><tbody>
-${rows
-  .map(
-    (l, i) =>
-      `<tr><td>${i + 1}</td><td>${esc(l.description)}</td><td>${esc(l.brand ?? "")}</td><td class="r">${fmtNum(l.quantity)} ${esc(l.unit)}</td><td class="r">${l.saleAmount > 0 ? formatMoney(l.saleAmount / l.quantity, currency) : "Dahil"}</td><td class="r">${l.saleAmount > 0 ? formatMoney(l.saleAmount, currency) : "Dahil"}</td></tr>`,
-  )
-  .join("")}
-</tbody><tfoot><tr><td colspan="5" class="r">Ara toplam</td><td class="r">${formatMoney(sub, currency)}</td></tr></tfoot></table>`;
-      })
-      .join("");
-    const rateNote =
-      rates.USD > 0 || rates.EUR > 0
-        ? `<p class="muted">Hesaplamada kullanılan kurlar: ${rates.USD > 0 ? `1 USD = ${fmtNum(rates.USD, 4)} TL` : ""} ${rates.EUR > 0 ? `· 1 EUR = ${fmtNum(rates.EUR, 4)} TL` : ""}</p>`
-        : "";
-    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${esc(offerNo)} — ${esc(title)}</title>
-<style>
-body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:32px;font-size:12px}
-h1{font-size:20px;margin:0}h2{font-size:14px;margin:22px 0 6px;border-bottom:2px solid #f59e0b;padding-bottom:4px}
-.head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111;padding-bottom:12px}
-.muted{color:#555}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ddd;padding:5px 6px;text-align:left;vertical-align:top}
-th{background:#f4f4f5;font-size:11px}.r{text-align:right;white-space:nowrap}tfoot td{font-weight:bold}
-.totals{margin-top:18px;margin-left:auto;width:320px}.totals td{border:none;padding:3px 6px}.grand td{font-size:15px;font-weight:bold;border-top:2px solid #111}
-.terms{white-space:pre-line}@media print{body{margin:12mm}}
-</style></head><body>
-<div class="head"><div><h1>NES Enerji</h1><p class="muted">Enerji · Elektrik Taahhüt · Saha Operasyon</p></div>
-<div style="text-align:right"><strong>${esc(offerNo)}</strong><br>Tarih: ${new Date().toLocaleDateString("tr-TR")}<br>Geçerlilik: ${validUntil ? new Date(validUntil).toLocaleDateString("tr-TR") : "-"}</div></div>
-<p><strong>Sayın ${esc(customerName)}</strong></p>
-<p><strong>Konu:</strong> ${esc(title)}<br><span class="muted">${esc(summaryText())}</span></p>
-${sections}
-<table class="totals"><tr><td>Ara toplam</td><td class="r">${formatMoney(totals.sale, currency)}</td></tr>
-<tr><td>KDV (%${fmtNum(vatRate * 100)})</td><td class="r">${formatMoney(totals.vat, currency)}</td></tr>
-<tr class="grand"><td>Genel toplam</td><td class="r">${formatMoney(totals.grandTotal, currency)}</td></tr></table>
-${paymentPlan.length ? `<h2>Ödeme planı</h2><table>${paymentPlan.map((p) => `<tr><td>${esc(p.label)}</td><td class="r">%${fmtNum(p.percent)}</td><td class="r">${formatMoney((totals.grandTotal * p.percent) / 100, currency)}</td></tr>`).join("")}</table>` : ""}
-${terms.trim() ? `<h2>Şartlar</h2><p class="terms">${esc(terms.trim())}</p>` : ""}
-${rateNote}
-<script>window.onload=function(){window.print()}</script>
-</body></html>`;
+  function documentInput() {
+    return {
+      offerNo: dataQuery.data?.offer?.offer_no ?? "TASLAK",
+      issueDate: new Date(),
+      validUntil,
+      title,
+      recipientName: recipientName(),
+      contactName: recipient.mode === "aday" ? recipient.contactName : "",
+      location: projectLocation.trim(),
+      currency,
+      vatRate,
+      rates,
+      ges,
+      sarj,
+      catalog,
+      lines: priced,
+      sale: totals.sale,
+      vat: totals.vat,
+      grandTotal: totals.grandTotal,
+      paymentPlan,
+      terms,
+      showLinePrices,
+      specificYield,
+      logoUrl: `${window.location.origin}${NES_COMPANY.logoPath}`,
+    };
+  }
+
+  function openCustomerDocument() {
+    if (errors.length > 0) {
+      toast.error(`Önce kırmızı kontrolleri düzeltin: ${errors[0].message}`);
+      return;
+    }
     const win = window.open("", "_blank");
     if (!win) {
       toast.error(
-        "Yazdırma penceresi açılamadı; açılır pencere engelini kaldırın.",
+        "Teklif penceresi açılamadı; tarayıcıda açılır pencere engelini kaldırın.",
       );
       return;
     }
+    const html = buildOfferDocument(documentInput()).replace(
+      "</body>",
+      `<div class="noprint" style="position:fixed;top:12px;right:12px;display:flex;gap:8px"><button onclick="window.print()" style="padding:10px 16px;border:0;border-radius:8px;background:#0B4EA2;color:#fff;font-weight:700;cursor:pointer">PDF olarak kaydet / Yazdır</button></div><style>@media print{.noprint{display:none!important}}</style></body>`,
+    );
     win.document.open();
     win.document.write(html);
     win.document.close();
+  }
+
+  async function exportInternalExcel() {
+    if (import.meta.env.SSR) return;
+    if (lines.length === 0) {
+      toast.error("Önce kalemleri oluşturun.");
+      return;
+    }
+    setExporting(true);
+    try {
+      const { buildInternalCostWorkbook } =
+        await import("@/lib/energy-offer-excel");
+      const blob = await buildInternalCostWorkbook({
+        offerNo: dataQuery.data?.offer?.offer_no ?? "TASLAK",
+        title,
+        recipientName: recipientName(),
+        currency,
+        rates,
+        vatRate,
+        lines: priced,
+        catalogCodes: new Map(catalog.map((item) => [item.id, item.code])),
+        logoUrl: NES_COMPANY.logoPath,
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${dataQuery.data?.offer?.offer_no ?? "taslak"}-ic-maliyet.xlsx`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (error) {
+      toast.error(errorMessage(error) || "Excel oluşturulamadı.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   if (!isAdmin) return <AccessDenied />;
@@ -664,10 +779,19 @@ ${rateNote}
             <Button
               variant="outline"
               className="h-11"
-              onClick={printCustomerView}
+              onClick={exportInternalExcel}
+              disabled={lines.length === 0 || exporting}
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              {exporting ? "Hazırlanıyor..." : "İç maliyet Excel"}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11"
+              onClick={openCustomerDocument}
               disabled={lines.length === 0}
             >
-              <Printer className="mr-2 h-4 w-4" /> Müşteri çıktısı
+              <Printer className="mr-2 h-4 w-4" /> Teklif dosyası (PDF)
             </Button>
             <Button
               className="h-11 font-bold"
@@ -684,7 +808,10 @@ ${rateNote}
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <div className="grid min-w-0 gap-4">
           {/* Genel bilgiler */}
-          <section className="surface-panel grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
+          <section
+            id="bolum-genel"
+            className="surface-panel grid scroll-mt-4 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"
+          >
             <Field label="Teklif başlığı" className="sm:col-span-2">
               <Input
                 value={title}
@@ -693,23 +820,101 @@ ${rateNote}
                 placeholder="Örn. Bodrum villa 20 kWp GES + şarj"
               />
             </Field>
-            <Field label="Müşteri" className="sm:col-span-2">
-              <Select
-                value={customerId || "none"}
-                onValueChange={(v) => setCustomerId(v === "none" ? "" : v)}
-              >
-                <SelectTrigger className="h-11">
-                  <SelectValue placeholder="Müşteri seçin" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Müşteri seçin</SelectItem>
-                  {(dataQuery.data?.customers ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <Field label="Teklif verilen" className="sm:col-span-2">
+              <div className="flex gap-2">
+                <Select
+                  value={recipient.mode}
+                  onValueChange={(mode) =>
+                    setRecipient((r) => ({
+                      ...r,
+                      mode: mode as OfferRecipient["mode"],
+                    }))
+                  }
+                >
+                  <SelectTrigger className="h-11 w-40 shrink-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="kayitli">Kayıtlı müşteri</SelectItem>
+                    <SelectItem value="aday">Kayıtsız aday</SelectItem>
+                  </SelectContent>
+                </Select>
+                {recipient.mode === "kayitli" ? (
+                  <Select
+                    value={customerId || "none"}
+                    onValueChange={(v) => setCustomerId(v === "none" ? "" : v)}
+                  >
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Müşteri seçin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Müşteri seçin</SelectItem>
+                      {(dataQuery.data?.customers ?? []).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={recipient.name}
+                    maxLength={160}
+                    placeholder="Ad soyad / firma unvanı"
+                    onChange={(e) =>
+                      setRecipient((r) => ({ ...r, name: e.target.value }))
+                    }
+                  />
+                )}
+              </div>
+            </Field>
+            {recipient.mode === "aday" ? (
+              <>
+                <Field label="Yetkili kişi">
+                  <Input
+                    value={recipient.contactName}
+                    maxLength={120}
+                    onChange={(e) =>
+                      setRecipient((r) => ({
+                        ...r,
+                        contactName: e.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+                <Field label="Telefon">
+                  <Input
+                    value={recipient.phone}
+                    maxLength={40}
+                    inputMode="tel"
+                    onChange={(e) =>
+                      setRecipient((r) => ({ ...r, phone: e.target.value }))
+                    }
+                  />
+                </Field>
+                <Field label="E-posta" className="sm:col-span-2">
+                  <Input
+                    value={recipient.email}
+                    maxLength={120}
+                    inputMode="email"
+                    onChange={(e) =>
+                      setRecipient((r) => ({ ...r, email: e.target.value }))
+                    }
+                  />
+                </Field>
+              </>
+            ) : null}
+            <Field
+              label="Proje lokasyonu"
+              className="sm:col-span-2"
+              hint="Teklif kapağında görünür"
+            >
+              <Input
+                value={projectLocation}
+                maxLength={120}
+                placeholder="Örn. Akyaka / Muğla"
+                onChange={(e) => setProjectLocation(e.target.value)}
+              />
             </Field>
             <Field label="Teklif para birimi">
               <Select
@@ -775,7 +980,7 @@ ${rateNote}
           </section>
 
           {/* GES */}
-          <section className="surface-panel p-5">
+          <section id="bolum-ges" className="surface-panel scroll-mt-4 p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="flex items-center gap-2 font-black">
                 <Sun className="h-5 w-5 text-amber-500" /> GES
@@ -900,15 +1105,37 @@ ${rateNote}
                     }
                   />
                 </Field>
-                <Field label="İnverter" className="sm:col-span-2 lg:col-span-3">
-                  <CatalogSelect
-                    items={gesInverters}
-                    value={ges.inverterId}
-                    placeholder="İnverter seçin"
-                    onChange={(inverterId) =>
-                      setGes((g) => ({ ...g, inverterId }))
-                    }
-                  />
+                <Field
+                  label="İnverter"
+                  className="sm:col-span-2 lg:col-span-3"
+                  hint={
+                    kwp > 0
+                      ? `Bu DC güç için uygun toplam inverter gücü: ${formatKwp(recommendedInverterRange(kwp).min)}–${formatKwp(recommendedInverterRange(kwp).max)} kW`
+                      : undefined
+                  }
+                >
+                  <div className="flex gap-2">
+                    <div className="min-w-0 flex-1">
+                      <CatalogSelect
+                        items={gesInverters}
+                        value={ges.inverterId}
+                        placeholder="İnverter seçin"
+                        onChange={(inverterId) =>
+                          setGes((g) => ({ ...g, inverterId }))
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 shrink-0"
+                      onClick={pickSuggestedInverter}
+                      disabled={kwp <= 0}
+                      title="DC/AC oranını 0,90–1,35 aralığına sokan en ekonomik inverteri seçer"
+                    >
+                      <Wand2 className="mr-1.5 h-4 w-4" /> Uygun olanı seç
+                    </Button>
+                  </div>
                 </Field>
                 <Field label="İnverter adedi">
                   <NumField
@@ -971,8 +1198,24 @@ ${rateNote}
                     }
                   />
                 </Field>
-                <div className="flex flex-wrap items-end gap-2 sm:col-span-2">
+                <Field
+                  label="Özgül üretim (kWh/kWp·yıl)"
+                  hint="Muğla için tipik 1.450–1.550"
+                >
+                  <NumField
+                    value={specificYield}
+                    onChange={(v) => setSpecificYield(Math.max(0, v))}
+                  />
+                </Field>
+                <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
                   <Badge variant="secondary">DC: {formatKwp(kwp)} kWp</Badge>
+                  {kwp > 0 ? (
+                    <Badge variant="secondary">
+                      Yıllık ~
+                      {fmtNum(productionEstimate(kwp, specificYield).annual, 0)}{" "}
+                      kWh
+                    </Badge>
+                  ) : null}
                   <Badge variant="secondary">AC: {formatKwp(acKw)} kW</Badge>
                   {acKw > 0 && kwp > 0 ? (
                     <Badge variant="outline">DC/AC {fmtNum(kwp / acKw)}</Badge>
@@ -992,7 +1235,7 @@ ${rateNote}
           </section>
 
           {/* Şarj */}
-          <section className="surface-panel p-5">
+          <section id="bolum-sarj" className="surface-panel scroll-mt-4 p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="flex items-center gap-2 font-black">
                 <BatteryCharging className="h-5 w-5 text-emerald-600" /> EV şarj
@@ -1091,7 +1334,10 @@ ${rateNote}
           </section>
 
           {/* Kalemler */}
-          <section className="surface-panel overflow-hidden">
+          <section
+            id="bolum-kalemler"
+            className="surface-panel scroll-mt-4 overflow-hidden"
+          >
             <div className="flex flex-col gap-3 border-b border-border px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="flex items-center gap-2 font-black">
@@ -1100,10 +1346,52 @@ ${rateNote}
                 <p className="mt-1 text-xs text-muted-foreground">
                   "Kalemleri oluştur" GES ve şarj ayarlarından malzeme, işçilik
                   (kWp başına) ve yardımcı kalemleri üretir; elle eklenen
-                  kalemler korunur.
+                  kalemler korunur. Kâr oranını tek yerden girip tüm kalemlere
+                  uygulayın ya da hedef satış tutarını yazıp "Dağıt"a basın;
+                  satır bazında değiştirmek isterseniz tablodaki Kâr % alanını
+                  kullanın.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="grid gap-1 text-xs font-medium">
+                  Kâr oranı (maliyet üzerine)
+                  <div className="flex items-center gap-1">
+                    <Percent className="h-4 w-4 text-muted-foreground" />
+                    <NumField
+                      className="h-10 w-20"
+                      value={round2(markupRate * 100)}
+                      onChange={(v) => setMarkupRate(Math.max(0, v) / 100)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10"
+                      onClick={applyGlobalMarkup}
+                      disabled={lines.length === 0}
+                    >
+                      Tümüne uygula
+                    </Button>
+                  </div>
+                </label>
+                <label className="grid gap-1 text-xs font-medium">
+                  veya hedef satış (KDV hariç, {currency})
+                  <div className="flex items-center gap-1">
+                    <NumField
+                      className="h-10 w-32"
+                      value={targetSale}
+                      onChange={(v) => setTargetSale(Math.max(0, v))}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10"
+                      onClick={applyTargetSale}
+                      disabled={lines.length === 0 || targetSale <= 0}
+                    >
+                      Dağıt
+                    </Button>
+                  </div>
+                </label>
                 <Button variant="default" onClick={regenerate}>
                   <RefreshCw className="mr-2 h-4 w-4" /> Kalemleri oluştur
                 </Button>
@@ -1263,7 +1551,10 @@ ${rateNote}
           </section>
 
           {/* Ödeme ve şartlar */}
-          <section className="surface-panel grid gap-4 p-5 lg:grid-cols-2">
+          <section
+            id="bolum-odeme"
+            className="surface-panel grid scroll-mt-4 gap-4 p-5 lg:grid-cols-2"
+          >
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
                 <h2 className="font-black">Ödeme planı</h2>
@@ -1363,8 +1654,18 @@ ${rateNote}
                 <span>{formatMoney(totals.profit, currency)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Kâr marjı</span>
+                <span>Kâr marjı (satış üzerinden)</span>
                 <span>%{fmtNum(totals.margin * 100, 1)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Ort. kâr oranı (maliyet üzerinden)</span>
+                <span>
+                  %
+                  {fmtNum(
+                    totals.cost > 0 ? (totals.profit / totals.cost) * 100 : 0,
+                    1,
+                  )}
+                </span>
               </div>
               {kwp > 0 && totals.sale > 0 ? (
                 <div className="flex justify-between">
@@ -1376,26 +1677,50 @@ ${rateNote}
           </section>
 
           <section className="surface-panel grid gap-2 p-5 text-sm">
+            <h2 className="mb-1 font-black">Müşteri dosyası</h2>
+            <label className="flex items-center justify-between gap-3">
+              <span>Kalem bazında fiyat göster</span>
+              <Switch
+                checked={showLinePrices}
+                onCheckedChange={setShowLinePrices}
+              />
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Kapalıyken malzeme listesi yalnız miktarla, fiyat modül toplamı
+              olarak görünür (NES tekliflerindeki gibi).
+            </p>
+          </section>
+
+          <section className="surface-panel grid gap-2 p-5 text-sm">
             <h2 className="mb-1 font-black">Kontroller</h2>
             {checks.length === 0 ? (
               <p className="text-emerald-700">Sorun bulunmadı.</p>
             ) : (
               checks.map((check, index) => (
-                <p
+                <button
+                  type="button"
                   key={index}
-                  className={`flex gap-2 ${check.level === "error" ? "text-destructive" : "text-amber-700"}`}
+                  onClick={() => scrollToField(check.field)}
+                  className={`flex gap-2 rounded-md p-2 text-left hover:bg-muted ${check.level === "error" ? "text-destructive" : "text-amber-700"}`}
                 >
                   {check.level === "error" ? (
                     <CircleX className="mt-0.5 h-4 w-4 shrink-0" />
                   ) : (
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   )}
-                  <span>{check.message}</span>
-                </p>
+                  <span>
+                    <span className="font-semibold">{check.message}</span>
+                    <span className="mt-0.5 block text-xs text-foreground/70">
+                      Nasıl düşer: {check.fix}
+                    </span>
+                  </span>
+                </button>
               ))
             )}
             <p className="mt-2 text-xs text-muted-foreground">
-              Kırmızı kontroller düzelmeden kayıt yapılmaz. Sarılar uyarıdır.
+              Kırmızılar düzelmeden kayıt ve teklif dosyası alınmaz. Sarılar
+              uyarıdır; bilerek geçilebilir, kaydı engellemez. Bir uyarıya
+              tıklarsanız ilgili bölüme gider.
             </p>
           </section>
         </aside>
