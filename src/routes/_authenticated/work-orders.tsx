@@ -47,7 +47,9 @@ import {
 } from "@/components/ui/select";
 
 export const Route = createFileRoute("/_authenticated/work-orders")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { create: boolean; projectId?: string; serviceRequestId?: string } => ({
     create: search.create === true || search.create === "true",
     projectId:
       typeof search.projectId === "string" ? search.projectId : undefined,
