@@ -218,7 +218,9 @@ function DashboardPage() {
           await Promise.all([
             supabase
               .from("projects")
-              .select("id, name, project_no, status, quoted_amount, contract_amount, customers(name)")
+              .select(
+                "id, name, project_no, status, quoted_amount, contract_amount, customers(name)",
+              )
               .order("created_at", { ascending: false }),
             supabase
               .from("project_tasks")
@@ -530,7 +532,7 @@ function DashboardPage() {
   );
   type ActiveTaskItem = {
     id: string;
-    kind: "project" | "independent";
+    kind: "work_order" | "project" | "independent";
     title: string;
     status: ProjectTaskStatus;
     plannedDate: string | null;
@@ -538,6 +540,19 @@ function DashboardPage() {
     href: string;
   };
   const activeTaskItems: ActiveTaskItem[] = [
+    ...orders
+      .filter((order) => !TERMINAL_ORDER_STATUSES.includes(order.status))
+      .map((order) => ({
+        id: `work-order-${order.id}`,
+        kind: "work_order" as const,
+        title: `#${order.work_order_no} · ${order.title}`,
+        status: order.status as ProjectTaskStatus,
+        plannedDate: order.scheduled_at,
+        relation: order.projects
+          ? `${order.projects.project_no} · ${order.projects.name}`
+          : (order.customers?.name ?? "Bağımsız saha iş emri"),
+        href: `/jobs/${order.id}`,
+      })),
     ...visibleProjectTasks
       .filter((task) => !TERMINAL_TASK_STATUSES.includes(task.status))
       .map((task) => ({
@@ -703,7 +718,7 @@ function DashboardPage() {
       value: active,
       detail: `${orders.length} toplam iş emri`,
       icon: ListChecks,
-      href: "/work-orders",
+      href: "/tasks?source=work_order&filter=open",
     },
     {
       label: "Bekleyen Onaylar",
@@ -730,7 +745,7 @@ function DashboardPage() {
       value: completedThisMonth,
       detail: monthLabel,
       icon: CheckCircle2,
-      href: "/work-orders",
+      href: "/tasks?source=work_order&filter=completed",
     },
     {
       label: "Kritik Stok",
@@ -896,12 +911,30 @@ function DashboardPage() {
               </div>
               <div className="my-3 border-t border-border" />
               <p className={EYEBROW}>Proje Bedelleri</p>
-              {allProjects.filter((project) => project.quoted_amount != null || project.contract_amount != null).slice(0, 5).map((project) => (
-                <Link key={project.id} to="/projects/$projectId" params={{ projectId: project.id }} className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-2 hover:border-primary/50">
-                  <span className="min-w-0 truncate text-xs font-semibold">{project.project_no} · {project.name}</span>
-                  <span className="shrink-0 text-xs font-bold">{formatTRY(project.contract_amount ?? project.quoted_amount ?? 0)}</span>
-                </Link>
-              ))}
+              {allProjects
+                .filter(
+                  (project) =>
+                    project.quoted_amount != null ||
+                    project.contract_amount != null,
+                )
+                .slice(0, 5)
+                .map((project) => (
+                  <Link
+                    key={project.id}
+                    to="/projects/$projectId"
+                    params={{ projectId: project.id }}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-2 hover:border-primary/50"
+                  >
+                    <span className="min-w-0 truncate text-xs font-semibold">
+                      {project.project_no} · {project.name}
+                    </span>
+                    <span className="shrink-0 text-xs font-bold">
+                      {formatTRY(
+                        project.contract_amount ?? project.quoted_amount ?? 0,
+                      )}
+                    </span>
+                  </Link>
+                ))}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Satış Malzeme</span>
                 <span className="font-bold text-foreground">

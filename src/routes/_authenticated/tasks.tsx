@@ -43,6 +43,11 @@ export const Route = createFileRoute("/_authenticated/tasks")({
     )
       ? (search.filter as "open" | "overdue" | "approval" | "completed")
       : undefined,
+    source: ["work_order", "project", "independent"].includes(
+      String(search.source),
+    )
+      ? (search.source as "work_order" | "project" | "independent")
+      : undefined,
   }),
   component: TasksPage,
 });
@@ -100,6 +105,7 @@ const statusLabel: Record<string, string> = {
 };
 
 type TaskFilter = "all" | "open" | "overdue" | "approval" | "completed";
+type TaskSource = "all" | "work_order" | "project" | "independent";
 
 const taskViews: Array<{
   value: TaskFilter;
@@ -129,6 +135,21 @@ const taskViews: Array<{
   },
 ];
 
+const taskSourceViews: Array<{ value: TaskSource; label: string }> = [
+  { value: "all", label: "Tüm Kaynaklar" },
+  { value: "work_order", label: "Saha İş Emirleri" },
+  { value: "project", label: "Proje Görevleri" },
+  { value: "independent", label: "Bağımsız Görevler" },
+];
+
+function taskListHref(filter: TaskFilter, source: TaskSource) {
+  const search = new URLSearchParams();
+  if (filter !== "all") search.set("filter", filter);
+  if (source !== "all") search.set("source", source);
+  const query = search.toString();
+  return query ? `/tasks?${query}` : "/tasks";
+}
+
 function isTerminal(status: string) {
   return ["completed", "cancelled", "not_applicable"].includes(status);
 }
@@ -142,7 +163,7 @@ function isOverdue(plannedDate: string | null) {
 
 function TasksPage() {
   const { role } = useAuth();
-  const { filter } = Route.useSearch();
+  const { filter, source } = Route.useSearch();
   const canViewTasks = isOperationalManager(role);
   const canCreateTasks = isOperationalManager(role);
   const canAssignTasks = role === "admin";
@@ -671,6 +692,7 @@ function TasksPage() {
   }
 
   const activeFilter: TaskFilter = filter ?? "all";
+  const activeSource: TaskSource = source ?? "all";
   const trackedProjectTask = (task: ProjectTask) =>
     Boolean(task.responsible_id) ||
     task.approved_progress_pct > 0 ||
@@ -689,35 +711,49 @@ function TasksPage() {
     if (filterValue === "open")
       return (
         !isTerminal(task.status) &&
+        task.status !== "draft" &&
         task.status !== "external_approval" &&
         task.status !== "review_pending"
       );
     if (filterValue === "approval")
       return ["external_approval", "review_pending"].includes(task.status);
     if (filterValue === "overdue")
-      return !isTerminal(task.status) && isOverdue(task.plannedDate);
+      return (
+        !isTerminal(task.status) &&
+        task.status !== "draft" &&
+        isOverdue(task.plannedDate)
+      );
     return isTerminal(task.status);
   };
-  const visibleWorkOrders = data.workOrders.filter((task) =>
-    matchesFilter(
-      { status: task.status, plannedDate: task.scheduled_at },
-      activeFilter,
-    ),
-  );
-  const visibleIndependentTasks = data.independent.filter((task) =>
-    matchesFilter(
-      { status: task.status, plannedDate: task.planned_date },
-      activeFilter,
-    ),
-  );
-  const visibleProjectTasks = data.projectTasks.filter(
-    (task) =>
-      trackedProjectTask(task) &&
-      matchesFilter(
-        { status: task.status, plannedDate: task.planned_date },
-        activeFilter,
-      ),
-  );
+  const visibleWorkOrders =
+    activeSource === "all" || activeSource === "work_order"
+      ? data.workOrders.filter((task) =>
+          matchesFilter(
+            { status: task.status, plannedDate: task.scheduled_at },
+            activeFilter,
+          ),
+        )
+      : [];
+  const visibleIndependentTasks =
+    activeSource === "all" || activeSource === "independent"
+      ? data.independent.filter((task) =>
+          matchesFilter(
+            { status: task.status, plannedDate: task.planned_date },
+            activeFilter,
+          ),
+        )
+      : [];
+  const visibleProjectTasks =
+    activeSource === "all" || activeSource === "project"
+      ? data.projectTasks.filter(
+          (task) =>
+            trackedProjectTask(task) &&
+            matchesFilter(
+              { status: task.status, plannedDate: task.planned_date },
+              activeFilter,
+            ),
+        )
+      : [];
   const visibleTaskCount =
     visibleWorkOrders.length +
     visibleIndependentTasks.length +
@@ -768,7 +804,7 @@ function TasksPage() {
   const unifiedTasks = [
     ...visibleWorkOrders.map((task) => ({
       id: `work-order-${task.id}`,
-      category: "Görev",
+      category: "Saha iş emri",
       title: `#${task.work_order_no ?? "—"} · ${task.title}`,
       status: task.status,
       plannedDate: task.scheduled_at,
@@ -941,27 +977,41 @@ function TasksPage() {
       <PageHeader
         title="Görevler"
         description="Bütün operasyon görevlerini tek merkezden açın, atayın, takip edin ve yönetin."
-        actions={createButton}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline" className="h-12 font-bold">
+              <Link
+                to="/work-orders"
+                search={{ create: true, projectId: undefined }}
+              >
+                <Plus className="mr-2 h-4 w-4" /> Yeni İş Emri
+              </Link>
+            </Button>
+            {createButton}
+          </div>
+        }
       />
-      <section className="surface-panel mt-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div>
-          <h2 className="text-lg font-black">
-            {taskViews.find((view) => view.value === activeFilter)?.label}{" "}
-            Görevler
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {taskViews.find((view) => view.value === activeFilter)?.description}{" "}
-            · {visibleTaskCount} kayıt listeleniyor.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {taskViews.map((view) => {
-            const href =
-              view.value === "all" ? "/tasks" : `/tasks?filter=${view.value}`;
-            return (
+      <section className="surface-panel mt-6 grid gap-4 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-black">
+              {activeSource === "all"
+                ? `${taskViews.find((view) => view.value === activeFilter)?.label} Görevler`
+                : `${taskSourceViews.find((view) => view.value === activeSource)?.label} · ${taskViews.find((view) => view.value === activeFilter)?.label}`}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {
+                taskViews.find((view) => view.value === activeFilter)
+                  ?.description
+              }{" "}
+              · {visibleTaskCount} kayıt listeleniyor.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {taskViews.map((view) => (
               <a
                 key={view.value}
-                href={href}
+                href={taskListHref(view.value, activeSource)}
                 className={
                   activeFilter === view.value
                     ? "rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground"
@@ -970,8 +1020,26 @@ function TasksPage() {
               >
                 {view.label}
               </a>
-            );
-          })}
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-4">
+          <span className="mr-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Kaynak
+          </span>
+          {taskSourceViews.map((view) => (
+            <a
+              key={view.value}
+              href={taskListHref(activeFilter, view.value)}
+              className={
+                activeSource === view.value
+                  ? "rounded-lg bg-secondary px-3 py-2 text-sm font-bold text-secondary-foreground"
+                  : "rounded-lg border border-border bg-background/30 px-3 py-2 text-sm font-bold text-muted-foreground hover:border-primary/60 hover:text-foreground"
+              }
+            >
+              {view.label}
+            </a>
+          ))}
         </div>
       </section>
       <section className="surface-panel mt-6 p-4 sm:p-5">
@@ -982,7 +1050,7 @@ function TasksPage() {
             Etiket yalnızca görevin nereden geldiğini gösterir.
           </p>
         </div>
-        {activeFilter === "all" ? (
+        {activeFilter === "all" && activeSource !== "work_order" ? (
           <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">
             Henüz atanmamış proje kontrol listesi kalemleri burada görev
             sayılmaz; yalnızca proje detayında görünür. Bu liste, Paneldeki
