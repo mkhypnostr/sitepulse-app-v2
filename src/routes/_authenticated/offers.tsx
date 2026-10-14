@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FilePlus2,
@@ -7,12 +7,14 @@ import {
   FolderOpen,
   Pencil,
   Plus,
+  Sun,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { createOfferDriveWorkspace } from "@/lib/google-workspace";
+import { isEnergyOfferConfig } from "@/lib/energy-offer";
 import {
   AccessDenied,
   EmptyState,
@@ -152,6 +154,9 @@ type OfferRow = {
   drive_excel_url: string | null;
   drive_folder_url: string | null;
   created_at: string;
+  module_config: unknown;
+  total_amount: number;
+  currency: string;
   customers: { name: string } | null;
 };
 
@@ -174,7 +179,7 @@ function OffersPage() {
         supabase
           .from("offers")
           .select(
-            "id, offer_no, title, offer_type, status, customer_id, primary_item_description, primary_item_quantity, primary_item_unit, drive_excel_url, drive_folder_url, created_at, customers(name)",
+            "id, offer_no, title, offer_type, status, customer_id, primary_item_description, primary_item_quantity, primary_item_unit, drive_excel_url, drive_folder_url, created_at, module_config, total_amount, currency, customers(name)",
           )
           .order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name").order("name"),
@@ -243,11 +248,7 @@ function OffersPage() {
       if (form.primaryItemDescription.trim().length < 1) {
         throw new Error("Ana teklif kalemi açıklaması gerekli.");
       }
-      const quantity = requireNumber(
-        form.primaryItemQuantity,
-        "Miktar",
-        0.001,
-      );
+      const quantity = requireNumber(form.primaryItemQuantity, "Miktar", 0.001);
       const unit = form.primaryItemUnit.trim() || "adet";
 
       const headerPayload = {
@@ -300,9 +301,16 @@ function OffersPage() {
     return <LoadingState label="Teklifler yükleniyor..." />;
 
   const createButton = (
-    <Button className="h-12 font-bold" onClick={startCreate}>
-      <Plus className="mr-2 h-4 w-4" /> Yeni Teklif
-    </Button>
+    <div className="flex flex-wrap gap-2">
+      <Button asChild variant="outline" className="h-12 font-bold">
+        <Link to="/energy-offer">
+          <Sun className="mr-2 h-4 w-4" /> GES / Şarj / Taahhüt Teklifi
+        </Link>
+      </Button>
+      <Button className="h-12 font-bold" onClick={startCreate}>
+        <Plus className="mr-2 h-4 w-4" /> Yeni Teklif
+      </Button>
+    </div>
   );
 
   const dialog = (
@@ -538,6 +546,7 @@ function OffersPage() {
                 const isProvisioning =
                   provisionWorkspace.isPending &&
                   provisionWorkspace.variables === offer.id;
+                const isEnergy = isEnergyOfferConfig(offer.module_config);
                 return (
                   <TableRow key={offer.id}>
                     <TableCell className="font-mono text-xs font-bold">
@@ -545,15 +554,29 @@ function OffersPage() {
                     </TableCell>
                     <TableCell className="font-bold">{offer.title}</TableCell>
                     <TableCell>
-                      {offerTypeLabels[offer.offer_type as OfferType] ??
-                        "Diğer"}
+                      {isEnergy
+                        ? "Enerji Paketi (GES/Şarj/Taahhüt)"
+                        : (offerTypeLabels[offer.offer_type as OfferType] ??
+                          "Diğer")}
+                      {isEnergy && Number(offer.total_amount) > 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          {new Intl.NumberFormat("tr-TR", {
+                            style: "currency",
+                            currency: offer.currency || "TRY",
+                            maximumFractionDigits: 0,
+                          }).format(Number(offer.total_amount))}{" "}
+                          + KDV
+                        </p>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       {offer.primary_item_description ? (
                         <>
                           <p>{offer.primary_item_description}</p>
                           <p className="text-xs text-muted-foreground">
-                            {formatQuantity(Number(offer.primary_item_quantity))}{" "}
+                            {formatQuantity(
+                              Number(offer.primary_item_quantity),
+                            )}{" "}
                             {offer.primary_item_unit}
                           </p>
                         </>
@@ -576,7 +599,7 @@ function OffersPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-wrap justify-end gap-1.5">
-                        {offer.drive_excel_url ? (
+                        {isEnergy ? null : offer.drive_excel_url ? (
                           <Button
                             asChild
                             type="button"
@@ -625,15 +648,32 @@ function OffersPage() {
                             </a>
                           </Button>
                         ) : null}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => startEdit(offer)}
-                        >
-                          <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                          Düzenle
-                        </Button>
+                        {isEnergy ? (
+                          <Button
+                            asChild
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                          >
+                            <Link
+                              to="/energy-offer"
+                              search={{ offerId: offer.id }}
+                            >
+                              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                              Hazırlayıcıda Aç
+                            </Link>
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEdit(offer)}
+                          >
+                            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                            Düzenle
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

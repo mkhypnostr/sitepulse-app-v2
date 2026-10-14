@@ -204,10 +204,92 @@ export type Database = {
         };
         Relationships: [];
       };
+      offer_catalog_items: {
+        Row: {
+          brand: string | null;
+          capacity_kwh: number | null;
+          category: string;
+          code: string;
+          cost_amount: number;
+          created_at: string;
+          currency: string;
+          description: string | null;
+          id: string;
+          is_active: boolean;
+          line_category: string;
+          markup_rate: number;
+          model: string | null;
+          module: string;
+          name: string;
+          phase: string | null;
+          power_kw: number | null;
+          power_w: number | null;
+          price_date: string | null;
+          sort_order: number;
+          source: string | null;
+          template_role: string | null;
+          unit: string;
+          updated_at: string;
+        };
+        Insert: {
+          brand?: string | null;
+          capacity_kwh?: number | null;
+          category: string;
+          code: string;
+          cost_amount?: number;
+          created_at?: string;
+          currency?: string;
+          description?: string | null;
+          id?: string;
+          is_active?: boolean;
+          line_category?: string;
+          markup_rate?: number;
+          model?: string | null;
+          module: string;
+          name: string;
+          phase?: string | null;
+          power_kw?: number | null;
+          power_w?: number | null;
+          price_date?: string | null;
+          sort_order?: number;
+          source?: string | null;
+          template_role?: string | null;
+          unit?: string;
+          updated_at?: string;
+        };
+        Update: {
+          brand?: string | null;
+          capacity_kwh?: number | null;
+          category?: string;
+          code?: string;
+          cost_amount?: number;
+          created_at?: string;
+          currency?: string;
+          description?: string | null;
+          id?: string;
+          is_active?: boolean;
+          line_category?: string;
+          markup_rate?: number;
+          model?: string | null;
+          module?: string;
+          name?: string;
+          phase?: string | null;
+          power_kw?: number | null;
+          power_w?: number | null;
+          price_date?: string | null;
+          sort_order?: number;
+          source?: string | null;
+          template_role?: string | null;
+          unit?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       offer_line_items: {
         Row: {
           applied_sale_amount: number;
           brand: string | null;
+          catalog_item_id: string | null;
           category: string;
           computed_sale_amount: number;
           created_at: string;
@@ -218,10 +300,13 @@ export type Database = {
           manual_sale_amount: number | null;
           markup_rate: number;
           material_cost: number;
+          module: string | null;
           offer_id: string;
           quantity: number;
           risk_cost: number;
           sort_order: number;
+          source_currency: string | null;
+          source_unit_cost: number | null;
           subcontractor_cost: number;
           total_cost: number;
           unit: string;
@@ -232,6 +317,7 @@ export type Database = {
         Insert: {
           applied_sale_amount?: number;
           brand?: string | null;
+          catalog_item_id?: string | null;
           category?: string;
           computed_sale_amount?: number;
           created_at?: string;
@@ -242,10 +328,13 @@ export type Database = {
           manual_sale_amount?: number | null;
           markup_rate?: number;
           material_cost?: number;
+          module?: string | null;
           offer_id: string;
           quantity?: number;
           risk_cost?: number;
           sort_order?: number;
+          source_currency?: string | null;
+          source_unit_cost?: number | null;
           subcontractor_cost?: number;
           total_cost?: number;
           unit?: string;
@@ -256,6 +345,7 @@ export type Database = {
         Update: {
           applied_sale_amount?: number;
           brand?: string | null;
+          catalog_item_id?: string | null;
           category?: string;
           computed_sale_amount?: number;
           created_at?: string;
@@ -266,10 +356,13 @@ export type Database = {
           manual_sale_amount?: number | null;
           markup_rate?: number;
           material_cost?: number;
+          module?: string | null;
           offer_id?: string;
           quantity?: number;
           risk_cost?: number;
           sort_order?: number;
+          source_currency?: string | null;
+          source_unit_cost?: number | null;
           subcontractor_cost?: number;
           total_cost?: number;
           unit?: string;
@@ -278,6 +371,13 @@ export type Database = {
           visible_to_customer?: boolean;
         };
         Relationships: [
+          {
+            foreignKeyName: "offer_line_items_catalog_item_id_fkey";
+            columns: ["catalog_item_id"];
+            isOneToOne: false;
+            referencedRelation: "offer_catalog_items";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "offer_line_items_offer_id_fkey";
             columns: ["offer_id"];
@@ -311,16 +411,20 @@ export type Database = {
           customer_id: string | null;
           drive_excel_url: string | null;
           drive_folder_url: string | null;
+          exchange_rates: Json;
           id: string;
+          module_config: Json;
           notes: string | null;
           offer_no: string;
           offer_type: string;
+          payment_plan: Json;
           primary_item_description: string | null;
           primary_item_quantity: number;
           primary_item_unit: string;
           project_id: string | null;
           source_summary: string | null;
           status: string;
+          terms_note: string | null;
           title: string;
           total_amount: number;
           total_amount_mode: string;
@@ -336,16 +440,20 @@ export type Database = {
           customer_id?: string | null;
           drive_excel_url?: string | null;
           drive_folder_url?: string | null;
+          exchange_rates?: Json;
           id?: string;
+          module_config?: Json;
           notes?: string | null;
           offer_no?: string;
           offer_type?: string;
+          payment_plan?: Json;
           primary_item_description?: string | null;
           primary_item_quantity?: number;
           primary_item_unit?: string;
           project_id?: string | null;
           source_summary?: string | null;
           status?: string;
+          terms_note?: string | null;
           title: string;
           total_amount?: number;
           total_amount_mode?: string;
@@ -361,16 +469,20 @@ export type Database = {
           customer_id?: string | null;
           drive_excel_url?: string | null;
           drive_folder_url?: string | null;
+          exchange_rates?: Json;
           id?: string;
+          module_config?: Json;
           notes?: string | null;
           offer_no?: string;
           offer_type?: string;
+          payment_plan?: Json;
           primary_item_description?: string | null;
           primary_item_quantity?: number;
           primary_item_unit?: string;
           project_id?: string | null;
           source_summary?: string | null;
           status?: string;
+          terms_note?: string | null;
           title?: string;
           total_amount?: number;
           total_amount_mode?: string;
@@ -713,7 +825,8 @@ export type Database = {
           new_status: Database["public"]["Enums"]["project_task_status"];
           note?: string | null;
           old_status?:
-            Database["public"]["Enums"]["project_task_status"] | null;
+            | Database["public"]["Enums"]["project_task_status"]
+            | null;
           project_task_id: string;
         };
         Update: {
@@ -723,7 +836,8 @@ export type Database = {
           new_status?: Database["public"]["Enums"]["project_task_status"];
           note?: string | null;
           old_status?:
-            Database["public"]["Enums"]["project_task_status"] | null;
+            | Database["public"]["Enums"]["project_task_status"]
+            | null;
           project_task_id?: string;
         };
         Relationships: [
@@ -2468,9 +2582,15 @@ export type Database = {
       app_role: "admin" | "contractor" | "customer" | "technical_office";
       photo_type: "saha" | "montaj_sonrasi" | "malzeme" | "diger";
       project_progress_submission_status:
-        "pending" | "approved" | "revision_requested";
+        | "pending"
+        | "approved"
+        | "revision_requested";
       project_status:
-        "draft" | "active" | "on_hold" | "completed" | "cancelled";
+        | "draft"
+        | "active"
+        | "on_hold"
+        | "completed"
+        | "cancelled";
       project_task_status:
         | "not_started"
         | "in_progress"
@@ -2506,12 +2626,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -2533,12 +2653,13 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -2557,12 +2678,13 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -2581,12 +2703,13 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -2599,11 +2722,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
