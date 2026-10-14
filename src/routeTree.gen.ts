@@ -16,6 +16,7 @@ import { Route as AuthenticatedApprovalsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 import { Route as AuthenticatedCustomersRouteImport } from './routes/_authenticated/customers'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedEnergyOfferRouteImport } from './routes/_authenticated/energy-offer'
 import { Route as AuthenticatedMeasurementTrackingRouteImport } from './routes/_authenticated/measurement-tracking'
 import { Route as AuthenticatedMyJobsRouteImport } from './routes/_authenticated/my-jobs'
 import { Route as AuthenticatedMyProjectTasksRouteImport } from './routes/_authenticated/my-project-tasks'
@@ -71,6 +72,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedEnergyOfferRoute =
+  AuthenticatedEnergyOfferRouteImport.update({
+    id: '/energy-offer',
+    path: '/energy-offer',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMeasurementTrackingRoute =
   AuthenticatedMeasurementTrackingRouteImport.update({
     id: '/measurement-tracking',
@@ -187,6 +194,7 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof AuthenticatedCalendarRoute
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/my-jobs': typeof AuthenticatedMyJobsRoute
   '/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
@@ -215,6 +223,7 @@ export interface FileRoutesByTo {
   '/calendar': typeof AuthenticatedCalendarRoute
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/my-jobs': typeof AuthenticatedMyJobsRoute
   '/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
@@ -245,6 +254,7 @@ export interface FileRoutesById {
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/customers': typeof AuthenticatedCustomersRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/_authenticated/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/_authenticated/my-jobs': typeof AuthenticatedMyJobsRoute
   '/_authenticated/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
@@ -275,6 +285,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/customers'
     | '/dashboard'
+    | '/energy-offer'
     | '/measurement-tracking'
     | '/my-jobs'
     | '/my-project-tasks'
@@ -303,6 +314,7 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/customers'
     | '/dashboard'
+    | '/energy-offer'
     | '/measurement-tracking'
     | '/my-jobs'
     | '/my-project-tasks'
@@ -332,6 +344,7 @@ export interface FileRouteTypes {
     | '/_authenticated/calendar'
     | '/_authenticated/customers'
     | '/_authenticated/dashboard'
+    | '/_authenticated/energy-offer'
     | '/_authenticated/measurement-tracking'
     | '/_authenticated/my-jobs'
     | '/_authenticated/my-project-tasks'
@@ -410,6 +423,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/energy-offer': {
+      id: '/_authenticated/energy-offer'
+      path: '/energy-offer'
+      fullPath: '/energy-offer'
+      preLoaderRoute: typeof AuthenticatedEnergyOfferRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/measurement-tracking': {
@@ -573,6 +593,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
   AuthenticatedCustomersRoute: typeof AuthenticatedCustomersRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedEnergyOfferRoute: typeof AuthenticatedEnergyOfferRoute
   AuthenticatedMeasurementTrackingRoute: typeof AuthenticatedMeasurementTrackingRoute
   AuthenticatedMyJobsRoute: typeof AuthenticatedMyJobsRoute
   AuthenticatedMyProjectTasksRoute: typeof AuthenticatedMyProjectTasksRoute
@@ -598,6 +619,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
   AuthenticatedCustomersRoute: AuthenticatedCustomersRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedEnergyOfferRoute: AuthenticatedEnergyOfferRoute,
   AuthenticatedMeasurementTrackingRoute: AuthenticatedMeasurementTrackingRoute,
   AuthenticatedMyJobsRoute: AuthenticatedMyJobsRoute,
   AuthenticatedMyProjectTasksRoute: AuthenticatedMyProjectTasksRoute,
