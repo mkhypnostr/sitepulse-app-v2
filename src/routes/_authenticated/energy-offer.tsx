@@ -1520,7 +1520,7 @@ function EnergyOfferPage() {
                     {priced.map((line) => (
                       <TableRow
                         key={line.key}
-                        className={line.visibleToCustomer ? "" : "opacity-50"}
+                        className={`${line.visibleToCustomer ? "" : "opacity-50"} ${line.sourceUnitCost > 0 ? "" : "bg-red-50 dark:bg-red-950/40"}`}
                       >
                         <TableCell>
                           <Input
@@ -1537,6 +1537,12 @@ function EnergyOfferPage() {
                             {line.brand ? ` · ${line.brand}` : ""}
                             {line.auto ? " · otomatik" : ""}
                           </p>
+                          {line.sourceUnitCost > 0 ? null : (
+                            <p className="mt-1 text-[11px] font-bold text-red-600">
+                              Alış fiyatı 0 — neden 0? Maliyet yazın ya da
+                              bilerek 0 ise (NES kendi yapıyor vb.) bırakın.
+                            </p>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Select
