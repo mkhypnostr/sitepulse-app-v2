@@ -99,6 +99,7 @@ export async function buildInternalCostWorkbook(input: {
     `Satış (${input.currency})`,
     "Brüt kâr",
     "Müşteriye görünür",
+    "Not",
   ];
   ws.columns = [
     { width: 5 },
@@ -117,6 +118,7 @@ export async function buildInternalCostWorkbook(input: {
     { width: 17 },
     { width: 15 },
     { width: 11 },
+    { width: 34 },
   ];
   const head = ws.getRow(5);
   headers.forEach((text, index) => {
@@ -169,7 +171,19 @@ export async function buildInternalCostWorkbook(input: {
       pattern: "solid",
       fgColor: { argb: "FFFFF8EB" },
     };
-    if (index % 2 === 1) {
+    if (!(line.sourceUnitCost > 0)) {
+      // Alış fiyatı 0 olan kalemler kırmızı: gerekçesi teyit edilmeli.
+      for (let c = 1; c <= 17; c += 1) {
+        row.getCell(c).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFFDE2E1" },
+        };
+        row.getCell(c).font = { color: { argb: "FFB42318" } };
+      }
+      row.getCell(17).value = "Alış fiyatı 0 — neden 0? Teyit edin.";
+      row.getCell(17).font = { bold: true, color: { argb: "FFB42318" } };
+    } else if (index % 2 === 1) {
       for (const c of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16]) {
         row.getCell(c).fill = {
           type: "pattern",
@@ -191,7 +205,7 @@ export async function buildInternalCostWorkbook(input: {
   for (const c of [12, 14, 15]) totalRow.getCell(c).numFmt = money;
   ws.autoFilter = {
     from: { row: 5, column: 1 },
-    to: { row: last, column: 16 },
+    to: { row: last, column: 17 },
   };
 
   // Özet

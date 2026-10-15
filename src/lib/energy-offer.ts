@@ -641,6 +641,20 @@ export function runChecks(input: {
       fix: "GES/Şarj ayarlarını yapıp 'Kalemleri oluştur'a basın veya katalogdan kalem ekleyin.",
     });
   }
+  const zeroCost = input.lines.filter(
+    (line) => line.quantity > 0 && !(line.sourceUnitCost > 0),
+  );
+  if (zeroCost.length > 0) {
+    checks.push({
+      level: "warning",
+      field: "kalemler",
+      message: `${zeroCost.length} kalemin alış fiyatı 0: ${zeroCost
+        .slice(0, 3)
+        .map((line) => line.description)
+        .join("; ")}${zeroCost.length > 3 ? "…" : ""}`,
+      fix: 'Kırmızı satırlara gerçek maliyeti yazın. Bilerek 0 ise (NES kendi yapıyor, müşteri temin ediyor vb.) satış fiyatı da 0 çıkar ve müşteri dosyasında "Dahil" görünür; bu durumda emeğin bedelini başka kaleme yansıttığınızdan emin olun.',
+    });
+  }
   if (input.lines.some((line) => !(line.quantity > 0))) {
     checks.push({
       level: "error",
