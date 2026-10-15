@@ -325,7 +325,10 @@ function EnergyOfferPage() {
           .eq("is_active", true)
           .order("module")
           .order("sort_order"),
-        supabase.from("customers").select("id, name").order("name"),
+        supabase
+          .from("customers")
+          .select("id, name, billing_title, billing_address")
+          .order("name"),
       ]);
       if (catalogResult.error) throw catalogResult.error;
       if (customersResult.error) throw customersResult.error;
@@ -688,7 +691,12 @@ function EnergyOfferPage() {
       terms,
       showLinePrices,
       specificYield,
-      logoUrl: `${window.location.origin}${NES_COMPANY.logoPath}`,
+      recipientAddress:
+        recipient.mode === "kayitli"
+          ? (dataQuery.data?.customers.find((c) => c.id === customerId)
+              ?.billing_address ?? "")
+          : "",
+      origin: window.location.origin,
     };
   }
 
@@ -1679,15 +1687,19 @@ function EnergyOfferPage() {
           <section className="surface-panel grid gap-2 p-5 text-sm">
             <h2 className="mb-1 font-black">Müşteri dosyası</h2>
             <label className="flex items-center justify-between gap-3">
-              <span>Kalem bazında fiyat göster</span>
+              <span>Ayrıntılı fiyat listesi ekle</span>
               <Switch
                 checked={showLinePrices}
                 onCheckedChange={setShowLinePrices}
               />
             </label>
             <p className="text-xs text-muted-foreground">
-              Kapalıyken malzeme listesi yalnız miktarla, fiyat modül toplamı
-              olarak görünür (NES tekliflerindeki gibi).
+              GES içeren teklif NES sunum dosyası (kapak, sistem özeti, hizmet
+              kapsamı, donanımlar, proje süreci, fiyat) olarak çıkar; açarsanız
+              sonuna kalem kalem fiyat listesi eklenir. Yalnız şarj/taahhüt
+              teklifleri NES "TEKLİF" formu olarak çıkar; açarsanız tüm kalemler
+              ayrı satırda, kapalıyken istasyon + "montaj ve sarf dahil" tek
+              satırda görünür.
             </p>
           </section>
 
