@@ -542,8 +542,18 @@ function EnergyOfferPage() {
   }
 
   function applyGlobalMarkup() {
-    setLines((current) => applyMarkup(current, markupRate));
-    toast.success(`Tüm kalemlere %${fmtNum(markupRate * 100)} kâr uygulandı.`);
+    // Taahhüt kalemleri kütüphanedeki kategori kâr oranlarıyla gelir
+    // (şantiye %40, topraklama %45, sıva altı %30, işçilik %20); genel oran
+    // onları ezmez. Hepsini değiştirmek için hedef satış "Dağıt" kullanılır.
+    setLines((current) =>
+      current.map((line) =>
+        line.module === "taahhut" ? line : { ...line, markupRate },
+      ),
+    );
+    const kept = lines.filter((line) => line.module === "taahhut").length;
+    toast.success(
+      `GES, şarj ve genel kalemlere %${fmtNum(markupRate * 100)} kâr uygulandı.${kept ? ` ${kept} taahhüt kalemi kendi kategori oranında kaldı.` : ""}`,
+    );
   }
 
   function applyTargetSale() {
@@ -789,6 +799,25 @@ function EnergyOfferPage() {
     win.document.close();
   }
 
+  /** NES maliyet tablolarındaki başlık biçimi, ör. "22,5 kWp DC - 20 kWe AC -
+   * 20 kWh batarya kapasiteli GES (DEYE + BYD)". */
+  function excelModuleTitles() {
+    const brandOf = (id: string) =>
+      catalog.find((item) => item.id === id)?.brand?.toLocaleUpperCase("tr-TR");
+    const brands = [brandOf(ges.inverterId), brandOf(ges.batteryId)]
+      .filter(Boolean)
+      .join(" + ");
+    const station = catalog.find((item) => item.id === sarj.stationId);
+    return {
+      ges: `${formatKwp(kwp)} kWp DC - ${formatKwp(acKw)} kWe AC${batteryKwh > 0 ? ` - ${formatKwp(batteryKwh)} kWh batarya kapasiteli` : ""} GES${brands ? ` (${brands})` : ""}`,
+      sarj: station
+        ? `${sarj.stationCount} adet ${station.brand ?? ""} ${formatKwp(Number(station.power_kw ?? 0))} kW şarj istasyonu`
+        : "Şarj",
+      taahhut: `${title.trim() || "Taahhüt"} - elektrik taahhüt`,
+      genel: "Genel giderler",
+    };
+  }
+
   async function exportInternalExcel() {
     if (import.meta.env.SSR) return;
     if (lines.length === 0) {
@@ -809,6 +838,7 @@ function EnergyOfferPage() {
         lines: priced,
         catalogCodes: new Map(catalog.map((item) => [item.id, item.code])),
         logoUrl: NES_COMPANY.logoPath,
+        moduleTitles: excelModuleTitles(),
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -1252,7 +1282,10 @@ function EnergyOfferPage() {
                     </Field>
                   </>
                 ) : null}
-                <Field label="DC kablo (m)" hint="Varsayılan: kWp × 20 m">
+                <Field
+                  label="DC kablo (m)"
+                  hint="NES tablolarında 9–22,5 kWp için 100–120 m"
+                >
                   <NumField
                     value={ges.dcCableM}
                     onChange={(v) =>
@@ -1421,11 +1454,12 @@ function EnergyOfferPage() {
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   "Kalemleri oluştur" GES ve şarj ayarlarından malzeme, işçilik
-                  (kWp başına) ve yardımcı kalemleri üretir; elle eklenen
-                  kalemler korunur. Kâr oranını tek yerden girip tüm kalemlere
-                  uygulayın ya da hedef satış tutarını yazıp "Dağıt"a basın;
-                  satır bazında değiştirmek isterseniz tablodaki Kâr % alanını
-                  kullanın.
+                  ve yardımcı kalemleri NES maliyet tablolarına göre üretir
+                  (işçilik, nakliye ve GES panosu kWp kademeli götürü); elle
+                  eklenen kalemler korunur. "Tümüne uygula" GES, şarj ve genel
+                  kalemlere tek kâr oranı verir; taahhüt kalemleri kütüphanedeki
+                  kategori oranında kalır. Hedef satış tutarını yazıp "Dağıt"a
+                  basarsanız tüm kalemlere aynı oran dağıtılır.
                 </p>
               </div>
               <div className="flex flex-wrap items-end gap-2">

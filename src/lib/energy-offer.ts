@@ -309,7 +309,7 @@ export const defaultGes: GesConfig = {
   batteryCount: 0,
   roofType: "kiremit",
   dcCableM: 0,
-  acCableM: 15,
+  acCableM: 12,
   contractPowerKw: 0,
 };
 
@@ -329,18 +329,45 @@ export const defaultPaymentPlan: PaymentStep[] = [
   { label: "Devreye alma ve kabulde", percent: 10 },
 ];
 
-/** Yardımcı kalemlerin (topraklama, nakliye, sarf, kabul, statik) maliyet
- * tablolarındaki referans sistem büyüklüğü. Daha büyük sistemlerde bu
- * kalemler kWp ile orantılı büyür, küçüklerde taban fiyat korunur. */
-export const GES_REFERENCE_KWP = 20;
+/** NES GES maliyet tablolarındaki götürü bedeller (USD, KDV hariç):
+ * DG Otomotiv R2 (9 / 15 / 22,5 kWp), B. Kolkesen (9,9 kWp), Cihan İnşaat
+ * (12 kWp). Ara değerler doğrusal enterpolasyonla, en büyük noktanın
+ * üstü son iki noktanın eğimiyle hesaplanır; en küçüğün altı taban kalır. */
+export const GES_COST_CURVES: Record<string, [number, number][]> = {
+  // Kurulum ve devreye alma (Pik Solar montaj işçiliği)
+  ges_labor: [
+    [9, 1000],
+    [12, 1100],
+    [15, 1350],
+    [22.5, 2000],
+  ],
+  // Nakliye (ambar, kargo, forklift, vinç)
+  ges_transport: [
+    [9, 400],
+    [15, 450],
+    [22.5, 500],
+  ],
+  // Koruma ve toplama panosu (GES ACP)
+  ges_acp: [
+    [9, 400],
+    [15, 450],
+    [22.5, 500],
+  ],
+};
 
-const SCALED_GES_ROLES = new Set([
-  "ges_grounding",
-  "ges_consumables",
-  "ges_transport",
-  "ges_static",
-  "ges_acceptance",
-]);
+export function costFromCurve(points: [number, number][], kwp: number) {
+  if (points.length === 0) return 0;
+  if (kwp <= points[0][0]) return points[0][1];
+  for (let i = 1; i < points.length; i += 1) {
+    const [x1, y1] = points[i];
+    const [x0, y0] = points[i - 1];
+    if (kwp <= x1) return round2(y0 + ((y1 - y0) * (kwp - x0)) / (x1 - x0));
+  }
+  const [x0, y0] = points[points.length - 2] ?? points[0];
+  const [x1, y1] = points[points.length - 1];
+  const slope = x1 === x0 ? 0 : (y1 - y0) / (x1 - x0);
+  return round2(y1 + slope * (kwp - x1));
+}
 
 export function round2(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -383,9 +410,10 @@ export function panelsForTarget(targetKwp: number, panelW: number) {
   return Math.ceil((targetKwp * 1000) / panelW);
 }
 
-/** DC kablo için varsayılan metraj: her kWp için 20 m (artı/eksi hat). */
+/** DC kablo için varsayılan metraj. NES tablolarında 9–22,5 kWp arası
+ * sistemlerde 100–120 m kullanılmış; büyük sistemlerde kWp ile artar. */
 export function defaultDcCable(kwp: number) {
-  return Math.max(50, Math.round(kwp * 20));
+  return Math.max(100, Math.round((kwp * 5.5) / 10) * 10);
 }
 
 let keySeed = 0;
@@ -443,15 +471,26 @@ export function buildGesLines(
     const battery = catalog.find((item) => item.id === ges.batteryId);
     if (battery && ges.batteryCount > 0) {
       lines.push(lineFromCatalog(battery, ges.batteryCount));
+      // NES tablolarında batarya işçiliği sistem başına tek set.
       const batteryLabor = byRole(catalog, "ges_battery_labor");
-      if (batteryLabor) {
-        lines.push(lineFromCatalog(batteryLabor, ges.batteryCount));
-      }
+      if (batteryLabor) lines.push(lineFromCatalog(batteryLabor, 1));
     }
   }
   if (kwp <= 0) return lines;
 
-  const scale = Math.max(1, kwp / GES_REFERENCE_KWP);
+  // İşçilik, nakliye ve GES panosu kWp kademeli götürü bedel (1 set).
+  const curved = (role: string) => {
+    const item = byRole(catalog, role);
+    const points = GES_COST_CURVES[role];
+    if (!item || !points) return;
+    const base = Number(item.cost_amount);
+    const target = costFromCurve(points, kwp);
+    lines.push(
+      lineFromCatalog(item, 1, {
+        costMultiplier: base > 0 ? target / base : 1,
+      }),
+    );
+  };
 
   const mounting =
     ges.roofType === "kiremit"
@@ -461,11 +500,8 @@ export function buildGesLines(
     lines.push(lineFromCatalog(mounting, ges.panelCount));
   }
 
-  const labor = byRole(catalog, "ges_labor");
-  if (labor) lines.push(lineFromCatalog(labor, round2(kwp)));
-
-  const acp = byRole(catalog, "ges_acp");
-  if (acp) lines.push(lineFromCatalog(acp, Math.max(1, ges.inverterCount)));
+  curved("ges_labor");
+  curved("ges_acp");
   const meter = byRole(catalog, "ges_meter");
   if (meter) lines.push(lineFromCatalog(meter, 1));
 
@@ -478,32 +514,26 @@ export function buildGesLines(
   );
   if (ac && ges.acCableM > 0) lines.push(lineFromCatalog(ac, ges.acCableM));
   const conduit = byRole(catalog, "ges_conduit");
-  const conduitM = Math.round(ges.dcCableM / 2 + ges.acCableM);
+  const conduitM = Math.max(50, Math.round(ges.dcCableM / 2));
   if (conduit && conduitM > 0) lines.push(lineFromCatalog(conduit, conduitM));
   const mc4 = byRole(catalog, "ges_mc4");
   if (mc4 && ges.panelCount > 0) {
-    lines.push(
-      lineFromCatalog(mc4, Math.max(4, Math.ceil(ges.panelCount / 4))),
-    );
+    lines.push(lineFromCatalog(mc4, ges.panelCount > 20 ? 8 : 4));
   }
 
+  curved("ges_transport");
+  // Diğer yardımcı kalemler NES tablolarında sistem büyüklüğünden bağımsız.
   for (const role of [
     "ges_grounding",
     "ges_consumables",
-    "ges_transport",
     "ges_static",
+    "ges_responsibility_static",
     "ges_acceptance",
     "ges_project",
     "ges_responsibility",
   ]) {
     const item = byRole(catalog, role);
-    if (!item) continue;
-    const scaled = SCALED_GES_ROLES.has(role);
-    lines.push(
-      lineFromCatalog(item, 1, {
-        costMultiplier: scaled ? scale : 1,
-      }),
-    );
+    if (item) lines.push(lineFromCatalog(item, 1));
   }
   return lines;
 }
