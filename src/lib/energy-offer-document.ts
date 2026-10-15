@@ -1,14 +1,19 @@
-// Müşteriye verilecek, sunum düzeninde A4 teklif dosyası (HTML -> yazdır / PDF).
-// Metinler NES'in önceki GES tekliflerinden (DG Otomotiv, B. Kolkesen) alınmıştır.
+// Müşteriye verilecek teklif dosyası (HTML -> yazdır / PDF).
+//
+// NES'in kendi tekliflerindeki iki düzen birebir izlenir:
+//  1) GES içeren teklifler: "Fotovoltaik güneş enerjisinden elektrik üretim,
+//     mühendislik ve kurulum fiyat teklifi" sunum dosyası (DG Otomotiv ve
+//     B. Kolkesen teklifleri): kapak, proje/sistem özeti, teklifin konusu ve iş
+//     akışı, hizmet kapsamı, donanımlar, proje süreci, fiyat ve ödeme.
+//  2) Yalnız şarj / taahhüt teklifleri: logolu "TEKLİF" formu (SEMU, DG Otomotiv
+//     şarj, Gürkan Demiröz teklifleri): kalem tablosu, ara toplam / KDV / genel
+//     toplam ve gerekirse ikinci sayfada "Teklif ve teknik şartname".
 
 import {
   formatKwp,
-  formatMoney,
   gesBatteryKwh,
   gesCapacityKwp,
   gesInverterKw,
-  MONTH_LABELS,
-  productionEstimate,
   type CatalogItem,
   type Currency,
   type ExchangeRates,
@@ -23,13 +28,22 @@ export const NES_COMPANY = {
   brand: "NES Enerji",
   legalName:
     "Nes Teknik Enerji Mühendislik İnşaat Sanayi ve Ticaret Limited Şirketi",
+  legalNameUpper:
+    "NES TEKNİK ENERJİ MÜHENDİSLİK İNŞAAT SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
+  addressUpper: "ORHANİYE MAHALLESİ 12 NOLU SOKAK NUR APARTMANI NO:6 C",
+  cityUpper: "MUĞLA / Menteşe",
+  footerLine: "0 554 610 24 16 | ORHANİYE MAH. 12 NOLU SK. NO:6C MENTEŞE/MUĞLA",
   address: "Orhaniye Mah. 12 Nolu Sk. Nur Apt. No:6/C Menteşe / Muğla",
   phone: "0 554 610 24 16",
+  phoneCompact: "05546102416",
+  taxOffice: "MUĞLA VERGİ DAİRESİ",
+  taxNo: "6312027568",
   email: "info@nesgrup.com",
-  web: "nesgrup.com",
   bank: "Akbank",
+  bankAccountName: "Nes Teknik Enerji Mühendislik İnş. San. ve Tic. Ltd. Şti.",
   iban: "TR21 0004 6001 2888 8000 3242 29",
   logoPath: "/nes-enerji-logo.png",
+  assetsPath: "/offer-assets",
 };
 
 export type OfferDocumentInput = {
@@ -39,6 +53,8 @@ export type OfferDocumentInput = {
   title: string;
   recipientName: string;
   contactName: string;
+  /** Müşteri adresi (kayıtlı müşteride fatura adresi). */
+  recipientAddress?: string;
   location: string;
   currency: Currency;
   vatRate: number;
@@ -52,9 +68,11 @@ export type OfferDocumentInput = {
   grandTotal: number;
   paymentPlan: PaymentStep[];
   terms: string;
+  /** GES sunum dosyasına kalem bazında fiyat listesini ek sayfa olarak koy. */
   showLinePrices: boolean;
   specificYield: number;
-  logoUrl: string;
+  /** Uygulamanın kök adresi (logo ve görseller için), ör. https://app.nesgrup.com */
+  origin: string;
 };
 
 const esc = (value: string) =>
@@ -69,7 +87,18 @@ const num = (value: number, digits = 2) =>
     value,
   );
 
-const dateTr = (value: Date | string | null) =>
+const money = (value: number, currency: Currency) => {
+  const formatted = new Intl.NumberFormat("tr-TR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+  return currency === "TRY" ? `${formatted} ₺` : `${formatted} ${currency}`;
+};
+
+const dateDots = (value: Date) =>
+  `${String(value.getDate()).padStart(2, "0")}.${String(value.getMonth() + 1).padStart(2, "0")}.${value.getFullYear()}`;
+
+const dateLong = (value: Date | string | null) =>
   value
     ? new Date(value).toLocaleDateString("tr-TR", {
         day: "numeric",
@@ -78,452 +107,627 @@ const dateTr = (value: Date | string | null) =>
       })
     : "-";
 
-const moduleTitles: Record<OfferModule, string> = {
-  ges: "Güneş Enerji Sistemi",
-  sarj: "Elektrikli Araç Şarj Sistemi",
-  taahhut: "Elektrik Taahhüt İşleri",
-  genel: "Diğer Kalemler",
+const upperTr = (value: string) => value.toLocaleUpperCase("tr-TR");
+
+const unitLabel = (unit: string) => {
+  const map: Record<string, string> = {
+    adet: "Adet",
+    "ad.": "Adet",
+    m: "Metre",
+    set: "Set",
+    paket: "Paket",
+    kg: "Kg",
+    boy: "Boy",
+  };
+  return map[unit] ?? unit;
 };
 
+// ---------------------------------------------------------------- GES sabit metinleri
 const gesScope: [string, boolean][] = [
-  ["Keşif yapılması", true],
-  ["Bağlantı çağrı mektubu dosyasının hazırlanması, başvuru ve takibi", true],
-  ["Statik hesapların yapılması ve projenin hazırlanması", true],
-  ["GES uygunluk yazısının alınması", true],
-  ["TEDAŞ elektrik projelerinin hazırlanması ve onaylatılması", true],
-  ["Tek hat şeması, yerleşim planı ve topraklama projeleri", true],
-  ["Bağlantı ve GES kullanım anlaşması başvurularının yapılması", true],
-  ["İtfaiye uygunluk yazısı başvurusu ve takibi", true],
-  ["GES ürünlerinin tedariki, montajı, test ve devreye alma", true],
-  ["Online izleme sisteminin kurulması", true],
-  ["Kamu harçlarının ödenmesi", false],
-  ["İtfaiye görüşü sonrası GES harici istenebilecek düzeltmeler", false],
+  ["Keşif Yapılması", true],
+  ["Bağlantı Çağrı Dosyası Mektubunun Hazırlanması & Başvuru ve Takibi", true],
+  ["Statik Hesapların Yapılıp Projenin Hazırlanması", true],
+  ["GES Uygunluk Yazısının Alınması", true],
+  ["TEDAŞ Elektrik Projelerinin Hazırlanması", true],
+  ["GES Statik Projesinin Üniversiteye Onaylatılması", true],
+  ["Tek Hat Şemasının Hazırlanması", true],
+  ["Yerleşim Planı Hazırlanması", true],
+  ["Topraklama Projelerinin Hazırlanması", true],
+  ["Projelerin Onaylatılması", true],
+  ["Bağlantı Anlaşması Başvurusunda Bulunulması", true],
+  ["GES Kullanım Anlaşması Başvurusunda Bulunulması ve İmzalanması", true],
+  [
+    "GES İçin İtfaiye Uygunluk Yazısının Hazırlanıp Başvurulması ve Takibi",
+    true,
+  ],
+  ["GES'e ait Ürünlerin Tedarik ve Montajı", true],
+  ["Online İzleme Sistemi Kurulması", true],
+  ["Kamu Harçlarının Ödenmesi", false],
+  ["İtfaiye Görüşü Sonrası GES Harici Talep Edilebilecek Düzeltmeler", false],
   ["Yangın önleme ve söndürme teçhizatının temini", false],
+  ["Talep Edilebilecek Bağış, Yardım ve Ödemeler", false],
 ];
 
 const sarjScope: [string, boolean][] = [
-  ["Keşif ve kablo güzergâhının belirlenmesi", true],
-  ["Şarj istasyonunun tedariki ve montajı", true],
-  ["Besleme kablosu, boru ve bağlantı malzemeleri", true],
-  ["Kaçak akım ve aşırı akım korumalı şarj panosu", true],
-  ["Test, devreye alma ve kullanım eğitimi", true],
-  ["Bağlantı gücü artışı için EDAŞ başvuru bedelleri", false],
-  ["Kazı, beton, asfalt gibi inşai işler (aksi belirtilmedikçe)", false],
+  ["Şarj İstasyonunun Tedarik ve Montajı", true],
+  ["Besleme Kablosu, Boru ve Bağlantı Malzemelerinin Tedarik ve Montajı", true],
+  ["Kaçak Akım ve Aşırı Akım Korumalı Şarj Panosunun Kurulması", true],
+  ["Test, Devreye Alma ve Kullanım Eğitimi", true],
+  ["Bağlantı Gücü Artışı İçin EDAŞ Başvuru Bedelleri", false],
+  ["Kazı, Beton, Asfalt Gibi İnşai İşler", false],
 ];
 
 const gesProcess: [string, string[]][] = [
   [
-    "1. ay",
+    "1.AY",
     [
-      "Teklif ve sözleşmenin imzalanması",
-      "Gerekli evrakların ve noter onaylı vekâletnamenin alınması",
-      "Elektrik dağıtım şirketine başvuru",
+      "Teklif ve Sözleşme İmzalanması",
+      "Gerekli Evrakların Talebi",
+      "Noter Onaylı Vekaletname",
+      "Elektrik Dağıtım Şirketine Başvuru",
     ],
   ],
   [
-    "2.–3. ay",
+    "2.-3. AY",
     [
-      "Çağrı mektubunun alınması",
-      "Elektrik ve statik projelerin hazırlanıp onaylatılması",
-      "Montaj ve kurulum",
+      "Çağrı Mektubunun Alınması",
+      "Elektrik Statik Projelerinin Hazırlanması",
+      "Projelerin Onaylatılması",
+      "Montaj ve Kurulum",
     ],
   ],
   [
-    "4.–5. ay",
+    "4.-5. AY",
     [
-      "Bağlantı anlaşması ve çift yönlü sayaç değişikliği",
-      "Ön kabul ve geçici kabul işlemleri",
-      "Sistem kullanım anlaşmasının yapılması",
+      "Bağlantı Anlaşmasının Yapılması",
+      "Çift Yönlü Sayaç Değişikliği",
+      "Ön Kabul İşlemlerinin Yapılması",
+      "Geçici Kabul",
+      "Sistem Kullanım Anlaşmasının Yapılması",
     ],
   ],
 ];
 
-const css = `
+const plugIcon = `<svg viewBox="0 0 120 120" width="100" height="100" fill="none" stroke="#5f7474" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><rect x="30" y="12" width="46" height="72" rx="8"/><rect x="40" y="24" width="26" height="16" rx="3"/><path d="M53 50l-6 12h12l-6 12"/><path d="M76 40h10a8 8 0 0 1 8 8v40a10 10 0 0 1-20 0V84"/><path d="M42 84v20M64 84v20"/></svg>`;
+
+// ---------------------------------------------------------------- GES stili
+const gesCss = `
 @page{size:A4;margin:0}
 *{box-sizing:border-box}
-:root{--blue:#0B4EA2;--navy:#0E1B33;--sun:#F59E0B;--ink:#1B2333;--muted:#6B7385;--line:#E3E7EE;--soft:#F4F7FB}
-html,body{margin:0;padding:0;background:#E9EDF3}
-body{font-family:"Inter","Segoe UI",Arial,sans-serif;color:var(--ink);font-size:10.5pt;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.page{width:210mm;min-height:297mm;margin:10mm auto;background:#fff;position:relative;padding:18mm 16mm 22mm;break-after:page;page-break-after:always;overflow:hidden}
+:root{--sage:#829797;--sage-dark:#5f7474;--mist:#dfe9ea;--mist2:#d3e1e2;--ink:#1f2324}
+html,body{margin:0;padding:0;background:#e6eaeb}
+body{font-family:"Raleway",Arial,sans-serif;color:var(--ink);font-size:10pt;line-height:1.55;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{width:210mm;height:297mm;margin:10mm auto;background:#fff;position:relative;overflow:hidden;break-after:page;page-break-after:always}
 .page:last-child{break-after:auto;page-break-after:auto}
-@media print{html,body{background:#fff}.page{margin:0;box-shadow:none}}
-@media screen{.page{box-shadow:0 6px 30px rgba(15,30,60,.12)}}
-.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid var(--line);padding-bottom:5mm;margin-bottom:6mm}
-.top img{height:9mm}
-.eyebrow{font-size:7.5pt;letter-spacing:.18em;text-transform:uppercase;color:var(--sun);font-weight:700}
-.section{font-size:13pt;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--navy);margin:1mm 0 0}
-.foot{position:absolute;left:16mm;right:16mm;bottom:9mm;display:flex;justify-content:space-between;font-size:7.5pt;color:var(--muted);border-top:1px solid var(--line);padding-top:3mm}
-h2{font-size:10.5pt;color:var(--navy);margin:5mm 0 2.5mm;padding-left:3mm;border-left:3px solid var(--sun);text-transform:uppercase;letter-spacing:.04em}
-table{width:100%;border-collapse:collapse}
-th{background:var(--navy);color:#fff;font-size:7.5pt;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:2mm 3mm}
-td{border-bottom:1px solid var(--line);padding:1.5mm 3mm;vertical-align:top;font-size:9pt}
-thead{display:table-header-group}tr{break-inside:avoid}
-.r{text-align:right;white-space:nowrap}.c{text-align:center}
-.muted{color:var(--muted)}.small{font-size:8.5pt}
+@media print{html,body{background:#fff}.page{margin:0}}
+@media screen{.page{box-shadow:0 6px 30px rgba(20,40,40,.15)}}
+.band{position:absolute;left:0;right:0;bottom:0;height:13mm;background:var(--sage);color:#fff;display:flex;align-items:center;justify-content:center;font-family:"Ubuntu",Arial,sans-serif;font-weight:700;font-size:8pt;letter-spacing:.04em}
+.body{padding:16mm 15mm 22mm}
+.h{font-family:"Raleway",Arial,sans-serif;font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-size:13pt;margin:0 0 4mm}
+.sub{font-size:8.5pt;color:#333;margin:-2mm 0 5mm}
+p{margin:0 0 4mm;text-align:justify}
+.grid-table{width:100%;border-collapse:collapse;font-family:"Ubuntu",Arial,sans-serif}
+.grid-table th,.grid-table td{border:1.4px solid #222;padding:2.4mm 3mm;font-size:8.5pt;vertical-align:middle}
+.grid-table th{font-weight:700;text-align:center;letter-spacing:.02em}
+.grid-table td.c{text-align:center}
+.grid-table.tight td{padding:1.5mm 3mm;font-size:8pt}
+.grid-table td.r{text-align:right;white-space:nowrap}
 /* kapak */
-.cover{padding:0;display:flex;flex-direction:column}
-.cover .band{height:3mm;background:linear-gradient(90deg,var(--blue),var(--sun))}
-.cover .inner{padding:16mm 16mm 0;flex:1;display:flex;flex-direction:column}
-.cover .meta{font-size:8.5pt;min-width:70mm}
-.cover .meta div{display:flex;justify-content:space-between;gap:8mm;border-bottom:1px solid var(--line);padding:1.6mm 0}
-.cover .meta span:first-child{color:var(--muted);letter-spacing:.12em;text-transform:uppercase;font-size:7pt}
-.cover .hero{margin-top:auto;margin-bottom:12mm}
-.cover h1{font-size:34pt;line-height:1.05;margin:4mm 0;color:var(--navy);font-weight:300}
-.cover h1 b{font-weight:800;display:block}
-.cover h1 i{color:var(--sun);font-style:normal}
-.cover .lead{color:var(--muted);font-size:11pt;max-width:120mm}
-.cover .facts{display:grid;grid-template-columns:repeat(3,1fr);border-top:2px solid var(--navy);margin:0 16mm}
-.cover .facts div{padding:4mm 3mm;border-bottom:1px solid var(--line)}
-.cover .facts span{display:block;font-size:7pt;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-.cover .facts b{font-size:11.5pt;color:var(--navy)}
-.cover .facts .big{font-size:18pt;font-weight:300}
-.cover .facts .big small{font-size:9pt;color:var(--sun);font-weight:700}
-.cover .bottom{display:flex;justify-content:space-between;align-items:center;padding:8mm 16mm 10mm;margin-top:8mm;background:var(--soft)}
-.cover .bottom img{height:11mm}
-/* kartlar */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin:5mm 0}
-.kpi{border:1px solid var(--line);border-radius:3mm;padding:4mm}
-.kpi b{display:block;font-size:17pt;color:var(--navy);font-weight:800;line-height:1.1}
-.kpi b small{font-size:8.5pt;color:var(--muted);font-weight:600}
-.kpi span{font-size:7.5pt;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-.intro{display:grid;grid-template-columns:62mm 1fr;gap:8mm}
-.intro .claim{font-size:20pt;line-height:1.15;color:var(--navy);font-weight:300}
-.intro .claim b{color:var(--blue);font-weight:800}
-.quote{background:#FFF8EB;border-left:3px solid var(--sun);padding:3mm 4mm;margin-top:4mm;font-style:italic}
-.flow{display:flex;align-items:center;gap:2mm;margin-top:3mm;flex-wrap:wrap}
-.flow div{border:1px solid var(--line);border-radius:2mm;padding:2.5mm 3.5mm;font-size:8.5pt;background:#fff}
-.flow div b{display:block;color:var(--navy);font-size:9pt}
-.flow i{color:var(--sun);font-style:normal;font-weight:800}
-.benefits{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}
-.benefits div b{display:block;color:var(--navy);margin-bottom:1mm}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:7mm}
-.params td:first-child{color:var(--muted);width:42%}
-.params td{padding:1.4mm 2mm}
-.compact td{padding:0.9mm 3mm;font-size:8.3pt}
-.params td:last-child{font-weight:700;color:var(--navy)}
-.chart{border:1px solid var(--line);border-radius:3mm;padding:4mm}
-.bars{display:flex;align-items:flex-end;gap:2mm;height:34mm;margin-top:3mm}
-.bars div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;font-size:6pt;color:var(--muted)}
-.bars em{display:block;width:100%;background:#D6E3F5;border-radius:1mm 1mm 0 0}
-.bars em.max{background:var(--sun)}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:2mm;margin-top:3mm}
-.stats div{background:var(--soft);border-radius:2mm;padding:2.5mm;text-align:center}
-.stats b{display:block;color:var(--navy);font-size:11pt}
-.stats span{font-size:6.5pt;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.note{background:#FFF8EB;border:1px solid #F7D9A3;border-radius:2mm;padding:3mm 4mm;font-size:8.5pt;margin-top:5mm}
-.note.blue{background:#EEF4FC;border-color:#C9DBF3}
-.cat td:first-child{font-weight:800;color:var(--navy);font-size:8pt;text-transform:uppercase;width:24mm}
-.yes{color:#0B8A4A;font-weight:800}.no{color:#B42318;font-weight:800}
-.timeline{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}
-.timeline div{border-top:3px solid var(--blue);background:var(--soft);padding:3mm 4mm;border-radius:0 0 2mm 2mm}
-.timeline b{color:var(--blue);display:block;margin-bottom:1mm}
-.timeline ul{margin:0;padding-left:4mm;font-size:8.5pt}
-.price{border:1px solid var(--line);border-radius:3mm;padding:2mm 6mm}
-.price div{display:flex;justify-content:space-between;padding:2.5mm 0;border-bottom:1px solid var(--line)}
-.price div:last-child{border:none}
-.price .total{font-size:15pt;font-weight:800;color:var(--blue)}
-.pay{display:flex;align-items:center;gap:4mm;border:1px solid var(--line);border-radius:3mm;padding:3mm 5mm;margin-bottom:3mm}
-.pay .pct{width:13mm;height:13mm;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:9pt;flex:none}
-.pay:nth-child(even) .pct{background:var(--sun)}
-.pay .what{flex:1}.pay .amt{font-weight:800;color:var(--navy)}
-.terms li{margin-bottom:1.5mm;font-size:9pt}
-.closing{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
-.closing h1{font-size:24pt;font-weight:300;color:var(--navy);margin:0}
-.closing h1 b{font-weight:800}
-.closing hr{width:14mm;border:none;border-top:2px solid var(--sun);margin:7mm auto}
+.cv-top{display:grid;grid-template-columns:1fr 1fr;height:96mm}
+.cv-left{padding:9mm 9mm 0 9mm}
+.cv-kicker{font-weight:400;letter-spacing:.2em;text-transform:uppercase;font-size:11.5pt;line-height:1.5}
+.cv-title{font-weight:800;letter-spacing:.22em;font-size:25pt;line-height:1.3;margin-top:3mm}
+.cv-right{background:var(--mist);display:flex;align-items:center;justify-content:center}
+.cv-right img{width:52mm;opacity:.95}
+.cv-photo{position:absolute;left:0;right:0;top:96mm;bottom:0;background-size:cover;background-position:center}
+.cv-label{position:absolute;right:0;top:96mm;width:105mm;height:30mm;background:var(--mist);display:flex;flex-direction:column;justify-content:center;align-items:center}
+.cv-label b{font-family:"Ubuntu",Arial,sans-serif;font-size:19pt;letter-spacing:.42em;color:#2d3434;font-weight:700}
+.cv-label span{font-family:"Ubuntu",Arial,sans-serif;font-size:11pt;letter-spacing:.55em;color:#2d3434;font-weight:700}
+/* proje sayfası */
+.pj{display:grid;grid-template-columns:1fr 92mm;height:150mm}
+.pj-left{padding:12mm 9mm 0 12mm}
+.pj-title{font-weight:800;letter-spacing:.18em;font-size:21pt;line-height:1.3;margin:0 0 6mm}
+.pj-cust{font-family:"Ubuntu",Arial,sans-serif;font-weight:700;font-size:9pt;letter-spacing:.04em}
+.pj-addr{letter-spacing:.08em;font-size:9.5pt;margin-top:1mm}
+.pj-bar{height:3.5mm;background:var(--mist2);margin:6mm -9mm 6mm -12mm}
+.pj-photo{background-size:cover;background-position:center}
+.pj-intro{font-size:9.5pt;line-height:1.6}
+.pj-intro p{text-align:left;margin:0 0 3mm}
+.summary{padding:0 12mm}
+/* donanımlar */
+.hw{display:grid;grid-template-columns:1fr 1fr;gap:6mm 10mm}
+.hw.three{grid-template-columns:1fr 1fr 1fr}
+.hw.four{grid-template-columns:1fr 1fr 1fr 1fr;gap:6mm 5mm}
+.hw.four span{max-width:42mm}
+.hw div{text-align:center}
+.hw .img{height:34mm;display:flex;align-items:center;justify-content:center;margin-bottom:3mm}
+.hw .img img{max-height:34mm;max-width:58mm;object-fit:contain}
+.hw b{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:8.5pt;letter-spacing:.04em;margin-bottom:1mm}
+.hw span{display:block;font-size:8pt;line-height:1.5;text-align:left;max-width:58mm;margin:0 auto}
+/* süreç */
+.proc td:first-child{width:38mm;font-family:"Raleway",Arial,sans-serif;font-weight:700;font-size:12pt;letter-spacing:.12em;padding-left:6mm}
+.proc td{font-size:10pt;line-height:1.75;padding:4mm 5mm}
+/* fiyat */
+.price-title{font-weight:400;letter-spacing:.14em;font-size:13pt;margin:6mm 0 4mm;text-transform:uppercase}
+.details{font-size:7.5pt;line-height:1.55;font-family:"Ubuntu",Arial,sans-serif}
+.details p{margin:0 0 1mm;text-align:left}
 `;
 
-function header(section: string, title: string, logoUrl: string) {
-  return `<div class="top"><div><div class="eyebrow">${esc(section)}</div><div class="section">${esc(title)}</div></div><img src="${esc(logoUrl)}" alt="NES Enerji"></div>`;
+// ---------------------------------------------------------------- form stili
+// Sayfa iskeleti (form tek başına kullanıldığında).
+const formBaseCss = `
+@page{size:A4;margin:0}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#e6eaeb}
+body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{width:210mm;height:297mm;margin:10mm auto;background:#fff;position:relative;overflow:hidden;break-after:page;page-break-after:always}
+.page:last-child{break-after:auto;page-break-after:auto}
+@media print{html,body{background:#fff}.page{margin:0}}
+@media screen{.page{box-shadow:0 6px 30px rgba(20,40,40,.15)}}
+`;
+
+// Form sayfalarının kendi stili; GES dosyasına ek olarak da eklenebilsin diye
+// yalnız .form altında geçerlidir.
+const formCss = `
+.page.form{padding:14mm 12mm 18mm;font-family:"Montserrat",Arial,sans-serif;color:#333;font-size:8pt;line-height:1.35}
+.form .top{display:grid;grid-template-columns:1fr 64mm;gap:10mm}
+.form .top img{height:13mm}
+.form .co{margin-top:6mm;font-weight:700;font-size:7.5pt;line-height:1.5;color:#222}
+.form .co .n{font-weight:400}
+.form .co p{margin:0 0 3mm}
+.form .tk{font-family:"Montserrat",Arial,sans-serif;font-weight:900;font-size:17pt;text-align:right;color:#444;letter-spacing:.02em}
+.form .tk-rule{border-top:2px solid #444;margin:5mm 0 3mm}
+.form .lbl{font-weight:700;font-size:7.5pt;color:#222}
+.form .cust{padding-bottom:2mm;border-bottom:1px solid #ccc;margin-bottom:3mm;font-size:7.5pt;line-height:1.45}
+.form .dt{display:flex;justify-content:space-between;padding:2mm 0;border-bottom:1px solid #ccc;font-size:7.5pt}
+.form .items{width:100%;border-collapse:collapse;margin-top:22mm}
+.form .items th{font-weight:700;font-size:7.5pt;color:#222;text-align:left;padding:2mm 1.5mm;border-bottom:1px solid #999}
+.form .items td{font-family:"Roboto Mono",monospace;font-size:7pt;padding:2.2mm 1.5mm;vertical-align:top;text-transform:uppercase;color:#333}
+.form .items .r{text-align:right;white-space:nowrap}
+.form .items tbody tr:first-child td{padding-top:5mm}
+.form .line{border-top:1px solid #999;margin-top:6mm}
+.form .totals{width:64mm;margin-left:auto;margin-top:4mm}
+.form .totals div{display:flex;justify-content:space-between;padding:1.6mm 0;font-size:7.5pt}
+.form .totals b{color:#222}
+.form .totals span{font-family:"Roboto Mono",monospace}
+.form .foot{position:absolute;left:12mm;right:12mm;bottom:9mm;display:flex;justify-content:space-between;font-size:6.5pt;color:#777;border-top:1px solid #bbb;padding-top:3mm}
+.form .foot b{color:#333}
+.form .spec{font-size:7.5pt;line-height:1.55;color:#333;width:120mm}
+.form .spec h3{font-size:7.5pt;font-weight:600;margin:4mm 0 1mm;text-transform:uppercase}
+.form .spec p{margin:0 0 1mm}
+.form .spec-wrap{display:grid;grid-template-columns:1fr 60mm;gap:8mm}
+`;
+
+function fontLinks(families: string) {
+  return `<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?${families}&display=swap" rel="stylesheet">`;
 }
 
-function footer(input: OfferDocumentInput) {
-  return `<div class="foot"><span>${esc(NES_COMPANY.phone)} · ${esc(NES_COMPANY.address)}</span><span>${esc(input.offerNo)}</span></div>`;
-}
+// ---------------------------------------------------------------- yardımcılar
+type Ctx = {
+  input: OfferDocumentInput;
+  visible: PricedLine[];
+  hasGes: boolean;
+  hasSarj: boolean;
+  hasTaahhut: boolean;
+  kwp: number;
+  acKw: number;
+  batteryKwh: number;
+  panel?: CatalogItem;
+  inverter?: CatalogItem;
+  battery?: CatalogItem;
+  station?: CatalogItem;
+  asset: (name: string) => string;
+  logo: string;
+};
 
-export function buildOfferDocument(input: OfferDocumentInput): string {
-  const { ges, sarj, catalog, currency } = input;
+function context(input: OfferDocumentInput): Ctx {
+  const { ges, sarj, catalog } = input;
   const visible = input.lines.filter((line) => line.visibleToCustomer);
   const hasGes = ges.enabled && visible.some((line) => line.module === "ges");
   const hasSarj =
     sarj.enabled && visible.some((line) => line.module === "sarj");
-  const hasTaahhut = visible.some((line) => line.module === "taahhut");
-  const kwp = hasGes ? gesCapacityKwp(ges, catalog) : 0;
-  const acKw = hasGes ? gesInverterKw(ges, catalog) : 0;
-  const batteryKwh = hasGes ? gesBatteryKwh(ges, catalog) : 0;
-  const panel = catalog.find((item) => item.id === ges.panelId);
-  const inverter = catalog.find((item) => item.id === ges.inverterId);
-  const battery = catalog.find((item) => item.id === ges.batteryId);
-  const station = catalog.find((item) => item.id === sarj.stationId);
-  const prod = productionEstimate(kwp, input.specificYield);
-  const hybrid = ges.systemType === "hibrit";
-  const systemLabel = hybrid
-    ? "Hibrit (şebeke + batarya)"
-    : "Şebeke bağlantılı (on-grid)";
-  const roofLabel =
-    ges.roofType === "kiremit"
-      ? "Kiremit çatı uygulaması"
-      : ges.roofType === "trapez"
-        ? "Trapez / sandviç panel çatı"
-        : "Arazi / teras uygulaması";
+  return {
+    input,
+    visible,
+    hasGes,
+    hasSarj,
+    hasTaahhut: visible.some((line) => line.module === "taahhut"),
+    kwp: hasGes ? gesCapacityKwp(ges, catalog) : 0,
+    acKw: hasGes ? gesInverterKw(ges, catalog) : 0,
+    batteryKwh: hasGes ? gesBatteryKwh(ges, catalog) : 0,
+    panel: catalog.find((item) => item.id === ges.panelId),
+    inverter: catalog.find((item) => item.id === ges.inverterId),
+    battery: catalog.find((item) => item.id === ges.batteryId),
+    station: catalog.find((item) => item.id === sarj.stationId),
+    asset: (name) => `${input.origin}${NES_COMPANY.assetsPath}/${name}`,
+    logo: `${input.origin}${NES_COMPANY.logoPath}`,
+  };
+}
 
-  const subjectParts = [
-    hasGes ? "GES" : "",
-    hasSarj ? "EV Şarj" : "",
-    hasTaahhut ? "Elektrik Taahhüt" : "",
-  ].filter(Boolean);
-  const coverTitle = hasGes
-    ? `${hybrid ? "Hibrit" : "Çatı Üstü"}<b>GES Projesi<i>.</i></b>`
-    : hasSarj
-      ? `Elektrikli Araç<b>Şarj Projesi<i>.</i></b>`
-      : `Elektrik<b>Taahhüt Teklifi<i>.</i></b>`;
-  const lead = hasGes
-    ? `${hasSarj ? "Güneş enerji sistemi ve elektrikli araç şarj altyapısı" : "Güneş enerji sistemi"} için anahtar teslim mühendislik, tedarik ve kurulum teklifi.`
-    : "Projelendirme, tedarik, kurulum ve devreye alma teklifi.";
+function moduleTotal(ctx: Ctx, module: OfferModule) {
+  return ctx.visible
+    .filter((line) => line.module === module)
+    .reduce((sum, line) => sum + line.saleAmount, 0);
+}
 
-  const coverFacts: [string, string, boolean?][] = [
-    ["Teklif sunulan", input.recipientName || "-"],
-    ["Proje lokasyonu", input.location || "-"],
-    ["Kapsam", subjectParts.join(" + ") || input.title],
+function systemDetail(ctx: Ctx) {
+  const parts = [
+    ctx.input.ges.systemType === "hibrit"
+      ? "Şebekeye Bağlı (hibrit)"
+      : "Şebekeye Bağlı",
+    "Mahsuplaşmalı",
   ];
-  if (hasGes) {
-    coverFacts.push([
-      "Kurulu güç",
-      `${formatKwp(kwp)} <small>kWp</small>`,
-      true,
-    ]);
-    coverFacts.push(
-      batteryKwh > 0
-        ? ["Batarya", `${formatKwp(batteryKwh)} <small>kWh</small>`, true]
-        : ["İnverter", `${formatKwp(acKw)} <small>kWe</small>`, true],
-    );
-    coverFacts.push([
-      "Tahmini yıllık üretim",
-      `${num(prod.annual, 0)} <small>kWh</small>`,
-      true,
-    ]);
-  } else if (hasSarj) {
-    coverFacts.push([
-      "Şarj noktası",
-      `${sarj.stationCount} <small>adet</small>`,
-      true,
-    ]);
-    coverFacts.push([
-      "Toplam güç",
-      `${formatKwp((station?.power_kw ?? 0) * sarj.stationCount)} <small>kW</small>`,
-      true,
-    ]);
-    coverFacts.push([
-      "Besleme",
-      sarj.phase === "trifaze" ? "Trifaze" : "Monofaze",
-    ]);
-  }
+  if (ctx.batteryKwh > 0) parts.push("Depolamalı");
+  return parts.join(", ");
+}
 
-  const pages: string[] = [];
-
-  // 1) Kapak
-  pages.push(`<section class="page cover"><div class="band"></div><div class="inner">
-<div style="display:flex;justify-content:space-between;align-items:flex-start"><img src="${esc(input.logoUrl)}" alt="NES Enerji" style="height:12mm"><div class="meta"><div><span>Belge no</span><b>${esc(input.offerNo)}</b></div><div><span>Tarih</span><b>${dateTr(input.issueDate)}</b></div><div><span>Son geçerlilik</span><b>${dateTr(input.validUntil)}</b></div></div></div>
-<div class="hero"><div class="eyebrow">— Mühendislik, tedarik ve kurulum teklifi</div><h1>${coverTitle}</h1><div class="lead">${esc(lead)}</div></div></div>
-<div class="facts">${coverFacts
-    .map(
-      ([label, value, big]) =>
-        `<div><span>${esc(label)}</span><b class="${big ? "big" : ""}">${big ? value : esc(value)}</b></div>`,
-    )
-    .join("")}</div>
-<div class="bottom"><img src="${esc(input.logoUrl)}" alt="NES Enerji"><div class="small muted" style="text-align:right">${esc(NES_COMPANY.address)}<br>${esc(NES_COMPANY.phone)} · ${esc(NES_COMPANY.email)}</div></div></section>`);
-
-  // 2) Giriş ve özet
-  const kpis: [string, string, string][] = [];
-  if (hasGes) {
-    kpis.push([formatKwp(kwp), "kWp", "DC kurulu güç"]);
-    kpis.push([String(ges.panelCount), "adet", "Güneş paneli"]);
-    kpis.push([
-      `${ges.inverterCount} × ${formatKwp(Number(inverter?.power_kw ?? 0))}`,
-      "kW",
-      hybrid ? "Hibrit inverter" : "İnverter",
-    ]);
-    kpis.push(
-      batteryKwh > 0
-        ? [formatKwp(batteryKwh), "kWh", "Batarya kapasitesi"]
-        : [num(prod.annual, 0), "kWh", "Yıllık üretim (tahmini)"],
-    );
-  }
-  if (hasSarj) {
-    kpis.push([String(sarj.stationCount), "adet", "Şarj istasyonu"]);
-    kpis.push([
-      formatKwp(Number(station?.power_kw ?? 0)),
-      "kW",
-      "İstasyon gücü",
-    ]);
-  }
-  const flow = hasGes
-    ? `<h2>Sistem nasıl çalışır?</h2><div class="flow"><div><b>Güneş panelleri</b>${formatKwp(kwp)} kWp · ${ges.panelCount} adet</div><i>→</i><div><b>${hybrid ? "Hibrit inverter" : "İnverter"}</b>${ges.inverterCount} × ${formatKwp(Number(inverter?.power_kw ?? 0))} kW</div><i>→</i><div><b>Tüketim</b>Öncelikli besleme</div>${batteryKwh > 0 ? `<i>⇄</i><div><b>Batarya</b>${formatKwp(batteryKwh)} kWh depolama</div>` : ""}<i>⇄</i><div><b>Şebeke</b>Çift yönlü sayaç</div>${hasSarj ? `<i>→</i><div><b>EV şarj</b>${sarj.stationCount} × ${formatKwp(Number(station?.power_kw ?? 0))} kW</div>` : ""}</div>
-<p class="small muted">Üretilen enerji önce tesiste tüketilir${batteryKwh > 0 ? ", fazlası bataryayı şarj eder; şebeke kesintisinde yedeklenen yükler bataryadan beslenir" : "; fazlası mahsuplaşma kapsamında şebekeye verilir"}.</p>`
-    : "";
-  const benefits = hasGes
-    ? `<h2>Sistemin sağladıkları</h2><div class="benefits"><div><b>${batteryKwh > 0 ? "Kesintisiz enerji" : "Mahsuplaşma"}</b>${batteryKwh > 0 ? "Şebeke kesintilerinde yedeklenen yükler bataryadan beslenmeye devam eder." : "Fazla üretim şebekeye verilir, tüketimle aylık mahsuplaşılır."}</div><div><b>Fatura tasarrufu</b>Şebekeden çekilen enerjiyi azaltarak elektrik giderini düşürür.</div><div><b>Temiz enerji</b>Yılda yaklaşık ${num(prod.co2Tons, 1)} ton CO₂ salımının önüne geçer.</div></div>`
-    : "";
-  pages.push(`<section class="page">${header("Giriş", "Yönetici özeti", input.logoUrl)}
-<div class="intro"><div class="claim">${hasGes ? "Çatınızdan<br><b>kendi enerjiniz.</b>" : "Güvenilir<br><b>elektrik altyapısı.</b>"}<p class="small muted" style="margin-top:6mm">SAYIN<br><b style="color:var(--navy);font-size:11pt">${esc(input.recipientName || "-")}</b>${input.contactName ? `<br>${esc(input.contactName)}` : ""}</p></div>
-<div><p>Firmamıza göstermiş olduğunuz ilgiye teşekkür ederiz. Talep ettiğiniz ${esc(subjectParts.join(", ") || input.title)} işlerine ait teklifimiz ile ilgili detaylar aşağıda bilgilerinize sunulmuştur.</p>
-${hasGes ? `<p>${esc(input.location || "Tesisiniz")} için ${formatKwp(kwp)} kWp güneş enerji sistemi${batteryKwh > 0 ? ` ile ${formatKwp(batteryKwh)} kWh lityum batarya depolamayı birleştiren hibrit bir sistem` : ""} tasarladık. Sistemde kullanılacak tüm ana ve yardımcı teçhizat güncel elektrik piyasası mevzuatına ve TEDAŞ şartnamelerine uyumludur.</p>` : ""}
-<p>Teklifimizin uygun görüleceğini ve birlikte çalışma imkânı bulacağımızı ümit eder, her türlü sorunuzu yanıtlamaya hazır olduğumuzu bilgilerinize sunarız.</p>
-<div class="quote">Hedefimiz, tesisinizi hatasız ve eksiksiz, çalışır durumda ve sözleşme süresi içinde teslim etmektir.</div></div></div>
-<div class="kpis">${kpis
-    .slice(0, 4)
-    .map(
-      ([value, unit, label]) =>
-        `<div class="kpi"><b>${esc(value)} <small>${esc(unit)}</small></b><span>${esc(label)}</span></div>`,
-    )
-    .join("")}</div>
-${flow}${benefits}${footer(input)}</section>`);
-
-  // 3) Teknik tasarım
-  if (hasGes || hasSarj) {
-    const params: [string, string][] = [];
-    if (hasGes) {
-      params.push(
-        ["Proje konumu", input.location || "-"],
-        ["Montaj tipi", roofLabel],
-        ["Sistem tipi", systemLabel],
-        [
-          "Panel",
-          `${panel?.brand ? `${panel.brand} ` : ""}${panel?.model ?? panel?.name ?? "-"}`,
-        ],
-        ["Panel gücü", `${num(Number(panel?.power_w ?? 0), 0)} Wp`],
-        ["Panel sayısı", `${ges.panelCount} adet`],
-        ["Toplam DC güç", `${formatKwp(kwp)} kWp`],
-        [
-          "İnverter",
-          `${ges.inverterCount} × ${inverter?.brand ? `${inverter.brand} ` : ""}${formatKwp(Number(inverter?.power_kw ?? 0))} kW${inverter?.phase === "trifaze" ? " (trifaze)" : inverter?.phase === "mono" ? " (monofaze)" : ""}`,
-        ],
-        ["Toplam AC güç", `${formatKwp(acKw)} kWe`],
-        ["DC/AC oranı", acKw > 0 ? num(kwp / acKw) : "-"],
-      );
-      if (ges.contractPowerKw > 0) {
-        params.push(["Sözleşme gücü", `${formatKwp(ges.contractPowerKw)} kW`]);
-      }
-      if (batteryKwh > 0) {
-        params.push(
-          [
-            "Batarya",
-            `${ges.batteryCount} × ${battery?.brand ? `${battery.brand} ` : ""}${battery?.model ?? battery?.name ?? ""}`,
-          ],
-          ["Toplam batarya", `${formatKwp(batteryKwh)} kWh`],
-        );
-      }
-    }
-    const maxMonth = Math.max(...prod.monthly, 1);
-    const chart = hasGes
-      ? `<div class="chart"><b style="color:var(--navy)">Üretim simülasyonu</b><div class="small muted">Tahmini aylık dağılım · ${num(input.specificYield, 0)} kWh/kWp</div>
-<div class="bars">${prod.monthly
-          .map(
-            (value, index) =>
-              `<div>${num(value, 0)}<em class="${value === maxMonth ? "max" : ""}" style="height:${Math.round((value / maxMonth) * 30)}mm"></em>${MONTH_LABELS[index]}</div>`,
-          )
-          .join("")}</div>
-<div class="stats"><div><b>${num(prod.annual, 0)}</b><span>kWh / yıl</span></div><div><b>~${num(prod.daily, 0)}</b><span>kWh / gün</span></div><div><b>~${num(prod.co2Tons, 1)} t</b><span>CO₂ / yıl</span></div></div>
-<p class="small muted" style="margin:3mm 0 0">Üretim; çatı yönü, eğimi, gölgelenme ve hava koşullarına göre değişir. Değerler tahminidir.</p></div>`
-      : "";
-    const sarjBlock = hasSarj
-      ? `<h2>Şarj altyapısı</h2><table class="params"><tbody>
-<tr><td>Şarj istasyonu</td><td>${esc(`${station?.brand ?? ""} ${station?.model ?? station?.name ?? ""}`.trim())}</td></tr>
-<tr><td>Adet</td><td>${sarj.stationCount}</td></tr>
-<tr><td>İstasyon gücü</td><td>${formatKwp(Number(station?.power_kw ?? 0))} kW</td></tr>
-<tr><td>Besleme</td><td>${sarj.phase === "trifaze" ? "Trifaze, 5x6 mm² NYY" : "Monofaze, 3x6 mm² NYY"}</td></tr>
-<tr><td>Montaj</td><td>${sarj.withStand ? "Ayaklı (stand)" : "Duvar tipi"}</td></tr>
-${sarj.connectionPowerKw > 0 ? `<tr><td>Bina bağlantı gücü</td><td>${formatKwp(sarj.connectionPowerKw)} kW</td></tr>` : ""}
-</tbody></table>`
-      : "";
-    pages.push(`<section class="page">${header("Bölüm 01", "Teknik tasarım ve kapasite", input.logoUrl)}
-${chart}
-${hasGes ? `<h2>Sistem tasarım parametreleri</h2><div class="two">${[params.slice(0, Math.ceil(params.length / 2)), params.slice(Math.ceil(params.length / 2))].map((part) => `<table class="params"><tbody>${part.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</tbody></table>`).join("")}</div>` : ""}
-${sarjBlock}
-${hasGes ? `<div class="note"><b>Şebeke bağlantısı:</b> Sistem lisanssız üretim mevzuatı kapsamında şebekeye bağlanır. Kurulu AC güç, tüketim tesisinin sözleşme gücü ile sınırlıdır; bağlantı, kabul ve sayaç işlemleri dağıtım şirketi süreçlerine tabidir.</div>` : ""}
-${footer(input)}</section>`);
-  }
-
-  // 4) Malzeme listesi
-  const moduleOrder: OfferModule[] = ["ges", "sarj", "taahhut", "genel"];
-  const groups = moduleOrder
-    .map((module) => ({
-      module,
-      rows: visible.filter((line) => line.module === module),
-    }))
-    .filter((group) => group.rows.length > 0);
-  const notesHtml = `<div class="two"><div class="note blue"><b>Anahtar teslim kurulum:</b> Tüm yatay ve dikey taşıma, montaj, kablolama, test ve devreye alma işlemleri NES Enerji tarafından nitelikli personelle yapılır.</div><div class="note blue"><b>Garanti:</b> Ürünler üretici garanti koşullarına tabidir. Markalar stok durumuna göre muadili ile değişebilir.</div></div>`;
-  const priceCols = input.showLinePrices;
-  pages.push(`<section class="page">${header("Bölüm 02", "Detaylı malzeme ve hizmet listesi", input.logoUrl)}
-${groups
-  .map(
-    (
-      group,
-    ) => `<h2>${esc(moduleTitles[group.module])}</h2><table class="compact"><thead><tr><th>Malzeme / hizmet</th><th>Marka</th><th class="r">Miktar</th>${priceCols ? `<th class="r">Birim fiyat</th><th class="r">Tutar</th>` : ""}</tr></thead><tbody>
-${group.rows
-  .map(
-    (line) =>
-      `<tr><td>${esc(line.description)}</td><td>${esc(line.brand ?? "NES Enerji")}</td><td class="r">${num(line.quantity)} ${esc(line.unit)}</td>${
-        priceCols
-          ? `<td class="r">${line.saleAmount > 0 ? formatMoney(line.saleAmount / line.quantity, currency) : "Dahil"}</td><td class="r">${line.saleAmount > 0 ? formatMoney(line.saleAmount, currency) : "Dahil"}</td>`
-          : ""
-      }</tr>`,
-  )
-  .join("")}
-</tbody></table>`,
-  )
-  .join("")}
-${hasGes || hasSarj ? "" : notesHtml}
-${footer(input)}</section>`);
-
-  // 5) Kapsam ve süreç
-  if (hasGes || hasSarj) {
-    const scope = [
-      ...(hasGes ? gesScope.map((row) => ["GES", ...row] as const) : []),
-      ...(hasSarj ? sarjScope.map((row) => ["Şarj", ...row] as const) : []),
-    ];
-    pages.push(`<section class="page">${header("Bölüm 03", "Hizmet kapsamı ve proje süreci", input.logoUrl)}
-<table class="compact"><thead><tr><th>Kapsam</th>${hasGes && hasSarj ? "<th>Modül</th>" : ""}<th class="c">Dahil</th><th class="c">Hariç</th></tr></thead><tbody>
-${scope
-  .map(
-    ([module, text, included]) =>
-      `<tr><td>${esc(text)}</td>${hasGes && hasSarj ? `<td class="small muted">${module}</td>` : ""}<td class="c yes">${included ? "✓" : ""}</td><td class="c no">${included ? "" : "✕"}</td></tr>`,
-  )
-  .join("")}
-</tbody></table>
-${notesHtml}
-${hasGes ? `<p class="small muted">Proje ve başvuru kalemleri şebekeye bağlı, mahsuplaşmalı sistemler için geçerlidir.</p><h2>Proje süreci</h2><div class="timeline">${gesProcess.map(([when, items]) => `<div><b>${when}</b><ul>${items.map((item) => `<li>${esc(item)}</li>`).join("")}</ul></div>`).join("")}</div>` : ""}
-${footer(input)}</section>`);
-  }
-
-  // 6) Ticari koşullar
-  const moduleTotals = groups.map((group) => ({
-    module: group.module,
-    total: group.rows.reduce((sum, line) => sum + line.saleAmount, 0),
-  }));
-  const termLines = input.terms
+function termLines(input: OfferDocumentInput) {
+  return input.terms
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  pages.push(`<section class="page">${header("Bölüm 04", "Ticari koşullar ve fiyat", input.logoUrl)}
-<h2 style="margin-top:0">Yatırım bedeli</h2><div class="price">
-${moduleTotals.map((row) => `<div><span>${esc(moduleTitles[row.module])} (anahtar teslim)</span><b>${formatMoney(row.total, currency)}</b></div>`).join("")}
-${moduleTotals.length > 1 ? `<div><span>Ara toplam</span><b>${formatMoney(input.sale, currency)}</b></div>` : ""}
-<div><span>KDV (%${num(input.vatRate * 100)})</span><b>${formatMoney(input.vat, currency)}</b></div>
-<div class="total"><span>Genel toplam</span><span>${formatMoney(input.grandTotal, currency)}</span></div></div>
-${input.paymentPlan.length ? `<h2>Ödeme takvimi</h2>${input.paymentPlan.map((step, index) => `<div class="pay"><div class="pct">%${num(step.percent)}</div><div class="what"><b>${index + 1}. ödeme</b><div class="small muted">${esc(step.label)}</div></div><div class="amt">${formatMoney((input.grandTotal * step.percent) / 100, currency)}</div></div>`).join("")}` : ""}
-<h2>Koşul ve şartlar</h2><ul class="terms">${termLines.map((line) => `<li>${esc(line)}</li>`).join("")}
-<li>İşbu teklif ${dateTr(input.validUntil)} tarihine kadar geçerlidir.</li>
-${input.rates.USD > 0 || input.rates.EUR > 0 ? `<li>Hesaplamada kullanılan kurlar: ${[input.rates.USD > 0 ? `1 USD = ${num(input.rates.USD, 4)} TL` : "", input.rates.EUR > 0 ? `1 EUR = ${num(input.rates.EUR, 4)} TL` : ""].filter(Boolean).join(" · ")}.</li>` : ""}</ul>
-<div class="note blue"><b>Banka bilgileri:</b> ${esc(NES_COMPANY.legalName)} · ${esc(NES_COMPANY.bank)} · IBAN ${esc(NES_COMPANY.iban)}</div>
-${footer(input)}</section>`);
+}
 
-  // 7) Kapanış
-  pages.push(
-    `<section class="page closing"><img src="${esc(input.logoUrl)}" alt="NES Enerji" style="height:16mm;margin-bottom:14mm"><h1>Temiz enerji ile<br><b>geleceğe değer katın.</b></h1><hr><p class="muted">${esc(NES_COMPANY.legalName)}<br>${esc(NES_COMPANY.address)}<br>${esc(NES_COMPANY.phone)} · ${esc(NES_COMPANY.email)} · ${esc(NES_COMPANY.web)}</p></section>`,
-  );
+function paymentRows(input: OfferDocumentInput) {
+  return input.paymentPlan.map((step, index) => ({
+    label: `${index + 1}. ÖDEME - ${upperTr(step.label)}`,
+    percent: step.percent,
+    amount: (input.grandTotal * step.percent) / 100,
+  }));
+}
 
+// ---------------------------------------------------------------- GES sunum dosyası
+function band() {
+  return `<div class="band">${esc(NES_COMPANY.footerLine)}</div>`;
+}
+
+function buildGesPresentation(ctx: Ctx): string {
+  const { input } = ctx;
+  const { ges, sarj } = input;
+  const pages: string[] = [];
+  const projectTitle =
+    ges.roofType === "arazi"
+      ? "ARAZİ GES<br>PROJESİ"
+      : "ÇATI ÜSTÜ<br>GES PROJESİ";
+  const kwpText = `${formatKwp(ctx.kwp)}kWp`;
+
+  // 1) Kapak
+  pages.push(`<section class="page">
+<div class="cv-top"><div class="cv-left"><div class="cv-kicker">Fotovoltaik güneş<br>enerjisinden<br>elektrik<br>üretim, mühendislik<br>ve kurulum</div><div class="cv-title">FİYAT<br>TEKLİFİ</div>
+<svg width="64" height="40" viewBox="0 0 64 40" fill="none" stroke="#222" stroke-width="2" style="margin-top:4mm"><path d="M2 2h40v24H18l-8 8v-8H2z"/><path d="M42 12h20v20h-6v6l-6-6H22v-6"/><path d="M9 10h26M9 17h20"/></svg></div>
+<div class="cv-right"><img src="${esc(ctx.asset("nes-mark-white.png"))}" alt=""></div></div>
+<div class="cv-photo" style="background-image:url('${esc(ctx.asset("kapak-ev.jpg"))}')"></div>
+<div class="cv-label"><b>NESENERJİ</b><span>MÜHENDİSLİK</span></div>
+</section>`);
+
+  // 2) Proje, giriş ve sistem özeti
+  const summaryCols: [string, string][] = [
+    ["DC GÜÇ", `${formatKwp(ctx.kwp)} kWp`],
+    ["AC GÜÇ", `${formatKwp(ctx.acKw)} kWe`],
+  ];
+  if (ctx.batteryKwh > 0) {
+    summaryCols.push(["DEPOLAMA", `${formatKwp(ctx.batteryKwh)} kWh`]);
+  }
+  if (ctx.hasSarj) {
+    summaryCols.push([
+      "EV ŞARJ",
+      `${sarj.stationCount} x ${formatKwp(Number(ctx.station?.power_kw ?? 0))} kW`,
+    ]);
+  }
+  summaryCols.push(["DETAY", systemDetail(ctx)]);
+  pages.push(`<section class="page">
+<div class="pj"><div class="pj-left"><div class="pj-title">${projectTitle}</div>
+<div class="pj-cust">${esc(upperTr(input.recipientName || "-"))}</div>
+${input.contactName ? `<div class="pj-addr">${esc(input.contactName)}</div>` : ""}
+${input.recipientAddress ? `<div class="pj-addr">${esc(input.recipientAddress)}</div>` : ""}
+${input.location ? `<div class="pj-addr">${esc(input.location)}</div>` : ""}
+<div class="pj-addr">${dateDots(input.issueDate)}</div>
+<div class="pj-bar"></div>
+<div class="pj-intro"><p>Firmamıza göstermiş olduğunuz ilgiye teşekkür ederiz.</p>
+<p>Talep ettiğiniz Güneş Enerji Santrali${ctx.hasSarj ? " ve Elektrikli Araç Şarj Sistemi" : ""} Anahtar Teslimi Projelendirilme ve Kurulumu İşleri'ne ait teklifimiz ile ilgili detaylar aşağıda bilgilerinize sunulmuştur.</p>
+<p>Teklifimizin uygun görüleceğini ve birlikte çalışma imkânı bulacağımızı ümit eder, konu ile ilgili her türlü sorunuzu yanıtlamaya hazır olduğumuzu bilgilerinize sunarız.</p>
+<p style="margin-top:5mm">Saygılarımızla,</p></div></div>
+<div class="pj-photo" style="background-image:url('${esc(ctx.asset("kapak-ev-2.jpg"))}')"></div></div>
+<div class="summary"><div class="h" style="margin-top:12mm">Sistem Özeti</div>
+<table class="grid-table"><thead><tr>${summaryCols.map(([label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>
+<tbody><tr>${summaryCols.map(([, value]) => `<td class="c">${esc(value)}</td>`).join("")}</tr></tbody></table></div>
+${band()}</section>`);
+
+  // 3) Teklifin konusu ve iş akışı
+  pages.push(`<section class="page"><div class="body">
+<div class="h">Teklifin konusu, taraflar ve şartlar</div>
+<p>İş bu “mühendislik, ürün tedarik ve kurulum” teklifi, ${esc(kwpText)} güçte fotovoltaik güneş enerjisine dayalı ${ges.roofType === "arazi" ? "arazi/teras" : "çatı"} uygulamalı elektrik üretim tesisinin (GES)${ctx.hasSarj ? " ve elektrikli araç şarj sisteminin" : ""} projelendirme, ürün tedarik, kurulum, test, devreye alma ve geçici hizmetlerinin <b>${esc(NES_COMPANY.legalName)}</b> tarafından gerçekleştirilmesine dair iş ve işlemlerin sunulması amacıyla hazırlanmıştır.</p>
+<p>Teklifin amacı ve konusu, söz konusu tesisin mühendislik, ürün tedarik, kurulum, test, devreye alma ve geçici kabul işlemlerinin gerçekleştirilerek, tesisin hatasız ve eksiksiz olarak, faal durumda, tarafınıza sözleşme süresi içinde şirketimiz tarafından teslim edilmesidir. Fotovoltaik modüllerin montajının yapılacağı çatı ve cephe alanlarının, uygulama öncesi montaja uygun hale getirilmiş ve tam izolasyona sahip olması gerekmektedir.</p>
+<div class="h" style="margin-top:12mm">İş akışı</div>
+<p>Güneş enerjisi santralinde kullanılacak tüm ana ve yardımcı teçhizat, elektrik piyasası güncel mevzuat hükümlerine ve TEDAŞ şartnamelerine uyumlu olacaktır. GES’in lisanssız üretim kapsamında aylık mahsuplaşma uygulamasına dahil edilmesi durumuna hazırlık olarak, GES bir bütün olarak projelendirmeye ve izin sürecine hazır halde kurulacaktır.</p>
+<p>Santralde kullanılacak fotovoltaik modüller, alüminyum sabitleme elemanları ile ${ges.roofType === "arazi" ? "zemine" : "çatı zeminine"} uygun açıda konumlanacak şekilde sabitlenecektir. Santralin kurulacağı alanda fotovoltaik panellerin kabloları ve konstrüksiyon sisteminden kaynaklı herhangi bir görüntü kirliliği ortaya çıkmayacaktır.</p>
+${ctx.batteryKwh > 0 ? `<p>Sistem, ${esc(formatKwp(ctx.batteryKwh))} kWh lityum batarya ile birlikte hibrit olarak kurulacak; gün içinde üretilen enerji önce tesisin ihtiyacını karşılayacak, fazlası bataryada depolanacak ve şebeke kesintilerinde yedeklenen yükler bataryadan beslenmeye devam edecektir.</p>` : ""}
+${ctx.hasSarj ? `<p>Elektrikli araç şarj sistemi; ${sarj.stationCount} adet ${esc(`${ctx.station?.brand ?? ""} ${formatKwp(Number(ctx.station?.power_kw ?? 0))} kW`.trim())} şarj istasyonu, ${sarj.phase === "trifaze" ? "trifaze" : "monofaze"} besleme hattı ve kaçak akım / aşırı akım korumalı şarj panosu ile anahtar teslim kurulacaktır.</p>` : ""}
+<p>Tesisin, mühendislik, ürün tedarik, kurulum, test, devreye alma ve geçici kabul işlemlerinin gerçekleştirilmesi tümüyle şirketimiz sorumluluğundadır. Şirketimiz, tesisin kurulumu ve işletilmesinde kullanılacak tüm araç, makine ve teçhizatın temin edilmesi, sahaya getirilmesi ve bunların montajının nitelikli personel tarafından gerçekleştirilmesini sağlayacaktır.</p>
+</div>${band()}</section>`);
+
+  // 4) Hizmet kapsamı
+  const scope = [...gesScope, ...(ctx.hasSarj ? sarjScope : [])];
+  pages.push(`<section class="page"><div class="body">
+<div class="h">Hizmet kapsamı</div>
+<div class="sub">(Hizmet Kapsamı Şebekeye bağlı Mahsuplaşmalı sistemler için geçerlidir. Öztüketim ve Off Grid Sistemlerde proje bulunmadığı için teklife dahil değildir.)</div>
+<table class="grid-table${scope.length > 20 ? " tight" : ""}"><thead><tr><th>KAPSAM</th><th style="width:22mm">DAHİL</th><th style="width:22mm">HARİÇ</th></tr></thead><tbody>
+${scope.map(([text, included]) => `<tr><td>${esc(text)}</td><td class="c">${included ? "X" : ""}</td><td class="c">${included ? "" : "X"}</td></tr>`).join("")}
+</tbody></table></div>${band()}</section>`);
+
+  // 5) Donanımlar
+  const cards: [string, string, string[]][] = [];
+  if (ctx.panel) {
+    cards.push([
+      ctx.asset("panel.png"),
+      "PANEL",
+      [
+        `${ges.panelCount} Adet ${[ctx.panel.brand, `${num(Number(ctx.panel.power_w ?? 0), 0)} Wp`].filter(Boolean).join(" ")} ${/topcon/i.test(`${ctx.panel.name} ${ctx.panel.model ?? ""}`) ? "top-con " : ""}monokristalin panel`,
+        "Garanti Süresi: 10 yıl",
+        "25 yıl performans garantisi",
+      ],
+    ]);
+  }
+  if (ctx.inverter) {
+    cards.push([
+      ctx.asset("inverter.jpg"),
+      "İNVERTER",
+      [
+        `Solar inverter - ${upperTr(ctx.inverter.brand ?? "")}`.trim(),
+        `${/HV/.test(`${ctx.inverter.code} ${ctx.inverter.model ?? ""}`) ? "HV " : /LV/.test(`${ctx.inverter.code} ${ctx.inverter.model ?? ""}`) ? "LV " : ""}${ctx.inverter.phase === "mono" ? "Monofaze" : "Trifaze"} ${ges.systemType === "hibrit" ? "Hibrit" : "On-Grid"}`,
+        `${ges.inverterCount > 1 ? `${ges.inverterCount} x ` : ""}${formatKwp(Number(ctx.inverter.power_kw ?? 0))}kwe`,
+        "Garanti Süresi: 10 yıl",
+      ],
+    ]);
+  }
+  cards.push([
+    ctx.asset("konstruksiyon.png"),
+    "TAŞIYICI KONSTRUKSİYON",
+    [
+      ges.roofType === "kiremit"
+        ? "Kiremit çatıya uygun alüminyum taşıyıcı"
+        : "Alüminyum taşıyıcı sistem",
+      "Kablo Taşıma Malzemeleri",
+      "Profesyonel Kablo Tavaları ve Aksesuarları",
+    ],
+  ]);
+  cards.push([
+    ctx.asset("kablo.png"),
+    "AC-DC VE TOPRAKLAMA KABLOLARI",
+    ["N2HX Alev İletmeyen Bakır Kablolar", "Solar DC kablo 1x6 mm² PV1-F"],
+  ]);
+  const second: [string, string, string[]][] = [];
+  if (ctx.battery && ctx.batteryKwh > 0) {
+    second.push([
+      ctx.asset("batarya.jpg"),
+      "LİTYUM PİL",
+      [
+        upperTr(`${ctx.battery.brand ?? ""} ${ctx.battery.model ?? ""}`.trim()),
+        `${formatKwp(Number(ctx.battery.capacity_kwh ?? 0))}KW X ${ges.batteryCount} ADET`,
+        `${formatKwp(ctx.batteryKwh)}KW`,
+      ],
+    ]);
+  }
+  second.push([
+    ctx.asset("konnektor.png"),
+    "KONNEKTÖRLER",
+    ["Paneller ile uyumlu Solar Konnektörler"],
+  ]);
+  second.push([
+    ctx.asset("pano.png"),
+    "GES PANOSU",
+    ["TEDAŞ şartnamelerine uyumlu GES ACP"],
+  ]);
+  if (ctx.hasSarj && ctx.station) {
+    second.push([
+      "",
+      "EV ŞARJ İSTASYONU",
+      [
+        `${sarj.stationCount} Adet ${ctx.station.brand ?? ""} ${formatKwp(Number(ctx.station.power_kw ?? 0))} kW`,
+        sarj.phase === "trifaze"
+          ? "Trifaze, 5x6 mm² besleme"
+          : "Monofaze, 3x6 mm² besleme",
+        sarj.withStand ? "Ayaklı (stand) montaj" : "Duvar tipi montaj",
+      ],
+    ]);
+  }
+  const card = ([img, title, lines]: [string, string, string[]]) =>
+    `<div><div class="img">${img ? `<img src="${esc(img)}" alt="">` : plugIcon}</div><b>${esc(title)}</b><span>${lines.map(esc).join("<br>")}</span></div>`;
+  pages.push(`<section class="page"><div class="body">
+<div class="h">Donanımlar</div>
+<div class="sub">Sisteminiz, ihtiyacınıza uygun konfigürasyon ile maksimum verimlilikte çalışması için tasarlanmıştır. Aşağıda sistem ana bileşenlerinin bir listesini yaptık.</div>
+<div class="hw">${cards.map(card).join("")}</div>
+<div class="hw ${second.length > 3 ? "four" : "three"}" style="margin-top:8mm">${second.map(card).join("")}</div>
+</div>${band()}</section>`);
+
+  // 6) Proje süreci
+  pages.push(`<section class="page"><div class="body">
+<div class="h">Proje süreci</div>
+<div class="sub">(Şebekeye bağlı Mahsuplaşmalı sistemler için geçerlidir. Öztüketim ve Off Grid Sistemlerde proje bulunmadığı için teklife dahil değildir.)</div>
+<table class="grid-table proc" style="margin-top:8mm"><tbody>
+${gesProcess.map(([when, items]) => `<tr><td>${esc(when)}</td><td>${items.map(esc).join("<br>")}</td></tr>`).join("")}
+</tbody></table></div>${band()}</section>`);
+
+  // 7) Fiyat
+  const priceRows: [string, string, number][] = [];
+  const gesTotal = moduleTotal(ctx, "ges");
+  if (gesTotal > 0) {
+    priceRows.push([
+      `${formatKwp(ctx.kwp)} kWp GES Sistemi${ctx.batteryKwh > 0 ? ` (${formatKwp(ctx.batteryKwh)} kWh depolamalı)` : ""}`,
+      "1 Adet",
+      gesTotal,
+    ]);
+  }
+  const sarjTotal = moduleTotal(ctx, "sarj");
+  if (sarjTotal > 0) {
+    priceRows.push([
+      `EV Şarj Sistemi (${formatKwp(Number(ctx.station?.power_kw ?? 0))} kW, montaj dahil)`,
+      `${sarj.stationCount} Adet`,
+      sarjTotal,
+    ]);
+  }
+  const taahhutTotal = moduleTotal(ctx, "taahhut");
+  if (taahhutTotal > 0)
+    priceRows.push(["Elektrik Taahhüt İşleri", "1 Set", taahhutTotal]);
+  const otherTotal = moduleTotal(ctx, "genel");
+  if (otherTotal > 0) priceRows.push(["Diğer İşler", "1 Set", otherTotal]);
+  const cur = input.currency;
+  const curName = cur === "TRY" ? "TL" : cur;
+  pages.push(`<section class="page"><div class="body">
+<div class="h">Ödenene değer fiyat teklifimiz</div>
+<div class="price-title">Anahtar teslim fiyat</div>
+<table class="grid-table"><thead><tr><th style="text-align:left">AÇIKLAMA</th><th style="width:30mm">BİRİM</th><th style="width:42mm">TUTAR</th></tr></thead><tbody>
+${priceRows.map(([label, unit, total]) => `<tr><td>${esc(label)}</td><td class="c">${esc(unit)}</td><td class="c">${money(total, cur)}</td></tr>`).join("")}
+<tr><td>KDV (%${num(input.vatRate * 100)})</td><td class="c"></td><td class="c">${money(input.vat, cur)}</td></tr>
+<tr><td><b>GENEL TOPLAM (KDV DAHİL)</b></td><td class="c"></td><td class="c"><b>${money(input.grandTotal, cur)}</b></td></tr>
+</tbody></table>
+${
+  input.paymentPlan.length
+    ? `<div class="price-title">Ödeme şekli</div><table class="grid-table"><thead><tr><th style="text-align:left">AÇIKLAMA</th><th style="width:26mm">YÜZDE</th><th style="width:42mm">TUTAR</th></tr></thead><tbody>
+${paymentRows(input)
+  .map(
+    (row) =>
+      `<tr><td style="font-size:7.5pt">${esc(row.label)}</td><td class="c">%${num(row.percent)}</td><td class="c">${money(row.amount, cur)}</td></tr>`,
+  )
+  .join("")}</tbody></table>`
+    : ""
+}
+<div class="price-title" style="margin-top:10mm">Teklif detayları</div>
+<div class="details">
+<p>Fiyatlarımız ${esc(curName)} cinsindendir; KDV ayrıca gösterilmiştir.</p>
+<p>Teklifimiz ${esc(dateLong(input.validUntil))} tarihine kadar geçerlidir.</p>
+${termLines(input)
+  .map((line) => `<p>${esc(line)}</p>`)
+  .join("")}
+${input.rates.USD > 0 || input.rates.EUR > 0 ? `<p>Hesaplamada kullanılan kurlar: ${[input.rates.USD > 0 ? `1 USD = ${num(input.rates.USD, 4)} TL` : "", input.rates.EUR > 0 ? `1 EUR = ${num(input.rates.EUR, 4)} TL` : ""].filter(Boolean).join(", ")}.</p>` : ""}
+<p>Banka Hesap Bilgileri : ${esc(NES_COMPANY.bankAccountName)}<br>${esc(NES_COMPANY.bank)}<br>TL IBAN : ${esc(NES_COMPANY.iban)}</p>
+</div></div>${band()}</section>`);
+
+  let html = pages.join("\n");
+  if (input.showLinePrices) {
+    // Ek: kalem bazında fiyat listesi, NES "TEKLİF" formu düzeninde.
+    html += "\n" + formPages(ctx, { annex: true, withSpec: false }).join("\n");
+  }
   return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${esc(input.offerNo)} — ${esc(input.title)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-<style>${css}</style></head><body>${pages.join("\n")}</body></html>`;
+${fontLinks("family=Raleway:wght@400;700;800&family=Ubuntu:wght@400;700&family=Montserrat:wght@400;700;900&family=Roboto+Mono")}
+<style>${gesCss}${input.showLinePrices ? formCss : ""}</style></head><body>${html}</body></html>`;
+}
+
+// ---------------------------------------------------------------- NES "TEKLİF" formu
+type FormRow = {
+  name: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  total: number;
+};
+
+/** NES formunda olduğu gibi kalemleri sadeleştirir: şarjda istasyon(lar) ayrı,
+ * diğer şarj kalemleri "montaj, devreye alma ve sarf malzeme dahil" tek satır;
+ * taahhütte kalemler olduğu gibi listelenir. */
+function formRows(ctx: Ctx, detailed: boolean): FormRow[] {
+  const rows: FormRow[] = [];
+  const toRow = (line: PricedLine): FormRow => ({
+    name: line.description,
+    quantity: line.quantity,
+    unit: unitLabel(line.unit),
+    unitPrice: line.quantity > 0 ? line.saleAmount / line.quantity : 0,
+    total: line.saleAmount,
+  });
+  for (const module of ["ges", "sarj", "taahhut", "genel"] as OfferModule[]) {
+    const lines = ctx.visible.filter((line) => line.module === module);
+    if (lines.length === 0) continue;
+    if (detailed || module === "taahhut" || module === "genel") {
+      rows.push(...lines.filter((line) => line.saleAmount > 0).map(toRow));
+      continue;
+    }
+    if (module === "sarj") {
+      const stations = lines.filter(
+        (line) =>
+          ctx.input.catalog.find((item) => item.id === line.catalogItemId)
+            ?.template_role === "sarj_station",
+      );
+      rows.push(...stations.map(toRow));
+      const rest = lines.filter((line) => !stations.includes(line));
+      const restTotal = rest.reduce((sum, line) => sum + line.saleAmount, 0);
+      if (restTotal > 0) {
+        rows.push({
+          name: "Montaj, devreye alma ve sarf malzeme dahil",
+          quantity: 1,
+          unit: "Adet",
+          unitPrice: restTotal,
+          total: restTotal,
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function formPages(
+  ctx: Ctx,
+  options: { annex: boolean; withSpec: boolean },
+): string[] {
+  const { input } = ctx;
+  const cur = input.currency;
+  const rows = formRows(ctx, options.annex);
+  const perPage = 20;
+  const chunks: FormRow[][] = [];
+  for (let i = 0; i < Math.max(rows.length, 1); i += perPage) {
+    chunks.push(rows.slice(i, i + perPage));
+  }
+  const specLines = termLines(input);
+  const pageCount = chunks.length + (options.withSpec ? 1 : 0);
+  const sale = rows.reduce((sum, row) => sum + row.total, 0);
+  const vat = sale * input.vatRate;
+  const totalsHtml = `<div class="totals">
+<div><b>ARA TOPLAM</b><span>${money(sale, cur)}</span></div>
+<div><b>BRÜT TOPLAM</b><span>${money(sale, cur)}</span></div>
+<div><b>TOPLAM K.D.V</b><span>${money(vat, cur)}</span></div>
+<div><b>GENEL TOPLAM</b><span>${money(sale + vat, cur)}</span></div></div>`;
+  const foot = (page: number) =>
+    `<div class="foot"><span><b>${dateDots(input.issueDate)}</b> tarihinde hazırlanmıştır.</span><span><b>SAYFA ${page} / ${pageCount}</b></span></div>`;
+  const head = `<div class="top"><div><img src="${esc(ctx.logo)}" alt="NES Enerji">
+<div class="co"><p>${esc(NES_COMPANY.legalNameUpper)}<br>${esc(NES_COMPANY.addressUpper)}</p><p>${esc(NES_COMPANY.cityUpper)}<br><span class="n">${esc(NES_COMPANY.phoneCompact)}</span></p><p>VD: ${esc(NES_COMPANY.taxOffice)}<br><span class="n">${esc(NES_COMPANY.taxNo)}</span></p></div></div>
+<div><div class="tk">${options.annex ? "FİYAT LİSTESİ" : "TEKLİF"}</div><div class="tk-rule"></div>
+<div class="lbl">MÜŞTERİ</div><div class="cust">${esc(upperTr(input.recipientName || "-"))}${input.recipientAddress ? `<br>${esc(input.recipientAddress)}` : ""}${input.location ? `<br>${esc(input.location)}` : ""}</div>
+<div class="dt"><span class="lbl">TEKLİF NO</span><span>${esc(input.offerNo)}</span></div>
+<div class="dt"><span class="lbl">TEKLİF TARİHİ</span><span>${esc(dateLong(input.issueDate))}</span></div>
+<div class="dt"><span class="lbl">GEÇERLİLİK</span><span>${esc(dateLong(input.validUntil))}</span></div></div></div>`;
+
+  const pages = chunks.map((chunk, index) => {
+    const last = index === chunks.length - 1;
+    return `<section class="page form">${index === 0 ? head : ""}
+<table class="items"${index === 0 ? "" : ' style="margin-top:0"'}><thead><tr><th>Hizmet / Ürün</th><th class="r">Miktar</th><th class="r">Br. Fiyat</th><th class="r">KDV</th><th class="r">Toplam</th></tr></thead><tbody>
+${chunk.map((row) => `<tr><td style="width:46%">${esc(row.name)}</td><td class="r">${num(row.quantity)} ${esc(row.unit)}</td><td class="r">${money(row.unitPrice, cur)}</td><td class="r">%${num(input.vatRate * 100)}</td><td class="r">${money(row.total, cur)}</td></tr>`).join("")}
+</tbody></table>${last ? `<div class="line"></div>${totalsHtml}` : ""}${foot(index + 1)}</section>`;
+  });
+
+  if (options.withSpec) {
+    const payment = paymentRows(input);
+    pages.push(`<section class="page form"><div class="spec-wrap"><div class="spec">
+<p style="text-transform:uppercase">Teklif ve teknik şartname</p>
+<p style="text-transform:uppercase">Proje adı: ${esc(input.title)}${input.location ? ` · ${esc(input.location)}` : ""}</p>
+<h3>1. Kapsam</h3><p>${esc(input.title)} kapsamında tabloda belirtilen malzemelerin tedariki, montajı, test ve devreye alma işleri anahtar teslim olarak teklif edilmiştir.</p>
+${payment.length ? `<h3>2. Ödeme şekli</h3>${payment.map((row) => `<p>• ${esc(row.label)}: %${num(row.percent)} (${money(row.amount, cur)})</p>`).join("")}` : ""}
+<h3>${payment.length ? "3" : "2"}. Şartlar</h3>${specLines.map((line) => `<p>• ${esc(line)}</p>`).join("")}
+<p>• İşbu teklif ${esc(dateLong(input.validUntil))} tarihine kadar geçerlidir.</p>
+${input.rates.USD > 0 || input.rates.EUR > 0 ? `<p>• Hesaplamada kullanılan kurlar: ${[input.rates.USD > 0 ? `1 USD = ${num(input.rates.USD, 4)} TL` : "", input.rates.EUR > 0 ? `1 EUR = ${num(input.rates.EUR, 4)} TL` : ""].filter(Boolean).join(", ")}.</p>` : ""}
+<h3>Banka bilgileri</h3><p>${esc(NES_COMPANY.bankAccountName)} · ${esc(NES_COMPANY.bank)}<br>TL IBAN: ${esc(NES_COMPANY.iban)}</p>
+</div>${totalsHtml}</div>${foot(pageCount)}</section>`);
+  }
+  return pages;
+}
+
+function buildTeklifForm(ctx: Ctx): string {
+  const pages = formPages(ctx, { annex: false, withSpec: true });
+  return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${esc(ctx.input.offerNo)} — ${esc(ctx.input.title)}</title>
+${fontLinks("family=Montserrat:wght@400;600;700;900&family=Roboto+Mono")}
+<style>${formBaseCss}${formCss}</style></head><body>${pages.join("\n")}</body></html>`;
+}
+
+/** GES içeren teklif NES sunum dosyası, diğerleri NES "TEKLİF" formu olarak üretilir. */
+export function buildOfferDocument(input: OfferDocumentInput): string {
+  const ctx = context(input);
+  return ctx.hasGes ? buildGesPresentation(ctx) : buildTeklifForm(ctx);
 }
