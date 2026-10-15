@@ -22,6 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
+import { buildTechnicalOffer } from "@/lib/energy-offer-technical";
 import { buildOfferDocument, NES_COMPANY } from "@/lib/energy-offer-document";
 import {
   applyMarkup,
@@ -31,6 +32,7 @@ import {
   defaultGes,
   defaultPaymentPlan,
   defaultRecipient,
+  defaultTechnical,
   defaultSarj,
   DEFAULT_SPECIFIC_YIELD,
   formatKwp,
@@ -60,7 +62,9 @@ import {
   type GesConfig,
   type LineCategory,
   type OfferModule,
+  type OfferLayout,
   type OfferRecipient,
+  type TechnicalContent,
   type PaymentStep,
   type PricedLine,
   type SarjConfig,
@@ -131,6 +135,58 @@ const defaultTerms = [
   "Kabul sürecinde dağıtım şirketi veya resmi kurumlarca istenebilecek öngörülemeyen ek ekipman (çift yönlü sayaç ve modemi, ek sayaç panosu, yangın merdiveni vb.) müşteri sorumluluğundadır.",
   "Montaj yapılacak çatı/cephe alanlarının uygulama öncesi montaja uygun ve tam izolasyonlu olması müşteri sorumluluğundadır; statik yeterlilik keşif sonrası kesinleşir.",
 ].join("\n");
+
+const technicalTerms = [
+  "Faturalar teslim tarihinden itibaren 7 gün içinde ödenir.",
+  "Proje dışı ve işverence talep edilen ilave işler, Ek-1 birim fiyatlarıyla veya karşılıklı mutabakatla fiyatlandırılır.",
+  "Kullanılacak malzemeler TEDAŞ/EDAŞ onaylı tedarikçi listesinden, TS/ISO standartlarına uygun seçilir; muadil kullanımı işveren onayıyla yapılır.",
+].join("\n");
+
+const technicalTextFields: [
+  Exclude<keyof TechnicalContent, "scheduleWeeks">,
+  string,
+  string,
+  number,
+][] = [
+  [
+    "intro",
+    "Giriş yazısı",
+    "Boşsa standart NES giriş yazısı kullanılır. Her satır bir paragraf.",
+    4,
+  ],
+  [
+    "summaryCards",
+    "Özet kartları (en çok 3)",
+    "Etiket: değer — ör. Kurulu güç: 2.452,5 kWe. Teklif bedeli kartı otomatik eklenir.",
+    3,
+  ],
+  ["projectDescription", "Proje tanımı", "Her satır bir paragraf.", 4],
+  [
+    "technicalData",
+    "Teknik veriler",
+    "Etiket: değer — ör. Gerilim seviyesi: 31,5 kV",
+    6,
+  ],
+  [
+    "specialNotes",
+    "Projedeki özel durumlar",
+    "Başlık: açıklama — ör. Kamulaştırma: 5 ve 6 nolu direkler için süreç başlatılmalı.",
+    4,
+  ],
+  ["included", "Teklife dahil olan işler", "Her satır bir madde.", 6],
+  [
+    "excluded",
+    "Teklife dahil olmayan işler (işveren)",
+    "Her satır bir madde.",
+    5,
+  ],
+  [
+    "methodology",
+    "Uygulama metodolojisi",
+    "Adım: açıklama — sırayla numaralanır.",
+    6,
+  ],
+];
 
 const fieldIds: Record<NonNullable<Check["field"]>, string> = {
   genel: "bolum-genel",
@@ -312,6 +368,9 @@ function EnergyOfferPage() {
   const [targetSale, setTargetSale] = useState(0);
   const [specificYield, setSpecificYield] = useState(DEFAULT_SPECIFIC_YIELD);
   const [showLinePrices, setShowLinePrices] = useState(false);
+  const [layout, setLayout] = useState<OfferLayout>("otomatik");
+  const [technical, setTechnical] =
+    useState<TechnicalContent>(defaultTechnical);
   const [exporting, setExporting] = useState(false);
 
   const dataQuery = useQuery({
@@ -396,6 +455,8 @@ function EnergyOfferPage() {
       if (typeof cfg.markupRate === "number") setMarkupRate(cfg.markupRate);
       setSpecificYield(cfg.specificYield ?? DEFAULT_SPECIFIC_YIELD);
       setShowLinePrices(Boolean(cfg.showLinePrices));
+      setLayout(cfg.layout ?? "otomatik");
+      setTechnical({ ...defaultTechnical, ...cfg.technical });
     }
     if (Array.isArray(offer.payment_plan)) {
       setPaymentPlan(offer.payment_plan as unknown as PaymentStep[]);
@@ -590,6 +651,8 @@ function EnergyOfferPage() {
         markupRate,
         specificYield,
         showLinePrices,
+        layout,
+        technical: layout === "teknik" ? technical : undefined,
       };
       const header = {
         title: title.trim(),
@@ -712,7 +775,12 @@ function EnergyOfferPage() {
       );
       return;
     }
-    const html = buildOfferDocument(documentInput()).replace(
+    const input = documentInput();
+    const offerHtml =
+      layout === "teknik"
+        ? buildTechnicalOffer(input, technical)
+        : buildOfferDocument(input);
+    const html = offerHtml.replace(
       "</body>",
       `<div class="noprint" style="position:fixed;top:12px;right:12px;display:flex;gap:8px"><button onclick="window.print()" style="padding:10px 16px;border:0;border-radius:8px;background:#0B4EA2;color:#fff;font-weight:700;cursor:pointer">PDF olarak kaydet / Yazdır</button></div><style>@media print{.noprint{display:none!important}}</style></body>`,
     );
@@ -1591,7 +1659,20 @@ function EnergyOfferPage() {
                       )
                     }
                   />
-                  <div className="flex w-28 items-center gap-1">
+                  {layout === "teknik" ? (
+                    <Input
+                      placeholder="Açıklama (ör. uzun termin malzeme blokajı)"
+                      value={step.note ?? ""}
+                      onChange={(e) =>
+                        setPaymentPlan((p) =>
+                          p.map((s, i) =>
+                            i === index ? { ...s, note: e.target.value } : s,
+                          ),
+                        )
+                      }
+                    />
+                  ) : null}
+                  <div className="flex w-28 shrink-0 items-center gap-1">
                     <span className="text-sm">%</span>
                     <NumField
                       value={step.percent}
@@ -1625,6 +1706,107 @@ function EnergyOfferPage() {
               />
             </Field>
           </section>
+
+          {layout === "teknik" ? (
+            <section className="surface-panel grid gap-4 p-5 lg:grid-cols-2">
+              <div className="lg:col-span-2">
+                <h2 className="font-black">Teknik teklif içeriği</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Boş bırakılan bölümler dosyada görünmez. Liste alanlarına her
+                  satıra bir madde yazın; "Başlık: açıklama" yazarsanız başlık
+                  kalın görünür.
+                </p>
+              </div>
+              <Field
+                label="Alt başlık"
+                className="lg:col-span-2"
+                hint="Kapakta başlığın altında, ör. 2.452,5 kWe GES – 31,5 kV havai hat, XLPE kablo – anahtar teslim"
+              >
+                <Input
+                  value={technical.subtitle}
+                  onChange={(e) =>
+                    setTechnical((t) => ({ ...t, subtitle: e.target.value }))
+                  }
+                />
+              </Field>
+              <Field
+                label="İş süresi"
+                hint="ör. 12 hafta (malzeme termini ve EDAŞ kesinti programına bağlı)"
+              >
+                <Input
+                  value={technical.duration}
+                  onChange={(e) =>
+                    setTechnical((t) => ({ ...t, duration: e.target.value }))
+                  }
+                />
+              </Field>
+              <Field label="Garanti">
+                <Input
+                  value={technical.warranty}
+                  onChange={(e) =>
+                    setTechnical((t) => ({ ...t, warranty: e.target.value }))
+                  }
+                />
+              </Field>
+              <Field label="Hazırlayan">
+                <Input
+                  value={technical.preparedByName}
+                  onChange={(e) =>
+                    setTechnical((t) => ({
+                      ...t,
+                      preparedByName: e.target.value,
+                    }))
+                  }
+                />
+              </Field>
+              <Field label="Unvan">
+                <Input
+                  value={technical.preparedByTitle}
+                  onChange={(e) =>
+                    setTechnical((t) => ({
+                      ...t,
+                      preparedByTitle: e.target.value,
+                    }))
+                  }
+                />
+              </Field>
+              {technicalTextFields.map(([key, label, hint, rows]) => (
+                <Field key={key} label={label} hint={hint}>
+                  <Textarea
+                    rows={rows}
+                    value={String(technical[key])}
+                    onChange={(e) =>
+                      setTechnical((t) => ({ ...t, [key]: e.target.value }))
+                    }
+                  />
+                </Field>
+              ))}
+              <Field
+                label="İş programı"
+                className="lg:col-span-2"
+                hint='Her satır: "Faaliyet | başlangıç-bitiş haftası | malzeme" — ör. "Malzeme tedariki | 1-8 | malzeme". "malzeme" yazılan satır turuncu çizilir.'
+              >
+                <Textarea
+                  rows={7}
+                  value={technical.schedule}
+                  onChange={(e) =>
+                    setTechnical((t) => ({ ...t, schedule: e.target.value }))
+                  }
+                />
+              </Field>
+              <Field label="Toplam süre (hafta)">
+                <NumField
+                  value={technical.scheduleWeeks}
+                  onChange={(v) =>
+                    setTechnical((t) => ({
+                      ...t,
+                      scheduleWeeks: Math.max(1, Math.min(52, Math.round(v))),
+                    }))
+                  }
+                />
+              </Field>
+            </section>
+          ) : null}
         </div>
 
         {/* Özet */}
@@ -1686,6 +1868,33 @@ function EnergyOfferPage() {
 
           <section className="surface-panel grid gap-2 p-5 text-sm">
             <h2 className="mb-1 font-black">Müşteri dosyası</h2>
+            <Field label="Dosya düzeni">
+              <Select
+                value={layout}
+                onValueChange={(value) => {
+                  const next = value as OfferLayout;
+                  setLayout(next);
+                  if (next === "teknik" && terms === defaultTerms) {
+                    setTerms(technicalTerms);
+                  }
+                  if (next === "otomatik" && terms === technicalTerms) {
+                    setTerms(defaultTerms);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="otomatik">
+                    GES sunumu / TEKLİF formu
+                  </SelectItem>
+                  <SelectItem value="teknik">
+                    Teknik ve ticari teklif (taahhüt, OG)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
             <label className="flex items-center justify-between gap-3">
               <span>Ayrıntılı fiyat listesi ekle</span>
               <Switch
@@ -1693,7 +1902,9 @@ function EnergyOfferPage() {
                 onCheckedChange={setShowLinePrices}
               />
             </label>
-            <p className="text-xs text-muted-foreground">
+            <p
+              className={`text-xs text-muted-foreground ${layout === "teknik" ? "hidden" : ""}`}
+            >
               GES içeren teklif NES sunum dosyası (kapak, sistem özeti, hizmet
               kapsamı, donanımlar, proje süreci, fiyat) olarak çıkar; açarsanız
               sonuna kalem kalem fiyat listesi eklenir. Yalnız şarj/taahhüt
@@ -1701,6 +1912,16 @@ function EnergyOfferPage() {
               ayrı satırda, kapalıyken istasyon + "montaj ve sarf dahil" tek
               satırda görünür.
             </p>
+            {layout === "teknik" ? (
+              <p className="text-xs text-muted-foreground">
+                Büyük taahhüt/OG işleri için Word tarzı dosya: kapak, giriş
+                yazısı, teklif özeti, NES Grup hakkında, proje ve teknik
+                veriler, iş kapsamı, iş programı, fiyat (malzeme/işçilik
+                ayrımlı), ödeme planı, referanslar, onay ve Ek-1 birim fiyat
+                cetveli. Metinleri soldaki "Teknik teklif içeriği" bölümünden
+                düzenleyin. Ek-1 her zaman eklenir.
+              </p>
+            ) : null}
           </section>
 
           <section className="surface-panel grid gap-2 p-5 text-sm">

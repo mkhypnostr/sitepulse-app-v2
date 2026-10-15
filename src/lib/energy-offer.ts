@@ -79,7 +79,77 @@ export type SarjConfig = {
   connectionPowerKw: number;
 };
 
-export type PaymentStep = { label: string; percent: number };
+export type PaymentStep = { label: string; percent: number; note?: string };
+
+/** Müşteri dosyasının düzeni. "otomatik": GES varsa NES sunum dosyası, yoksa
+ * NES "TEKLİF" formu. "teknik": büyük taahhüt/OG işleri için Word tarzı
+ * "Teknik ve Ticari Teklif". */
+export type OfferLayout = "otomatik" | "teknik";
+
+/** Teknik ve ticari teklif metinleri. Liste alanları satır satır yazılır;
+ * "Başlık: açıklama" biçimindeki satırlar başlık + açıklama olarak ayrılır. */
+export type TechnicalContent = {
+  subtitle: string;
+  duration: string;
+  warranty: string;
+  preparedByName: string;
+  preparedByTitle: string;
+  intro: string;
+  projectDescription: string;
+  summaryCards: string;
+  technicalData: string;
+  specialNotes: string;
+  included: string;
+  excluded: string;
+  methodology: string;
+  /** "Faaliyet | 1-4 | malzeme" satırları. */
+  schedule: string;
+  scheduleWeeks: number;
+};
+
+export const defaultTechnical: TechnicalContent = {
+  subtitle: "",
+  duration: "8 hafta",
+  warranty:
+    "İşçilik 2 yıl, malzeme üretici garantisi; geçici kabul sonrası arıza müdahale desteği.",
+  preparedByName: "Enes Demirhan",
+  preparedByTitle: "Elektrik Mühendisi – NES Grup",
+  intro: "",
+  projectDescription: "",
+  summaryCards: "",
+  technicalData: "",
+  specialNotes: "",
+  included: [
+    "Projeye uygun tüm malzemelerin TEDAŞ/EDAŞ şartnamelerine uygun tedariki",
+    "Montaj, kablolama, pano ve bağlantı işleri",
+    "Topraklama tesisleri ve ölçümleri",
+    "Test, devreye alma ve EDAŞ enerji kesinti/manevra koordinasyonu",
+    "As-built dokümanları, geçici kabul dosyası ve kabul sürecinin takibi",
+    "İSG planı, şantiye güvenliği, trafik ve emniyet tedbirleri",
+  ].join("\n"),
+  excluded: [
+    "EDAŞ bağlantı bedeli, güvence, proje onay ve kurum harçları",
+    "Kazı ruhsatı ve belediye/karayolu altyapı izin bedelleri",
+    "Projede olmayan, idarece sonradan istenebilecek ilave tesis ve revizyonlar",
+    "Kaya zemin, yeraltı su seviyesi veya mevcut altyapı nedeniyle oluşacak ek imalatlar",
+  ].join("\n"),
+  methodology: [
+    "Hazırlık ve aplikasyon: Proje, saha ve güzergâh kontrolü; aplikasyon ve EDAŞ yer teslimi.",
+    "Uzun termin malzeme: Uzun termin malzemelerin sözleşme günü siparişi; üretici test belgelerinin temini.",
+    "Montaj: Proje ve şartnamelere uygun mekanik ve elektriksel montaj, kablolama ve bağlantılar.",
+    "Test ve devreye alma: Topraklama ölçümleri, izolasyon testleri, koruma ve fonksiyon testleri.",
+    "Enerjilendirme ve kabul: EDAŞ ile kesinti ve manevra planı, enerjilendirme, geçici kabul ve as-built teslimi.",
+  ].join("\n"),
+  schedule: [
+    "Sözleşme, sipariş ve mobilizasyon | 1-1",
+    "Uygulama projesi kontrolü ve aplikasyon | 1-2",
+    "Malzeme tedariki | 1-4 | malzeme",
+    "Saha montaj işleri | 3-6",
+    "Testler ve devreye alma | 7-7",
+    "Geçici kabul ve as-built teslimi | 8-8",
+  ].join("\n"),
+  scheduleWeeks: 8,
+};
 
 export type ExchangeRates = { USD: number; EUR: number };
 
@@ -107,6 +177,8 @@ export type EnergyOfferConfig = {
   specificYield?: number;
   /** Müşteri dosyasında kalem bazında fiyat gösterilsin mi. */
   showLinePrices?: boolean;
+  layout?: OfferLayout;
+  technical?: TechnicalContent;
 };
 
 export const defaultRecipient: OfferRecipient = {
