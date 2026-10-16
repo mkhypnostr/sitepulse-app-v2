@@ -121,6 +121,7 @@ import {
   type SiteConfig,
 } from "@/lib/solar-site";
 import { SiteDesigner } from "@/components/energy-offer/site-designer";
+import { ShareLinkPanel } from "@/components/energy-offer/share-link-panel";
 
 export const Route = createFileRoute("/_authenticated/energy-offer")({
   validateSearch: (search: Record<string, unknown>): { offerId?: string } =>
@@ -879,6 +880,19 @@ function EnergyOfferPage() {
     };
   }
 
+  /** Müşteri dosyasının HTML'i (yazdır düğmesi dahil). */
+  function customerHtml() {
+    const input = documentInput();
+    const offerHtml =
+      layout === "teknik"
+        ? buildTechnicalOffer(input, technical)
+        : buildOfferDocument(input);
+    return offerHtml.replace(
+      "</body>",
+      `<div class="noprint" style="position:fixed;top:12px;right:12px;display:flex;gap:8px"><button onclick="window.print()" style="padding:10px 16px;border:0;border-radius:8px;background:#0B4EA2;color:#fff;font-weight:700;cursor:pointer">PDF olarak kaydet / Yazdır</button></div><style>@media print{.noprint{display:none!important}}</style></body>`,
+    );
+  }
+
   function openCustomerDocument() {
     if (errors.length > 0) {
       toast.error(`Önce kırmızı kontrolleri düzeltin: ${errors[0].message}`);
@@ -891,18 +905,19 @@ function EnergyOfferPage() {
       );
       return;
     }
-    const input = documentInput();
-    const offerHtml =
-      layout === "teknik"
-        ? buildTechnicalOffer(input, technical)
-        : buildOfferDocument(input);
-    const html = offerHtml.replace(
-      "</body>",
-      `<div class="noprint" style="position:fixed;top:12px;right:12px;display:flex;gap:8px"><button onclick="window.print()" style="padding:10px 16px;border:0;border-radius:8px;background:#0B4EA2;color:#fff;font-weight:700;cursor:pointer">PDF olarak kaydet / Yazdır</button></div><style>@media print{.noprint{display:none!important}}</style></body>`,
-    );
     win.document.open();
-    win.document.write(html);
+    win.document.write(customerHtml());
     win.document.close();
+  }
+
+  /** Link için: önce kaydet, sonra müşteri dosyasını üret. */
+  async function prepareShare() {
+    if (errors.length > 0) {
+      toast.error(`Önce kırmızı kontrolleri düzeltin: ${errors[0].message}`);
+      return null;
+    }
+    await save.mutateAsync();
+    return customerHtml();
   }
 
   /** NES maliyet tablolarındaki başlık biçimi, ör. "22,5 kWp DC - 20 kWe AC -
@@ -2211,6 +2226,8 @@ function EnergyOfferPage() {
               </p>
             ) : null}
           </section>
+
+          <ShareLinkPanel offerId={offerId} prepare={prepareShare} />
 
           <section className="surface-panel grid gap-2 p-5 text-sm">
             <h2 className="mb-1 font-black">Kontroller</h2>
