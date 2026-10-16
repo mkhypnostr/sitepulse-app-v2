@@ -812,7 +812,10 @@ function EnergyOfferPage() {
         } satisfies StoredRates as unknown as Json,
         payment_plan: paymentPlan as unknown as Json,
         terms_note: terms.trim() || null,
-        lead_id: dataQuery.data?.lead?.id ?? null,
+        // Teklif gönderilince veritabanı otomatik aday açabilir; kayıtta o
+        // bağlantı silinmesin.
+        lead_id:
+          dataQuery.data?.lead?.id ?? dataQuery.data?.offer?.lead_id ?? null,
       };
       let id = offerId;
       if (id) {

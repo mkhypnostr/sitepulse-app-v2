@@ -276,23 +276,18 @@
     opacity 0.18s ease;
 }
 
-.group:hover .sidebar-reveal,
-.group:focus-within .sidebar-reveal,
-.group[data-pinned="true"] .sidebar-reveal {
+.group[data-expanded="true"] .sidebar-reveal {
   max-width: 190px;
   opacity: 1;
 }
 
-.group:hover .sidebar-collapsed-only,
-.group:focus-within .sidebar-collapsed-only,
-.group[data-pinned="true"] .sidebar-collapsed-only {
+.group[data-expanded="true"] .sidebar-collapsed-only {
   display: none;
 }
 
 /* Daraltılmış menü üzerine gelince içeriğin üstüne açılır; altındaki
    sayfa karışmasın diye o anda cam daha opak olur. */
-.group[data-pinned="false"]:hover,
-.group[data-pinned="false"]:focus-within {
+.group[data-pinned="false"][data-expanded="true"] {
   background: color-mix(in oklch, var(--card) 94%, transparent);
 }
 
