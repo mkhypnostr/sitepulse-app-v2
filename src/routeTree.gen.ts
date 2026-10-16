@@ -32,6 +32,7 @@ import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedTransformerResponsibilityRouteImport } from './routes/_authenticated/transformer-responsibility'
 import { Route as AuthenticatedWorkOrdersRouteImport } from './routes/_authenticated/work-orders'
+import { Route as ApiPvgisRouteImport } from './routes/api/pvgis'
 import { Route as ApiTcmbRatesRouteImport } from './routes/api/tcmb-rates'
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
 import { Route as AuthenticatedJobReportJobIdRouteImport } from './routes/_authenticated/job-report/$jobId'
@@ -159,6 +160,11 @@ const AuthenticatedWorkOrdersRoute = AuthenticatedWorkOrdersRouteImport.update({
   path: '/work-orders',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const ApiPvgisRoute = ApiPvgisRouteImport.update({
+  id: '/api/pvgis',
+  path: '/api/pvgis',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiTcmbRatesRoute = ApiTcmbRatesRouteImport.update({
   id: '/api/tcmb-rates',
   path: '/api/tcmb-rates',
@@ -216,6 +222,7 @@ export interface FileRoutesByFullPath {
   '/team': typeof AuthenticatedTeamRoute
   '/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
@@ -246,6 +253,7 @@ export interface FileRoutesByTo {
   '/team': typeof AuthenticatedTeamRoute
   '/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
@@ -278,6 +286,7 @@ export interface FileRoutesById {
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/_authenticated/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/_authenticated/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
@@ -310,6 +319,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/transformer-responsibility'
     | '/work-orders'
+    | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
     | '/job-report/$jobId'
@@ -340,6 +350,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/transformer-responsibility'
     | '/work-orders'
+    | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
     | '/job-report/$jobId'
@@ -371,6 +382,7 @@ export interface FileRouteTypes {
     | '/_authenticated/team'
     | '/_authenticated/transformer-responsibility'
     | '/_authenticated/work-orders'
+    | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
     | '/_authenticated/job-report/$jobId'
@@ -383,6 +395,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiPvgisRoute: typeof ApiPvgisRoute
   ApiTcmbRatesRoute: typeof ApiTcmbRatesRoute
   OauthConsentRoute: typeof OauthConsentRoute
 }
@@ -550,6 +563,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkOrdersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/pvgis': {
+      id: '/api/pvgis'
+      path: '/api/pvgis'
+      fullPath: '/api/pvgis'
+      preLoaderRoute: typeof ApiPvgisRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/tcmb-rates': {
       id: '/api/tcmb-rates'
       path: '/api/tcmb-rates'
@@ -670,6 +690,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiPvgisRoute: ApiPvgisRoute,
   ApiTcmbRatesRoute: ApiTcmbRatesRoute,
   OauthConsentRoute: OauthConsentRoute,
 }
