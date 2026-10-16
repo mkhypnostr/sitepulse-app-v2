@@ -10,12 +10,16 @@ import webpush from "npm:web-push@3.6.7";
 // Abonelikler push_subscriptions tablosundan okunur; tarayıcının "artık yok"
 // dediği (404/410) abonelikler silinir.
 //
-// Gerekli secret'lar: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY,
-// isteğe bağlı VAPID_SUBJECT (varsayılan mailto:info@nesgrup.com).
+// VAPID özel anahtarı Vault'ta ('push_vapid_private_key'); isteğe bağlı
+// VAPID_PRIVATE_KEY / VAPID_SUBJECT ortam değişkenleri önceliklidir.
 
 const WEBHOOK_SECRET = Deno.env.get("NOTIFICATION_WEBHOOK_SECRET");
-const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY");
-const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY");
+// Genel anahtar gizli değildir (uygulamadaki src/lib/push.ts ile aynı).
+const VAPID_PUBLIC_KEY =
+  Deno.env.get("VAPID_PUBLIC_KEY") ||
+  "BLJ8dRTa4pZZ7FlyAHKvJi_N9egy-0yTr9l44txDJUGIRSYkUmcgbpU5YxSp69JcNhHMSyonCQPkTb33yxhbOe0";
+// Özel anahtar: önce ortam değişkeni, yoksa Vault (get_push_vapid_private_key).
+let VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY") ?? null;
 const VAPID_SUBJECT =
   Deno.env.get("VAPID_SUBJECT") || "mailto:info@nesgrup.com";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -117,10 +121,15 @@ Deno.serve(async (req: Request) => {
   ) {
     return json({ error: "Yetkisiz." }, 401);
   }
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    console.error(
-      "VAPID anahtarları yapılandırılmamış; bildirim gönderilemedi.",
-    );
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  });
+  if (!VAPID_PRIVATE_KEY) {
+    const { data } = await admin.rpc("get_push_vapid_private_key");
+    VAPID_PRIVATE_KEY = typeof data === "string" && data ? data : null;
+  }
+  if (!VAPID_PRIVATE_KEY) {
+    console.error("VAPID özel anahtarı yok; bildirim gönderilemedi.");
     return json({ error: "Bildirim yapılandırılmamış." }, 500);
   }
 
@@ -136,9 +145,6 @@ Deno.serve(async (req: Request) => {
   if (userIds.length === 0) return json({ sent: 0 });
 
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-  });
   const { data: subs, error } = await admin
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth, failure_count")
