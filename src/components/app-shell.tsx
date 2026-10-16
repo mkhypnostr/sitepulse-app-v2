@@ -10,6 +10,7 @@ import {
   ClipboardList,
   FolderKanban,
   FolderOpen,
+  Landmark,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -204,6 +205,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             label: "Ölçüm ve Tahsilat",
             icon: ClipboardList,
           },
+          { to: "/receivables", label: "Cari Hesaplar", icon: Landmark },
           {
             to: "/transformer-responsibility",
             label: "Trafo Sorumluluğu",
