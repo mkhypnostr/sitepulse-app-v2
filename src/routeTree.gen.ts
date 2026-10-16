@@ -32,6 +32,7 @@ import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedTransformerResponsibilityRouteImport } from './routes/_authenticated/transformer-responsibility'
 import { Route as AuthenticatedWorkOrdersRouteImport } from './routes/_authenticated/work-orders'
+import { Route as ApiTcmbRatesRouteImport } from './routes/api/tcmb-rates'
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
 import { Route as AuthenticatedJobReportJobIdRouteImport } from './routes/_authenticated/job-report/$jobId'
 import { Route as AuthenticatedJobsJobIdRouteImport } from './routes/_authenticated/jobs/$jobId'
@@ -158,6 +159,11 @@ const AuthenticatedWorkOrdersRoute = AuthenticatedWorkOrdersRouteImport.update({
   path: '/work-orders',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const ApiTcmbRatesRoute = ApiTcmbRatesRouteImport.update({
+  id: '/api/tcmb-rates',
+  path: '/api/tcmb-rates',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthConsentRoute = OauthConsentRouteImport.update({
   id: '/oauth/consent',
   path: '/oauth/consent',
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/team': typeof AuthenticatedTeamRoute
   '/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
@@ -239,6 +246,7 @@ export interface FileRoutesByTo {
   '/team': typeof AuthenticatedTeamRoute
   '/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
@@ -270,6 +278,7 @@ export interface FileRoutesById {
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/_authenticated/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
   '/_authenticated/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/_authenticated/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
@@ -301,6 +310,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/transformer-responsibility'
     | '/work-orders'
+    | '/api/tcmb-rates'
     | '/oauth/consent'
     | '/job-report/$jobId'
     | '/jobs/$jobId'
@@ -330,6 +340,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/transformer-responsibility'
     | '/work-orders'
+    | '/api/tcmb-rates'
     | '/oauth/consent'
     | '/job-report/$jobId'
     | '/jobs/$jobId'
@@ -360,6 +371,7 @@ export interface FileRouteTypes {
     | '/_authenticated/team'
     | '/_authenticated/transformer-responsibility'
     | '/_authenticated/work-orders'
+    | '/api/tcmb-rates'
     | '/oauth/consent'
     | '/_authenticated/job-report/$jobId'
     | '/_authenticated/jobs/$jobId'
@@ -371,6 +383,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiTcmbRatesRoute: typeof ApiTcmbRatesRoute
   OauthConsentRoute: typeof OauthConsentRoute
 }
 
@@ -537,6 +550,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkOrdersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/tcmb-rates': {
+      id: '/api/tcmb-rates'
+      path: '/api/tcmb-rates'
+      fullPath: '/api/tcmb-rates'
+      preLoaderRoute: typeof ApiTcmbRatesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/consent': {
       id: '/oauth/consent'
       path: '/oauth/consent'
@@ -650,6 +670,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiTcmbRatesRoute: ApiTcmbRatesRoute,
   OauthConsentRoute: OauthConsentRoute,
 }
 export const routeTree = rootRouteImport

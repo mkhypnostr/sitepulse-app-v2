@@ -22,7 +22,9 @@ import {
   type PaymentStep,
   type PricedLine,
   type SarjConfig,
+  MONTH_LABELS,
 } from "@/lib/energy-offer";
+import { formatUsdPerWp, type FinanceResult } from "@/lib/energy-offer-finance";
 
 export const NES_COMPANY = {
   brand: "NES Enerji",
@@ -71,6 +73,21 @@ export type OfferDocumentInput = {
   /** GES sunum dosyasına kalem bazında fiyat listesini ek sayfa olarak koy. */
   showLinePrices: boolean;
   specificYield: number;
+  /** Tahmini üretim (aylık kWh); GES yoksa null. */
+  production?: {
+    annual: number;
+    daily: number;
+    monthly: number[];
+    co2Tons: number;
+  } | null;
+  /** Geri dönüş hesabı; tüketim/tarife girilmediyse null. */
+  finance?: FinanceResult | null;
+  /** Fiyat sayfasında watt başı fiyat gösterilsin mi. */
+  showPricePerWp?: boolean;
+  /** GES satışının USD/Wp karşılığı (KDV hariç). */
+  salePerWp?: number | null;
+  rateSource?: "TCMB" | "manual";
+  tcmbDate?: string;
   /** Uygulamanın kök adresi (logo ve görseller için), ör. https://app.nesgrup.com */
   origin: string;
 };
@@ -251,6 +268,13 @@ p{margin:0 0 4mm;text-align:justify}
 .price-title{font-weight:400;letter-spacing:.14em;font-size:13pt;margin:6mm 0 4mm;text-transform:uppercase}
 .details{font-size:7.5pt;line-height:1.55;font-family:"Ubuntu",Arial,sans-serif}
 .details p{margin:0 0 1mm;text-align:left}
+/* üretim ve kazanç */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm;margin:2mm 0 7mm}
+.kpis div{background:var(--mist);padding:3.5mm 3mm;text-align:center}
+.kpis small{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;color:#4a5556}
+.kpis b{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:13pt;margin-top:1mm}
+.chart{width:100%;height:auto;display:block;margin-bottom:6mm}
+.note{font-size:7.5pt;line-height:1.5;color:#444;font-family:"Ubuntu",Arial,sans-serif}
 `;
 
 // ---------------------------------------------------------------- form stili
@@ -379,6 +403,94 @@ function paymentRows(input: OfferDocumentInput) {
 // ---------------------------------------------------------------- GES sunum dosyası
 function band() {
   return `<div class="band">${esc(NES_COMPANY.footerLine)}</div>`;
+}
+
+const tlWhole = (value: number) =>
+  `${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 0 }).format(value)} ₺`;
+
+/** Aylık üretim çubuk grafiği (SVG). */
+function monthlyChart(monthly: number[]) {
+  const w = 180;
+  const h = 62;
+  const max = Math.max(...monthly, 1);
+  const bw = w / 12;
+  const bars = monthly
+    .map((value, i) => {
+      const bh = (value / max) * (h - 14);
+      const x = i * bw + bw * 0.18;
+      const y = h - 8 - bh;
+      return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(bw * 0.64).toFixed(2)}" height="${bh.toFixed(2)}" fill="#829797"/><text x="${(i * bw + bw / 2).toFixed(2)}" y="${(y - 1.2).toFixed(2)}" font-size="2.6" text-anchor="middle" fill="#1f2324">${num(value, 0)}</text><text x="${(i * bw + bw / 2).toFixed(2)}" y="${h - 3}" font-size="2.8" text-anchor="middle" fill="#1f2324">${MONTH_LABELS[i]}</text>`;
+    })
+    .join("");
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="Ubuntu,Arial,sans-serif">${bars}<line x1="0" y1="${h - 8}" x2="${w}" y2="${h - 8}" stroke="#222" stroke-width=".3"/></svg>`;
+}
+
+/** Yıl sonu kümülatif nakit (SVG): kırmızı yatırımın henüz dönmediği yıllar. */
+function cumulativeChart(values: number[]) {
+  const w = 180;
+  const h = 58;
+  const pos = Math.max(...values, 0);
+  const neg = Math.max(...values.map((v) => -v), 0);
+  const span = Math.max(pos + neg, 1);
+  const usable = h - 8;
+  // Sıfır çizgisi pozitif/negatif aralığa göre kayar; boş yarım kalmaz.
+  const zero = 2 + (pos / span) * (usable - 2);
+  const bw = w / values.length;
+  const bars = values
+    .map((value, i) => {
+      const bh = (Math.abs(value) / span) * (usable - 2);
+      const x = i * bw + bw * 0.15;
+      const y = value >= 0 ? zero - bh : zero;
+      const label =
+        (i + 1) % 5 === 0 || i === 0
+          ? `<text x="${(i * bw + bw / 2).toFixed(2)}" y="${h - 1}" font-size="2.6" text-anchor="middle" fill="#1f2324">${i + 1}. yıl</text>`
+          : "";
+      return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(bw * 0.7).toFixed(2)}" height="${bh.toFixed(2)}" fill="${value >= 0 ? "#5f9e6e" : "#d27a6d"}"/>${label}`;
+    })
+    .join("");
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" font-family="Ubuntu,Arial,sans-serif">${bars}<line x1="0" y1="${zero}" x2="${w}" y2="${zero}" stroke="#222" stroke-width=".3"/></svg>`;
+}
+
+function productionPage(ctx: Ctx): string | null {
+  const production = ctx.input.production;
+  if (!production || !(production.annual > 0)) return null;
+  const finance = ctx.input.finance;
+  const kpis: [string, string][] = [
+    ["Yıllık üretim", `${num(production.annual, 0)} kWh`],
+    ["Günlük ortalama", `${num(production.daily, 0)} kWh`],
+    [
+      "kWp başına",
+      `${num(production.annual / Math.max(ctx.kwp, 0.001), 0)} kWh`,
+    ],
+    ["Önlenen CO₂", `${num(production.co2Tons, 1)} ton/yıl`],
+  ];
+  let financeHtml = "";
+  if (finance) {
+    const fk: [string, string][] = [
+      ["Tüketimi karşılama", `%${num(finance.coverage * 100, 0)}`],
+      ["1. yıl tasarruf", tlWhole(finance.firstYearSavingTl)],
+      [
+        "Geri dönüş",
+        finance.paybackYears === null
+          ? "25 yıl+"
+          : `${num(finance.paybackYears, 1)} yıl`,
+      ],
+      ["25 yıl tasarruf", tlWhole(finance.totalSavingTl)],
+    ];
+    financeHtml = `<div class="h" style="margin-top:4mm">Kazanç ve geri dönüş</div>
+<div class="kpis">${fk.map(([l, v]) => `<div><small>${esc(l)}</small><b>${esc(v)}</b></div>`).join("")}</div>
+${cumulativeChart(finance.cumulative)}
+<p class="note">Aylık ortalama ${num(finance.annualConsumptionKwh / 12, 0)} kWh tüketim ve aylık mahsuplaşma varsayımıyla hesaplanmıştır; yatırım tutarı ${tlWhole(finance.investmentTl)}. Grafik yıl sonu kümülatif nakdi gösterir (kırmızı: yatırım henüz geri dönmedi). Bakım, sigorta ve ekipman değişimi dahil değildir; sonuçlar gerçek tüketim, tarife ve hava koşullarına göre değişir.</p>`;
+  }
+  return `<section class="page"><div class="body">
+<div class="h">Üretim ve kazanç</div>
+<div class="sub">${esc(formatKwp(ctx.kwp))} kWp sistemin tahmini üretimi${ctx.input.location ? ` — ${esc(ctx.input.location)}` : ""}</div>
+<div class="kpis">${kpis.map(([l, v]) => `<div><small>${esc(l)}</small><b>${esc(v)}</b></div>`).join("")}</div>
+<div class="price-title" style="margin-top:0">Aylık tahmini üretim (kWh)</div>
+${monthlyChart(production.monthly)}
+${financeHtml}
+<p class="note">Üretim tahminidir; panel yönü, eğimi, gölgelenme ve yıllık güneşlenme farkına göre ±%10 değişebilir.</p>
+</div>${band()}</section>`;
 }
 
 function buildGesPresentation(ctx: Ctx): string {
@@ -548,6 +660,10 @@ ${scope.map(([text, included]) => `<tr><td>${esc(text)}</td><td class="c">${incl
 ${gesProcess.map(([when, items]) => `<tr><td>${esc(when)}</td><td>${items.map(esc).join("<br>")}</td></tr>`).join("")}
 </tbody></table></div>${band()}</section>`);
 
+  // 6b) Üretim ve kazanç
+  const prodPage = productionPage(ctx);
+  if (prodPage) pages.push(prodPage);
+
   // 7) Fiyat
   const priceRows: [string, string, number][] = [];
   const gesTotal = moduleTotal(ctx, "ges");
@@ -595,11 +711,12 @@ ${paymentRows(input)
 <div class="price-title" style="margin-top:10mm">Teklif detayları</div>
 <div class="details">
 <p>Fiyatlarımız ${esc(curName)} cinsindendir; KDV ayrıca gösterilmiştir.</p>
+${input.showPricePerWp && input.salePerWp ? `<p>GES watt başı fiyatı: ${esc(formatUsdPerWp(input.salePerWp))} (KDV hariç, ${esc(formatKwp(ctx.kwp))} kWp).</p>` : ""}
 <p>Teklifimiz ${esc(dateLong(input.validUntil))} tarihine kadar geçerlidir.</p>
 ${termLines(input)
   .map((line) => `<p>${esc(line)}</p>`)
   .join("")}
-${input.rates.USD > 0 || input.rates.EUR > 0 ? `<p>Hesaplamada kullanılan kurlar: ${[input.rates.USD > 0 ? `1 USD = ${num(input.rates.USD, 4)} TL` : "", input.rates.EUR > 0 ? `1 EUR = ${num(input.rates.EUR, 4)} TL` : ""].filter(Boolean).join(", ")}.</p>` : ""}
+${input.rates.USD > 0 || input.rates.EUR > 0 ? `<p>Hesaplamada kullanılan kurlar: ${[input.rates.USD > 0 ? `1 USD = ${num(input.rates.USD, 4)} TL` : "", input.rates.EUR > 0 ? `1 EUR = ${num(input.rates.EUR, 4)} TL` : ""].filter(Boolean).join(", ")}${input.rateSource === "TCMB" && input.tcmbDate ? ` (TCMB döviz satış kuru, ${esc(input.tcmbDate.split("-").reverse().join("."))})` : ""}.</p>` : ""}
 <p>Banka Hesap Bilgileri : ${esc(NES_COMPANY.bankAccountName)}<br>${esc(NES_COMPANY.bank)}<br>TL IBAN : ${esc(NES_COMPANY.iban)}</p>
 </div></div>${band()}</section>`);
 
