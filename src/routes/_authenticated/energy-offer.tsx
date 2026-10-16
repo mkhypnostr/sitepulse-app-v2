@@ -124,10 +124,16 @@ import { SiteDesigner } from "@/components/energy-offer/site-designer";
 import { ShareLinkPanel } from "@/components/energy-offer/share-link-panel";
 
 export const Route = createFileRoute("/_authenticated/energy-offer")({
-  validateSearch: (search: Record<string, unknown>): { offerId?: string } =>
-    typeof search.offerId === "string" && search.offerId
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { offerId?: string; leadId?: string } => ({
+    ...(typeof search.offerId === "string" && search.offerId
       ? { offerId: search.offerId }
-      : {},
+      : {}),
+    ...(typeof search.leadId === "string" && search.leadId
+      ? { leadId: search.leadId }
+      : {}),
+  }),
   component: EnergyOfferPage,
 });
 
@@ -292,6 +298,7 @@ type LoadedOffer = {
   payment_plan: Json;
   terms_note: string | null;
   notes: string | null;
+  lead_id: string | null;
 };
 
 type LoadedLine = {
@@ -313,7 +320,7 @@ type LoadedLine = {
 function EnergyOfferPage() {
   const { role, user } = useAuth();
   const isAdmin = role === "admin";
-  const { offerId } = Route.useSearch();
+  const { offerId, leadId: leadParam } = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -355,7 +362,7 @@ function EnergyOfferPage() {
   const [autoRatesTried, setAutoRatesTried] = useState(false);
 
   const dataQuery = useQuery({
-    queryKey: ["energy-offer", offerId ?? "new"],
+    queryKey: ["energy-offer", offerId ?? `new-${leadParam ?? ""}`],
     enabled: isAdmin,
     queryFn: async () => {
       const [catalogResult, customersResult] = await Promise.all([
@@ -379,7 +386,7 @@ function EnergyOfferPage() {
           supabase
             .from("offers")
             .select(
-              "id, offer_no, title, status, customer_id, currency, vat_rate, valid_until, module_config, exchange_rates, payment_plan, terms_note, notes",
+              "id, offer_no, title, status, customer_id, currency, vat_rate, valid_until, module_config, exchange_rates, payment_plan, terms_note, notes, lead_id",
             )
             .eq("id", offerId)
             .single(),
@@ -396,11 +403,35 @@ function EnergyOfferPage() {
         offer = offerResult.data as LoadedOffer;
         offerLines = (linesResult.data ?? []) as LoadedLine[];
       }
+      // Teklif bir satış fırsatından açıldıysa (veya bağlıysa) fırsat bilgisi.
+      const leadKey = offer?.lead_id ?? (offerId ? null : (leadParam ?? null));
+      let lead: {
+        id: string;
+        title: string;
+        stage: string;
+        customer_id: string | null;
+        company_name: string | null;
+        contact_name: string | null;
+        phone: string | null;
+        email: string | null;
+        location: string | null;
+      } | null = null;
+      if (leadKey) {
+        const { data } = await supabase
+          .from("sales_leads")
+          .select(
+            "id, title, stage, customer_id, company_name, contact_name, phone, email, location",
+          )
+          .eq("id", leadKey)
+          .maybeSingle();
+        lead = data ?? null;
+      }
       return {
         catalog: (catalogResult.data ?? []) as unknown as CatalogItem[],
         customers: customersResult.data ?? [],
         offer,
         offerLines,
+        lead,
       };
     },
   });
@@ -448,6 +479,28 @@ function EnergyOfferPage() {
     void fetchTcmbRates(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerId, autoRatesTried, isAdmin]);
+
+  // Satış fırsatından açılan yeni teklifte alıcı bilgilerini doldur (bir kez).
+  const [leadPrefilled, setLeadPrefilled] = useState(false);
+  useEffect(() => {
+    const lead = dataQuery.data?.lead;
+    if (offerId || leadPrefilled || !lead) return;
+    setLeadPrefilled(true);
+    setTitle((t) => t || lead.title);
+    if (lead.customer_id) {
+      setRecipient((r) => ({ ...r, mode: "kayitli" }));
+      setCustomerId(lead.customer_id);
+    } else {
+      setRecipient({
+        mode: "aday",
+        name: lead.company_name || lead.contact_name || lead.title,
+        contactName: lead.company_name ? (lead.contact_name ?? "") : "",
+        phone: lead.phone ?? "",
+        email: lead.email ?? "",
+      });
+    }
+    if (lead.location) setProjectLocation((l) => l || lead.location || "");
+  }, [dataQuery.data, offerId, leadPrefilled]);
 
   // Kayıtlı teklifi bir kez forma yükle.
   useEffect(() => {
@@ -759,6 +812,7 @@ function EnergyOfferPage() {
         } satisfies StoredRates as unknown as Json,
         payment_plan: paymentPlan as unknown as Json,
         terms_note: terms.trim() || null,
+        lead_id: dataQuery.data?.lead?.id ?? null,
       };
       let id = offerId;
       if (id) {
@@ -800,6 +854,23 @@ function EnergyOfferPage() {
       if (rows.length > 0) {
         const { error } = await supabase.from("offer_line_items").insert(rows);
         if (error) throw error;
+      }
+      // Fırsat henüz teklif aşamasına gelmediyse ilerlet ve geçmişe yaz.
+      const lead = dataQuery.data?.lead;
+      if (lead && !offerId) {
+        if (["yeni", "gorusuldu", "kesif"].includes(lead.stage)) {
+          await supabase
+            .from("sales_leads")
+            .update({ stage: "teklif" })
+            .eq("id", lead.id);
+        }
+        await supabase.from("sales_activities").insert({
+          lead_id: lead.id,
+          customer_id: lead.customer_id,
+          kind: "teklif",
+          summary: `Teklif hazırlandı: ${title.trim()} (${formatMoney(totals.sale, currency)} + KDV)`,
+        });
+        await queryClient.invalidateQueries({ queryKey: ["sales-page"] });
       }
       return id as string;
     },
@@ -1032,6 +1103,18 @@ function EnergyOfferPage() {
         }
       />
 
+      {dataQuery.data?.lead ? (
+        <p className="-mt-3 mb-4 text-xs text-muted-foreground">
+          Satış fırsatı:{" "}
+          <Link
+            to="/sales"
+            search={{ leadId: dataQuery.data.lead.id }}
+            className="font-semibold text-primary underline-offset-2 hover:underline"
+          >
+            {dataQuery.data.lead.title}
+          </Link>
+        </p>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <div className="grid min-w-0 gap-4">
           {/* Genel bilgiler */}

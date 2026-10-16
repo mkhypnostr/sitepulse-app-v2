@@ -25,6 +25,7 @@ import { Route as AuthenticatedOffersRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedSalesRouteImport } from './routes/_authenticated/sales'
 import { Route as AuthenticatedServiceRequestsRouteImport } from './routes/_authenticated/service-requests'
 import { Route as AuthenticatedSharedFilesRouteImport } from './routes/_authenticated/shared-files'
 import { Route as AuthenticatedStockRouteImport } from './routes/_authenticated/stock'
@@ -121,6 +122,11 @@ const AuthenticatedProjectsRoute = AuthenticatedProjectsRouteImport.update({
 const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedSalesRoute = AuthenticatedSalesRouteImport.update({
+  id: '/sales',
+  path: '/sales',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedServiceRequestsRoute =
@@ -221,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
+  '/sales': typeof AuthenticatedSalesRoute
   '/service-requests': typeof AuthenticatedServiceRequestsRoute
   '/shared-files': typeof AuthenticatedSharedFilesRoute
   '/stock': typeof AuthenticatedStockRoute
@@ -253,6 +260,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
+  '/sales': typeof AuthenticatedSalesRoute
   '/service-requests': typeof AuthenticatedServiceRequestsRoute
   '/shared-files': typeof AuthenticatedSharedFilesRoute
   '/stock': typeof AuthenticatedStockRoute
@@ -287,6 +295,7 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
+  '/_authenticated/sales': typeof AuthenticatedSalesRoute
   '/_authenticated/service-requests': typeof AuthenticatedServiceRequestsRoute
   '/_authenticated/shared-files': typeof AuthenticatedSharedFilesRoute
   '/_authenticated/stock': typeof AuthenticatedStockRoute
@@ -321,6 +330,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/reports'
+    | '/sales'
     | '/service-requests'
     | '/shared-files'
     | '/stock'
@@ -353,6 +363,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/projects'
     | '/reports'
+    | '/sales'
     | '/service-requests'
     | '/shared-files'
     | '/stock'
@@ -386,6 +397,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/projects'
     | '/_authenticated/reports'
+    | '/_authenticated/sales'
     | '/_authenticated/service-requests'
     | '/_authenticated/shared-files'
     | '/_authenticated/stock'
@@ -527,6 +539,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReportsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/sales': {
+      id: '/_authenticated/sales'
+      path: '/sales'
+      fullPath: '/sales'
+      preLoaderRoute: typeof AuthenticatedSalesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/service-requests': {
       id: '/_authenticated/service-requests'
       path: '/service-requests'
@@ -662,6 +681,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRouteWithChildren
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
+  AuthenticatedSalesRoute: typeof AuthenticatedSalesRoute
   AuthenticatedServiceRequestsRoute: typeof AuthenticatedServiceRequestsRoute
   AuthenticatedSharedFilesRoute: typeof AuthenticatedSharedFilesRoute
   AuthenticatedStockRoute: typeof AuthenticatedStockRoute
@@ -688,6 +708,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRouteWithChildren,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
+  AuthenticatedSalesRoute: AuthenticatedSalesRoute,
   AuthenticatedServiceRequestsRoute: AuthenticatedServiceRequestsRoute,
   AuthenticatedSharedFilesRoute: AuthenticatedSharedFilesRoute,
   AuthenticatedStockRoute: AuthenticatedStockRoute,

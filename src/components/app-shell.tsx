@@ -16,6 +16,7 @@ import {
   Receipt,
   Search,
   ShieldAlert,
+  Target,
   UserCog,
   UsersRound,
   Wallet,
@@ -38,7 +39,7 @@ interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
-  badgeKey?: "approvals" | "stock" | "tasks";
+  badgeKey?: "approvals" | "stock" | "tasks" | "sales";
   hash?: string;
 }
 type NavEntry = NavItem | { separator: true };
@@ -154,13 +155,26 @@ export function AppShell({ children }: { children: ReactNode }) {
           ).length +
           (independentTasksResult.count ?? 0);
       }
-      return { approvals, stock, tasks };
+      // Satış: bugün veya daha önce planlanmış, açık fırsatlardaki adımlar.
+      let sales = 0;
+      if (role === "admin") {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const { count } = await supabase
+          .from("sales_leads")
+          .select("id", { count: "exact", head: true })
+          .lte("next_action_at", today)
+          .not("stage", "in", "(kazanildi,kaybedildi)");
+        sales = count ?? 0;
+      }
+      return { approvals, stock, tasks, sales };
     },
   });
   const badgeCounts: Record<string, number> = {
     approvals: badgeQuery.data?.approvals ?? 0,
     stock: badgeQuery.data?.stock ?? 0,
     tasks: badgeQuery.data?.tasks ?? 0,
+    sales: badgeQuery.data?.sales ?? 0,
   };
 
   const nav: NavEntry[] =
@@ -195,6 +209,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             icon: ShieldAlert,
           },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
+          {
+            to: "/sales",
+            label: "Satış Takibi",
+            icon: Target,
+            badgeKey: "sales",
+          },
           { to: "/offers", label: "Teklifler", icon: Receipt },
           { separator: true },
           {
