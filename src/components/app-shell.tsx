@@ -22,6 +22,7 @@ import {
   Wallet,
   Wrench,
   X,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { roleLabels } from "@/lib/domain";
@@ -223,6 +224,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             icon: ShieldAlert,
             badgeKey: "approvals",
           },
+          { to: "/automations", label: "Otomatik Görevler", icon: Zap },
           { to: "/reports", label: "Raporlar", icon: BarChart3 },
         ]
       : role === "technical_office"

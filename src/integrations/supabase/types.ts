@@ -14,6 +14,89 @@ export type Database = {
   };
   public: {
     Tables: {
+      automation_rules: {
+        Row: {
+          assign_mode: string;
+          assignee_id: string | null;
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          is_active: boolean;
+          name: string;
+          offset_days: number;
+          task_description: string | null;
+          task_title: string;
+          trigger_type: string;
+          trigger_value: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          assign_mode?: string;
+          assignee_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          is_active?: boolean;
+          name: string;
+          offset_days?: number;
+          task_description?: string | null;
+          task_title: string;
+          trigger_type: string;
+          trigger_value?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          assign_mode?: string;
+          assignee_id?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          is_active?: boolean;
+          name?: string;
+          offset_days?: number;
+          task_description?: string | null;
+          task_title?: string;
+          trigger_type?: string;
+          trigger_value?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      automation_runs: {
+        Row: {
+          fire_key: string;
+          fired_at: string;
+          id: number;
+          record_id: string;
+          rule_id: string;
+          task_id: string | null;
+        };
+        Insert: {
+          fire_key: string;
+          fired_at?: string;
+          id?: never;
+          record_id: string;
+          rule_id: string;
+          task_id?: string | null;
+        };
+        Update: {
+          fire_key?: string;
+          fired_at?: string;
+          id?: never;
+          record_id?: string;
+          rule_id?: string;
+          task_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "automation_runs_rule_id_fkey";
+            columns: ["rule_id"];
+            isOneToOne: false;
+            referencedRelation: "automation_rules";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       activity_logs: {
         Row: {
           action: string;
@@ -573,6 +656,13 @@ export type Database = {
           vat_rate?: number;
         };
         Relationships: [
+          {
+            foreignKeyName: "offers_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_leads";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "offers_created_by_fkey";
             columns: ["created_by"];
@@ -1340,6 +1430,7 @@ export type Database = {
       };
       sales_leads: {
         Row: {
+          project_id: string | null;
           closed_at: string | null;
           company_name: string | null;
           contact_name: string | null;
@@ -1366,6 +1457,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          project_id?: string | null;
           closed_at?: string | null;
           company_name?: string | null;
           contact_name?: string | null;
@@ -1392,6 +1484,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          project_id?: string | null;
           closed_at?: string | null;
           company_name?: string | null;
           contact_name?: string | null;
@@ -2638,6 +2731,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      run_automations_now: { Args: never; Returns: number };
       save_customer_details: {
         Args: {
           customer_billing_address: string;

@@ -1,12 +1,13 @@
 // Fırsat ayrıntısı: bilgiler, aşama, sonraki adım, görüşme geçmişi ve
 // bağlı teklifler. Yeni fırsat da bu panelden açılır.
 import { useEffect, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
   Eye,
   FileText,
+  FolderPlus,
   MessageSquarePlus,
   Phone,
   Trash2,
@@ -68,6 +69,7 @@ export type LeadRow = {
   updated_at: string;
   stage_changed_at: string;
   closed_at: string | null;
+  project_id: string | null;
   customers: { name: string } | null;
   offers: {
     id: string;
@@ -92,6 +94,7 @@ type Draft = Omit<
   | "updated_at"
   | "stage_changed_at"
   | "closed_at"
+  | "project_id"
   | "customers"
   | "offers"
 >;
@@ -185,6 +188,7 @@ export function LeadSheet({
         updated_at: _u,
         stage_changed_at: _s,
         closed_at: _cl,
+        project_id: _p,
         customers: _cu,
         offers: _o,
         ...rest
@@ -351,6 +355,57 @@ export function LeadSheet({
       await refresh();
       toast.success("Fırsat silindi.");
       onOpenChange(false);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const navigate = useNavigate();
+  const convert = useMutation({
+    mutationFn: async () => {
+      if (!lead) return;
+      let customerId = lead.customer_id;
+      if (!customerId) {
+        const name =
+          clean(draft.company_name) ?? clean(draft.contact_name) ?? lead.title;
+        const contact = [
+          clean(draft.contact_name),
+          clean(draft.phone),
+          clean(draft.email),
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const { data, error } = await supabase.rpc("save_customer_details", {
+          customer_name: name,
+          customer_contact: contact || "",
+          customer_billing_title: name,
+          customer_tax_office: "",
+          customer_tax_no: "",
+          customer_billing_address: clean(draft.location) ?? "",
+        });
+        if (error) throw error;
+        customerId = data as string;
+        const { error: linkError } = await supabase
+          .from("sales_leads")
+          .update({ customer_id: customerId })
+          .eq("id", lead.id);
+        if (linkError) throw linkError;
+        await supabase
+          .from("offers")
+          .update({ customer_id: customerId })
+          .eq("lead_id", lead.id)
+          .is("customer_id", null);
+      }
+      return customerId;
+    },
+    onSuccess: async () => {
+      await refresh();
+      toast.success(
+        lead?.customer_id
+          ? "Proje formu fırsat bilgileriyle açılıyor."
+          : "Müşteri kaydı açıldı; proje formu fırsat bilgileriyle açılıyor.",
+      );
+      onOpenChange(false);
+      await navigate({ to: "/projects", search: { fromLead: lead!.id } });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -623,6 +678,33 @@ export function LeadSheet({
                       <FileText className="mr-2 h-4 w-4" /> Teklif hazırla
                     </Link>
                   </Button>
+                  {lead.project_id ? (
+                    <Button asChild type="button" variant="outline">
+                      <Link
+                        to="/projects/$projectId"
+                        params={{ projectId: lead.project_id }}
+                      >
+                        <FolderPlus className="mr-2 h-4 w-4" /> Projeye git
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant={
+                        draft.stage === "kazanildi" ? "default" : "outline"
+                      }
+                      disabled={convert.isPending}
+                      onClick={() => convert.mutate()}
+                      title="Kayıtlı müşteri yoksa açar, sonra proje formunu bu fırsatın bilgileriyle doldurur."
+                    >
+                      <FolderPlus className="mr-2 h-4 w-4" />
+                      {convert.isPending
+                        ? "Hazırlanıyor..."
+                        : lead.customer_id
+                          ? "Proje oluştur"
+                          : "Müşteri ve proje oluştur"}
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -643,11 +725,16 @@ export function LeadSheet({
                 </>
               ) : null}
             </div>
-            {lead && draft.stage === "kazanildi" && !draft.customer_id ? (
-              <p className="rounded-md bg-amber-500/10 p-2 text-xs text-amber-700 sm:col-span-2 dark:text-amber-400">
-                Kazanılan fırsat henüz kayıtlı müşteriye bağlı değil. Müşteriler
-                sayfasından kaydı açıp yukarıdan seçin; proje ve iş emirleri
-                müşteri kaydıyla açılır.
+            {lead && draft.stage === "kazanildi" && !lead.project_id ? (
+              <p className="rounded-md bg-emerald-500/10 p-2 text-xs text-emerald-700 sm:col-span-2 dark:text-emerald-400">
+                Kazanıldı. "
+                {lead.customer_id
+                  ? "Proje oluştur"
+                  : "Müşteri ve proje oluştur"}
+                " ile
+                {lead.customer_id ? "" : " müşteri kaydı açılır,"} proje formu
+                bu fırsatın bilgileriyle dolar; proje açılınca fırsat ve
+                teklifleri projeye bağlanır.
               </p>
             ) : null}
           </div>
