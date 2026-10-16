@@ -483,6 +483,7 @@ export type Database = {
       };
       offers: {
         Row: {
+          lead_id: string | null;
           created_at: string;
           created_by: string;
           currency: string;
@@ -512,6 +513,7 @@ export type Database = {
           vat_rate: number;
         };
         Insert: {
+          lead_id?: string | null;
           created_at?: string;
           created_by: string;
           currency?: string;
@@ -541,6 +543,7 @@ export type Database = {
           vat_rate?: number;
         };
         Update: {
+          lead_id?: string | null;
           created_at?: string;
           created_by?: string;
           currency?: string;
@@ -1283,6 +1286,143 @@ export type Database = {
             columns: ["manager_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      sales_activities: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          customer_id: string | null;
+          id: string;
+          kind: string;
+          lead_id: string | null;
+          occurred_at: string;
+          summary: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          customer_id?: string | null;
+          id?: string;
+          kind?: string;
+          lead_id?: string | null;
+          occurred_at?: string;
+          summary: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          customer_id?: string | null;
+          id?: string;
+          kind?: string;
+          lead_id?: string | null;
+          occurred_at?: string;
+          summary?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sales_activities_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "sales_activities_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_leads";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      sales_leads: {
+        Row: {
+          closed_at: string | null;
+          company_name: string | null;
+          contact_name: string | null;
+          created_at: string;
+          created_by: string | null;
+          currency: string;
+          customer_id: string | null;
+          email: string | null;
+          estimated_value: number | null;
+          expected_close: string | null;
+          id: string;
+          location: string | null;
+          lost_reason: string | null;
+          next_action: string | null;
+          next_action_at: string | null;
+          notes: string | null;
+          owner_id: string | null;
+          phone: string | null;
+          service: string;
+          source: string;
+          stage: string;
+          stage_changed_at: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          closed_at?: string | null;
+          company_name?: string | null;
+          contact_name?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          customer_id?: string | null;
+          email?: string | null;
+          estimated_value?: number | null;
+          expected_close?: string | null;
+          id?: string;
+          location?: string | null;
+          lost_reason?: string | null;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          notes?: string | null;
+          owner_id?: string | null;
+          phone?: string | null;
+          service?: string;
+          source?: string;
+          stage?: string;
+          stage_changed_at?: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          closed_at?: string | null;
+          company_name?: string | null;
+          contact_name?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          customer_id?: string | null;
+          email?: string | null;
+          estimated_value?: number | null;
+          expected_close?: string | null;
+          id?: string;
+          location?: string | null;
+          lost_reason?: string | null;
+          next_action?: string | null;
+          next_action_at?: string | null;
+          notes?: string | null;
+          owner_id?: string | null;
+          phone?: string | null;
+          service?: string;
+          source?: string;
+          stage?: string;
+          stage_changed_at?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "sales_leads_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
             referencedColumns: ["id"];
           },
         ];
