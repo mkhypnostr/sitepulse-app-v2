@@ -15,6 +15,8 @@ import {
   Map as MapIcon,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Receipt,
   Search,
   ShieldAlert,
@@ -45,7 +47,7 @@ interface NavItem {
   badgeKey?: "approvals" | "stock" | "tasks" | "sales";
   hash?: string;
 }
-type NavEntry = NavItem | { separator: true };
+type NavEntry = NavItem | { section: string };
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { role, user, signOut } = useAuth();
@@ -53,6 +55,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  // Masaüstünde menü etiketleriyle açık sabitlenebilir (tarayıcıda hatırlanır).
+  const [pinned, setPinned] = useState(false);
+  useEffect(() => {
+    try {
+      setPinned(window.localStorage.getItem("nes-sidebar-pinned") === "1");
+    } catch {
+      // Depolama kapalıysa varsayılan: daraltılmış.
+    }
+  }, []);
+  const togglePinned = () => {
+    setPinned((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem("nes-sidebar-pinned", next ? "1" : "0");
+      } catch {
+        // Hatırlanamazsa yalnız bu oturumda geçerli olur.
+      }
+      return next;
+    });
+  };
   const isMac =
     typeof navigator !== "undefined" &&
     /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
@@ -190,30 +212,18 @@ export function AppShell({ children }: { children: ReactNode }) {
             icon: ClipboardList,
             badgeKey: "tasks",
           },
-          { to: "/projects", label: "Projeler", icon: FolderKanban },
-          { to: "/shared-files", label: "Ortak Dosyalar", icon: FolderOpen },
           { to: "/calendar", label: "Takvim", icon: CalendarDays },
           { to: "/map", label: "Harita", icon: MapIcon },
+          { section: "Saha ve proje" },
+          { to: "/projects", label: "Projeler", icon: FolderKanban },
           {
             to: "/service-requests",
             label: "Servis Talepleri",
             icon: Wrench,
           },
-          { separator: true },
           { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
-          { to: "/dashboard", label: "Finans", icon: Wallet, hash: "finance" },
-          {
-            to: "/measurement-tracking",
-            label: "Ölçüm ve Tahsilat",
-            icon: ClipboardList,
-          },
-          { to: "/receivables", label: "Cari Hesaplar", icon: Landmark },
-          {
-            to: "/transformer-responsibility",
-            label: "Trafo Sorumluluğu",
-            icon: ShieldAlert,
-          },
-          { to: "/customers", label: "Müşteriler", icon: UsersRound },
+          { to: "/shared-files", label: "Ortak Dosyalar", icon: FolderOpen },
+          { section: "Satış" },
           {
             to: "/sales",
             label: "Satış Takibi",
@@ -221,7 +231,26 @@ export function AppShell({ children }: { children: ReactNode }) {
             badgeKey: "sales",
           },
           { to: "/offers", label: "Teklifler", icon: Receipt },
-          { separator: true },
+          { to: "/customers", label: "Müşteriler", icon: UsersRound },
+          { section: "Finans" },
+          {
+            to: "/dashboard",
+            label: "Finans Özeti",
+            icon: Wallet,
+            hash: "finance",
+          },
+          { to: "/receivables", label: "Cari Hesaplar", icon: Landmark },
+          {
+            to: "/measurement-tracking",
+            label: "Ölçüm ve Tahsilat",
+            icon: ClipboardList,
+          },
+          {
+            to: "/transformer-responsibility",
+            label: "Trafo Sorumluluğu",
+            icon: ShieldAlert,
+          },
+          { section: "Yönetim" },
           {
             to: "/approvals",
             label: "Onay Merkezi",
@@ -240,23 +269,23 @@ export function AppShell({ children }: { children: ReactNode }) {
               icon: ClipboardList,
               badgeKey: "tasks",
             },
-            { to: "/projects", label: "Projeler", icon: FolderKanban },
-            {
-              to: "/shared-files",
-              label: "Ortak Dosyalar",
-              icon: FolderOpen,
-            },
             { to: "/calendar", label: "Takvim", icon: CalendarDays },
             { to: "/map", label: "Harita", icon: MapIcon },
+            { section: "Saha ve proje" },
+            { to: "/projects", label: "Projeler", icon: FolderKanban },
             {
               to: "/service-requests",
               label: "Servis Talepleri",
               icon: Wrench,
             },
-            { separator: true },
             { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
+            {
+              to: "/shared-files",
+              label: "Ortak Dosyalar",
+              icon: FolderOpen,
+            },
+            { section: "Yönetim" },
             { to: "/customers", label: "Müşteriler", icon: UsersRound },
-            { separator: true },
             {
               to: "/approvals",
               label: "Onay Merkezi",
@@ -267,17 +296,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         : role === "contractor"
           ? [
               { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
-              {
-                to: "/approvals",
-                label: "Onay ve Uyarı Merkezi",
-                icon: ShieldAlert,
-                badgeKey: "approvals",
-              },
               { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
               {
                 to: "/my-project-tasks",
                 label: "Proje Görevlerim",
                 icon: ClipboardList,
+              },
+              {
+                to: "/approvals",
+                label: "Onay ve Uyarı Merkezi",
+                icon: ShieldAlert,
+                badgeKey: "approvals",
               },
               { to: "/calendar", label: "Takvim", icon: CalendarDays },
             ]
@@ -291,6 +320,22 @@ export function AppShell({ children }: { children: ReactNode }) {
                 icon: Wrench,
               },
             ];
+
+  // Telefonda alt çubukta duran en sık kullanılan ekranlar (rol bazında).
+  const bottomPaths: Record<string, string[]> = {
+    admin: ["/dashboard", "/tasks", "/sales", "/calendar"],
+    technical_office: ["/dashboard", "/tasks", "/projects", "/calendar"],
+    contractor: ["/dashboard", "/my-jobs", "/my-project-tasks", "/calendar"],
+    customer: ["/dashboard", "/my-projects", "/my-jobs", "/service-requests"],
+  };
+  const bottomItems = (bottomPaths[role ?? "customer"] ?? [])
+    .map((path) =>
+      nav.find(
+        (item): item is NavItem =>
+          "to" in item && item.to === path && !item.hash,
+      ),
+    )
+    .filter((item): item is NavItem => Boolean(item));
 
   const handleSignOut = async () => {
     await signOut();
@@ -306,7 +351,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         to={item.to}
         hash={item.hash}
         onClick={() => closeAfterClick && setMobileOpen(false)}
-        className={`relative flex h-9 shrink-0 items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap transition-colors ${
+        className={`relative flex h-8 shrink-0 items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-semibold whitespace-nowrap transition-colors ${
           active
             ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[2px] before:-translate-y-1/2 before:rounded-r before:bg-sidebar-active-border"
             : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
@@ -332,11 +377,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     // ekranlarda menü hâlâ kayabilir, içerik asla erişilemez olmuyor.
     <nav className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2 py-2">
       {nav.map((item, index) =>
-        "separator" in item ? (
-          <div
-            key={`sep-${index}`}
-            className="my-0.5 shrink-0 border-t border-sidebar-border"
-          />
+        "section" in item ? (
+          <div key={`sec-${index}`} className="mt-1.5 shrink-0">
+            <div className="sidebar-divider mx-[13px] border-t border-sidebar-border" />
+            <p className="sidebar-reveal px-[13px] pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground/80">
+              {item.section}
+            </p>
+          </div>
         ) : (
           navLink(item, closeAfterClick)
         ),
@@ -346,6 +393,22 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const accountArea = () => (
     <div className="border-t border-sidebar-border p-2">
+      <button
+        type="button"
+        onClick={togglePinned}
+        title={pinned ? "Menüyü daralt" : "Menüyü açık sabitle"}
+        aria-pressed={pinned}
+        className="mb-0.5 flex h-9 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-semibold whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-active-border"
+      >
+        {pinned ? (
+          <PanelLeftClose className="h-5 w-5 shrink-0" />
+        ) : (
+          <PanelLeftOpen className="h-5 w-5 shrink-0" />
+        )}
+        <span className="sidebar-reveal">
+          {pinned ? "Menüyü daralt" : "Menüyü sabitle"}
+        </span>
+      </button>
       {/* Avatar + isim/rol tek tıklanabilir profil giriş noktası: daraltılmış
           sidebar'da yalnızca avatar görünür ama Link tüm satırı kaplıyor, bu
           yüzden avatara tıklamak da yeterli. aria-label, sidebar-reveal ile
@@ -388,7 +451,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen overflow-x-hidden bg-background">
-      <aside className="group sidebar-transition sticky top-0 z-40 hidden h-screen w-14 shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground hover:w-[210px] lg:flex">
+      <aside
+        data-pinned={pinned ? "true" : "false"}
+        className={`group sidebar-steel sidebar-transition sticky top-0 z-40 hidden h-screen shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex ${pinned ? "w-[236px]" : "w-14 hover:w-[236px]"}`}
+      >
         <Link
           to="/dashboard"
           className="flex h-16 shrink-0 items-center gap-3 overflow-hidden border-b border-sidebar-border px-[13px]"
@@ -494,11 +560,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
               <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
                 {nav.map((item, index) =>
-                  "separator" in item ? (
-                    <div
-                      key={`sep-mobile-${index}`}
-                      className="my-2 border-t border-sidebar-border"
-                    />
+                  "section" in item ? (
+                    <p
+                      key={`sec-mobile-${index}`}
+                      className="px-4 pt-4 pb-1 text-xs font-semibold text-muted-foreground"
+                    >
+                      {item.section}
+                    </p>
                   ) : (
                     (() => {
                       const active = location.pathname.startsWith(item.to);
@@ -562,9 +630,48 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         ) : null}
 
-        <main className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
+        <main className="mx-auto min-h-screen w-full max-w-[1600px] px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:pb-6">
           {children}
         </main>
+
+        {/* Telefonda alt çubuk: en sık kullanılan ekranlar + tüm menü. */}
+        <nav
+          aria-label="Hızlı menü"
+          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-sidebar-border bg-sidebar/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        >
+          {bottomItems.map((item) => {
+            const active = location.pathname.startsWith(item.to);
+            const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`relative flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold ${active ? "text-primary" : "text-muted-foreground"}`}
+              >
+                {active ? (
+                  <span className="absolute inset-x-5 top-0 h-0.5 rounded-b bg-primary" />
+                ) : null}
+                <span className="relative">
+                  <item.icon className="h-6 w-6" />
+                  {badgeCount > 0 ? (
+                    <span className="absolute -right-2.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                      {badgeCount}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="max-w-full truncate">{item.label}</span>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold text-muted-foreground"
+          >
+            <Menu className="h-6 w-6" />
+            Menü
+          </button>
+        </nav>
       </div>
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
