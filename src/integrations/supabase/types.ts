@@ -165,6 +165,60 @@ export type Database = {
           },
         ];
       };
+      customer_ledger_entries: {
+        Row: {
+          amount: number;
+          created_at: string;
+          created_by: string | null;
+          currency: string;
+          customer_id: string;
+          description: string | null;
+          document_no: string | null;
+          due_date: string | null;
+          entry_date: string;
+          entry_type: string;
+          id: string;
+          offer_id: string | null;
+          payment_method: string | null;
+          project_id: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          amount: number;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          customer_id: string;
+          description?: string | null;
+          document_no?: string | null;
+          due_date?: string | null;
+          entry_date?: string;
+          entry_type: string;
+          id?: string;
+          offer_id?: string | null;
+          payment_method?: string | null;
+          project_id?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          amount?: number;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          customer_id?: string;
+          description?: string | null;
+          document_no?: string | null;
+          due_date?: string | null;
+          entry_date?: string;
+          entry_type?: string;
+          id?: string;
+          offer_id?: string | null;
+          payment_method?: string | null;
+          project_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       customers: {
         Row: {
           billing_address: string | null;

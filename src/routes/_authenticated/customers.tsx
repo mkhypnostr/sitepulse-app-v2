@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Eye,
@@ -521,6 +521,16 @@ function CustomersPage() {
                         >
                           <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Portal
                           Hesabı Aç
+                        </Button>
+                      ) : null}
+                      {role === "admin" ? (
+                        <Button asChild variant="outline" size="sm">
+                          <Link
+                            to="/receivables"
+                            search={{ customerId: customer.id }}
+                          >
+                            Cari hesap
+                          </Link>
                         </Button>
                       ) : null}
                       <Button

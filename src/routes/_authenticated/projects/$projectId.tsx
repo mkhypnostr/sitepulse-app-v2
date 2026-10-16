@@ -68,6 +68,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
+import { LedgerPanel } from "@/components/ledger/ledger-panel";
 export const Route = createFileRoute("/_authenticated/projects/$projectId")({
   component: ProjectDetailPage,
 });
@@ -368,9 +369,21 @@ function ProjectDetailPage() {
                 {project.area.toLocaleString("tr-TR")} m²
               </Badge>
             ) : null}
-            {project.referring_architect ? <Badge variant="outline" className="px-3 py-2">Mimar: {project.referring_architect}</Badge> : null}
-            {project.quoted_amount != null ? <Badge variant="outline" className="px-3 py-2">Teklif: {project.quoted_amount.toLocaleString("tr-TR")} ₺</Badge> : null}
-            {project.contract_amount != null ? <Badge variant="secondary" className="px-3 py-2">Sözleşme: {project.contract_amount.toLocaleString("tr-TR")} ₺</Badge> : null}
+            {project.referring_architect ? (
+              <Badge variant="outline" className="px-3 py-2">
+                Mimar: {project.referring_architect}
+              </Badge>
+            ) : null}
+            {project.quoted_amount != null ? (
+              <Badge variant="outline" className="px-3 py-2">
+                Teklif: {project.quoted_amount.toLocaleString("tr-TR")} ₺
+              </Badge>
+            ) : null}
+            {project.contract_amount != null ? (
+              <Badge variant="secondary" className="px-3 py-2">
+                Sözleşme: {project.contract_amount.toLocaleString("tr-TR")} ₺
+              </Badge>
+            ) : null}
           </div>
         </div>
 
@@ -418,6 +431,24 @@ function ProjectDetailPage() {
           ) : null}
         </div>
       </section>
+
+      {role === "admin" && project.customer_id ? (
+        <details className="surface-panel mb-6 p-5">
+          <summary className="cursor-pointer font-black">
+            Fatura ve tahsilat (yalnız yönetici)
+          </summary>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Bu projeye bağlı faturalar ve tahsilatlar. Müşterinin tüm cari
+            hesabı Cari Hesaplar ekranındadır.
+          </p>
+          <div className="mt-4">
+            <LedgerPanel
+              customerId={project.customer_id}
+              projectId={project.id}
+            />
+          </div>
+        </details>
+      ) : null}
 
       <section>
         <div className="mb-4">
