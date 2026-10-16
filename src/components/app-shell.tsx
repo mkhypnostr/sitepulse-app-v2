@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Landmark,
   LayoutDashboard,
+  Map as MapIcon,
   LogOut,
   Menu,
   Receipt,
@@ -192,6 +193,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: "/projects", label: "Projeler", icon: FolderKanban },
           { to: "/shared-files", label: "Ortak Dosyalar", icon: FolderOpen },
           { to: "/calendar", label: "Takvim", icon: CalendarDays },
+          { to: "/map", label: "Harita", icon: MapIcon },
           {
             to: "/service-requests",
             label: "Servis Talepleri",
@@ -245,6 +247,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               icon: FolderOpen,
             },
             { to: "/calendar", label: "Takvim", icon: CalendarDays },
+            { to: "/map", label: "Harita", icon: MapIcon },
             {
               to: "/service-requests",
               label: "Servis Talepleri",

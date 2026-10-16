@@ -1517,6 +1517,8 @@ export type Database = {
       };
       sales_leads: {
         Row: {
+          latitude: number | null;
+          longitude: number | null;
           project_id: string | null;
           closed_at: string | null;
           company_name: string | null;
@@ -1544,6 +1546,8 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          latitude?: number | null;
+          longitude?: number | null;
           project_id?: string | null;
           closed_at?: string | null;
           company_name?: string | null;
@@ -1571,6 +1575,8 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          latitude?: number | null;
+          longitude?: number | null;
           project_id?: string | null;
           closed_at?: string | null;
           company_name?: string | null;
