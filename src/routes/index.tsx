@@ -149,14 +149,14 @@ function IndexComponent() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0c0c14] font-semibold text-foreground">
+      <div className="flex min-h-screen items-center justify-center bg-background font-semibold text-foreground">
         Sistem kontrol ediliyor...
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#0c0c14] text-foreground">
+    <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto grid min-h-screen max-w-7xl grid-cols-1 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="min-w-0 flex items-center px-6 py-10 sm:px-10 lg:px-16 lg:py-16">
           <div className="mx-auto w-full max-w-2xl">
