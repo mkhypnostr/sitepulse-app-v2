@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { GoogleCalendarSync } from "@/components/calendar/google-calendar-sync";
 export const Route = createFileRoute("/_authenticated/calendar")({
   component: CalendarPage,
 });
@@ -287,22 +288,35 @@ function CalendarPage() {
         .order("scheduled_date")
         .order("scheduled_time");
 
-      const [workOrdersResult, projectTasksResult, operationalTasksResult, calendarEventsResult, projectsResult, allWorkOrdersResult, profilesResult] =
-        await Promise.all([
-          workOrdersQuery,
-          projectTasksQuery,
-          operationalTasksQuery,
-          calendarEventsQuery,
-          isManager
-            ? supabase.from("projects").select("id, project_no, name").order("name")
-            : Promise.resolve({ data: [], error: null }),
-          isManager
-            ? supabase.from("work_orders").select("id, work_order_no, title").order("title")
-            : Promise.resolve({ data: [], error: null }),
-          isManager
-            ? supabase.from("profiles").select("id, full_name").order("full_name")
-            : Promise.resolve({ data: [], error: null }),
-        ]);
+      const [
+        workOrdersResult,
+        projectTasksResult,
+        operationalTasksResult,
+        calendarEventsResult,
+        projectsResult,
+        allWorkOrdersResult,
+        profilesResult,
+      ] = await Promise.all([
+        workOrdersQuery,
+        projectTasksQuery,
+        operationalTasksQuery,
+        calendarEventsQuery,
+        isManager
+          ? supabase
+              .from("projects")
+              .select("id, project_no, name")
+              .order("name")
+          : Promise.resolve({ data: [], error: null }),
+        isManager
+          ? supabase
+              .from("work_orders")
+              .select("id, work_order_no, title")
+              .order("title")
+          : Promise.resolve({ data: [], error: null }),
+        isManager
+          ? supabase.from("profiles").select("id, full_name").order("full_name")
+          : Promise.resolve({ data: [], error: null }),
+      ]);
       if (workOrdersResult.error) throw workOrdersResult.error;
       if (projectTasksResult.error) throw projectTasksResult.error;
       if (operationalTasksResult.error) throw operationalTasksResult.error;
@@ -415,7 +429,8 @@ function CalendarPage() {
     },
   });
 
-  const itemsByDate = query.data?.itemsByDate ?? new Map<string, CalendarItem[]>();
+  const itemsByDate =
+    query.data?.itemsByDate ?? new Map<string, CalendarItem[]>();
   const maxVisiblePerCell = view === "week" ? 6 : 3;
 
   const goPrev = () => {
@@ -453,9 +468,7 @@ function CalendarPage() {
   };
 
   const agendaDays =
-    view === "week"
-      ? cells
-      : cells.filter((cell) => cell.inCurrentMonth);
+    view === "week" ? cells : cells.filter((cell) => cell.inCurrentMonth);
   const agendaDateFormatter = new Intl.DateTimeFormat("tr-TR", {
     weekday: "long",
     day: "numeric",
@@ -504,10 +517,7 @@ function CalendarPage() {
       if (eventNeedsDateRange && !eventForm.endDate) {
         throw new Error("Bitiş tarihi gereklidir.");
       }
-      if (
-        eventNeedsDateRange &&
-        eventForm.endDate < eventForm.scheduledDate
-      ) {
+      if (eventNeedsDateRange && eventForm.endDate < eventForm.scheduledDate) {
         throw new Error("Bitiş tarihi başlangıç tarihinden önce olamaz.");
       }
       if (
@@ -546,7 +556,11 @@ function CalendarPage() {
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["calendar-tasks"] });
       setEventDialogOpen(false);
-      toast.success(result === "created" ? "Kayıt takvime eklendi." : "Takvim kaydı güncellendi.");
+      toast.success(
+        result === "created"
+          ? "Kayıt takvime eklendi."
+          : "Takvim kaydı güncellendi.",
+      );
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -631,13 +645,16 @@ function CalendarPage() {
             <Button type="button" variant="outline" onClick={goToday}>
               Bugün
             </Button>
+            {role === "admin" ? <GoogleCalendarSync /> : null}
           </div>
         }
       />
       <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingEventId ? "Takvim kaydını düzenle" : "Takvime kayıt ekle"}</DialogTitle>
+            <DialogTitle>
+              {editingEventId ? "Takvim kaydını düzenle" : "Takvime kayıt ekle"}
+            </DialogTitle>
             <DialogDescription>
               Aynı gün için istediğiniz kadar plan veya not ekleyebilirsiniz.
             </DialogDescription>
@@ -645,60 +662,193 @@ function CalendarPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Başlık
-              <Input value={eventForm.title} maxLength={180} placeholder="Örn. Müşteriyle keşif toplantısı" onChange={(event) => setEventForm((form) => ({ ...form, title: event.target.value }))} />
+              <Input
+                value={eventForm.title}
+                maxLength={180}
+                placeholder="Örn. Müşteriyle keşif toplantısı"
+                onChange={(event) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    title: event.target.value,
+                  }))
+                }
+              />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               {eventNeedsDateRange ? "Başlangıç tarihi" : "Tarih"}
-              <Input type="date" value={eventForm.scheduledDate} onChange={(event) => setEventForm((form) => ({ ...form, scheduledDate: event.target.value }))} />
+              <Input
+                type="date"
+                value={eventForm.scheduledDate}
+                onChange={(event) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    scheduledDate: event.target.value,
+                  }))
+                }
+              />
             </label>
             {eventNeedsDateRange ? (
               <label className="grid gap-1.5 text-sm font-medium">
                 Bitiş tarihi
-                <Input type="date" min={eventForm.scheduledDate} value={eventForm.endDate} onChange={(event) => setEventForm((form) => ({ ...form, endDate: event.target.value }))} />
+                <Input
+                  type="date"
+                  min={eventForm.scheduledDate}
+                  value={eventForm.endDate}
+                  onChange={(event) =>
+                    setEventForm((form) => ({
+                      ...form,
+                      endDate: event.target.value,
+                    }))
+                  }
+                />
               </label>
             ) : null}
             <label className="grid gap-1.5 text-sm font-medium">
               Saat (opsiyonel)
-              <Input type="time" step={1800} value={eventForm.scheduledTime} onChange={(event) => setEventForm((form) => ({ ...form, scheduledTime: event.target.value }))} />
+              <Input
+                type="time"
+                step={1800}
+                value={eventForm.scheduledTime}
+                onChange={(event) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    scheduledTime: event.target.value,
+                  }))
+                }
+              />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Tür
-              <Select value={eventForm.eventType} onValueChange={(eventType) => setEventForm((form) => ({ ...form, eventType: eventType as CalendarEventType }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{Object.entries(eventTypeLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+              <Select
+                value={eventForm.eventType}
+                onValueChange={(eventType) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    eventType: eventType as CalendarEventType,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(eventTypeLabels).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Durum
-              <Select value={eventForm.status} onValueChange={(status) => setEventForm((form) => ({ ...form, status: status as CalendarEventStatus }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{Object.entries(eventStatusLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+              <Select
+                value={eventForm.status}
+                onValueChange={(status) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    status: status as CalendarEventStatus,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(eventStatusLabels).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </label>
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Proje (opsiyonel)
-              <Select value={eventForm.projectId || "none"} onValueChange={(projectId) => setEventForm((form) => ({ ...form, projectId: projectId === "none" ? "" : projectId }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="none">Proje seçilmedi</SelectItem>{(query.data?.projects ?? []).map((project) => <SelectItem key={project.id} value={project.id}>{project.project_no} · {project.name}</SelectItem>)}</SelectContent>
+              <Select
+                value={eventForm.projectId || "none"}
+                onValueChange={(projectId) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    projectId: projectId === "none" ? "" : projectId,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Proje seçilmedi</SelectItem>
+                  {(query.data?.projects ?? []).map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.project_no} · {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </label>
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               İş emri (opsiyonel)
-              <Select value={eventForm.workOrderId || "none"} onValueChange={(workOrderId) => setEventForm((form) => ({ ...form, workOrderId: workOrderId === "none" ? "" : workOrderId }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="none">İş emri seçilmedi</SelectItem>{(query.data?.workOrders ?? []).map((workOrder) => <SelectItem key={workOrder.id} value={workOrder.id}>#{workOrder.work_order_no} · {workOrder.title}</SelectItem>)}</SelectContent>
+              <Select
+                value={eventForm.workOrderId || "none"}
+                onValueChange={(workOrderId) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    workOrderId: workOrderId === "none" ? "" : workOrderId,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">İş emri seçilmedi</SelectItem>
+                  {(query.data?.workOrders ?? []).map((workOrder) => (
+                    <SelectItem key={workOrder.id} value={workOrder.id}>
+                      #{workOrder.work_order_no} · {workOrder.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </label>
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Sorumlu kişi (opsiyonel)
-              <Select value={eventForm.responsibleId || "none"} onValueChange={(responsibleId) => setEventForm((form) => ({ ...form, responsibleId: responsibleId === "none" ? "" : responsibleId }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="none">Sorumlu atanmadı</SelectItem>{(query.data?.profiles ?? []).map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.full_name}</SelectItem>)}</SelectContent>
+              <Select
+                value={eventForm.responsibleId || "none"}
+                onValueChange={(responsibleId) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    responsibleId:
+                      responsibleId === "none" ? "" : responsibleId,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sorumlu atanmadı</SelectItem>
+                  {(query.data?.profiles ?? []).map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
             </label>
             <label className="grid gap-1.5 text-sm font-medium sm:col-span-2">
               Not
-              <Textarea value={eventForm.notes} maxLength={2000} placeholder="Görüşme notu, hazırlık veya hatırlatma..." onChange={(event) => setEventForm((form) => ({ ...form, notes: event.target.value }))} />
+              <Textarea
+                value={eventForm.notes}
+                maxLength={2000}
+                placeholder="Görüşme notu, hazırlık veya hatırlatma..."
+                onChange={(event) =>
+                  setEventForm((form) => ({
+                    ...form,
+                    notes: event.target.value,
+                  }))
+                }
+              />
             </label>
           </div>
           <DialogFooter className="gap-2 sm:justify-between">
@@ -711,8 +861,19 @@ function CalendarPage() {
               >
                 {deleteEvent.isPending ? "Siliniyor..." : "Kaydı Sil"}
               </Button>
-            ) : <span />}
-            <Button onClick={() => saveEvent.mutate()} disabled={saveEvent.isPending || deleteEvent.isPending}>{saveEvent.isPending ? "Kaydediliyor..." : editingEventId ? "Değişiklikleri Kaydet" : "Kaydı Kaydet"}</Button>
+            ) : (
+              <span />
+            )}
+            <Button
+              onClick={() => saveEvent.mutate()}
+              disabled={saveEvent.isPending || deleteEvent.isPending}
+            >
+              {saveEvent.isPending
+                ? "Kaydediliyor..."
+                : editingEventId
+                  ? "Değişiklikleri Kaydet"
+                  : "Kaydı Kaydet"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -788,19 +949,39 @@ function CalendarPage() {
                         </button>
                       </div>
                     ) : null}
-                    <span className={`w-fit px-1 text-xs font-bold ${isToday ? "rounded bg-blue-600 text-white" : "text-muted-foreground"}`}>
+                    <span
+                      className={`w-fit px-1 text-xs font-bold ${isToday ? "rounded bg-blue-600 text-white" : "text-muted-foreground"}`}
+                    >
                       {cell.date.getDate()}
                     </span>
                     <div className="flex flex-col gap-1 overflow-hidden">
-                      {visibleItems.map((item) => item.link ? (
-                        <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} title={item.title} className={`line-clamp-2 rounded border px-1.5 py-1 text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
-                          {item.title}
-                        </Link>
-                      ) : (
-                        <button key={item.id} type="button" onClick={() => item.eventId && openEditEvent(item.eventId)} title={item.notes ?? item.title} className={`line-clamp-2 rounded border px-1.5 py-1 text-left text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}>
-                          {item.time ? `${item.time.slice(0, 5)} · ` : ""}{item.title}
-                        </button>
-                      ))}
+                      {visibleItems.map((item) =>
+                        item.link ? (
+                          <Link
+                            key={item.id}
+                            to={item.link.to}
+                            params={item.link.params}
+                            hash={item.link.hash}
+                            title={item.title}
+                            className={`line-clamp-2 rounded border px-1.5 py-1 text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}
+                          >
+                            {item.title}
+                          </Link>
+                        ) : (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() =>
+                              item.eventId && openEditEvent(item.eventId)
+                            }
+                            title={item.notes ?? item.title}
+                            className={`line-clamp-2 rounded border px-1.5 py-1 text-left text-[10px] font-semibold leading-tight transition-colors sm:text-[11px] ${colorClasses[item.colorState]}`}
+                          >
+                            {item.time ? `${item.time.slice(0, 5)} · ` : ""}
+                            {item.title}
+                          </button>
+                        ),
+                      )}
                       {hiddenCount > 0 ? (
                         <span className="px-1 text-[10px] text-muted-foreground">
                           +{hiddenCount} tane daha
@@ -829,13 +1010,17 @@ function CalendarPage() {
                     key={cell.key}
                     ref={isToday ? todayCardRef : undefined}
                     className={`surface-panel p-3 ${
-                      isToday ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30" : ""
+                      isToday
+                        ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30"
+                        : ""
                     }`}
                   >
                     <div className="mb-2 flex items-start justify-between gap-2">
                       <p
                         className={`text-xs font-black capitalize ${
-                          isToday ? "rounded bg-blue-600 px-1.5 py-0.5 text-white" : "text-foreground"
+                          isToday
+                            ? "rounded bg-blue-600 px-1.5 py-0.5 text-white"
+                            : "text-foreground"
                         }`}
                       >
                         {agendaDateFormatter.format(cell.date)}
@@ -857,15 +1042,31 @@ function CalendarPage() {
                       </p>
                     ) : (
                       <div className="flex flex-col gap-1.5">
-                        {items.map((item) => item.link ? (
-                          <Link key={item.id} to={item.link.to} params={item.link.params} hash={item.link.hash} className={`truncate rounded border px-2 py-1.5 text-xs font-semibold transition-colors ${colorClasses[item.colorState]}`}>
-                            {item.title}
-                          </Link>
-                        ) : (
-                          <button key={item.id} type="button" onClick={() => item.eventId && openEditEvent(item.eventId)} className={`truncate rounded border px-2 py-1.5 text-left text-xs font-semibold transition-colors ${colorClasses[item.colorState]}`}>
-                            {item.time ? `${item.time.slice(0, 5)} · ` : ""}{item.title}
-                          </button>
-                        ))}
+                        {items.map((item) =>
+                          item.link ? (
+                            <Link
+                              key={item.id}
+                              to={item.link.to}
+                              params={item.link.params}
+                              hash={item.link.hash}
+                              className={`truncate rounded border px-2 py-1.5 text-xs font-semibold transition-colors ${colorClasses[item.colorState]}`}
+                            >
+                              {item.title}
+                            </Link>
+                          ) : (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() =>
+                                item.eventId && openEditEvent(item.eventId)
+                              }
+                              className={`truncate rounded border px-2 py-1.5 text-left text-xs font-semibold transition-colors ${colorClasses[item.colorState]}`}
+                            >
+                              {item.time ? `${item.time.slice(0, 5)} · ` : ""}
+                              {item.title}
+                            </button>
+                          ),
+                        )}
                       </div>
                     )}
                   </div>

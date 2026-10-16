@@ -96,7 +96,9 @@ export async function createOfferDriveWorkspace(offerId: string) {
 
   if (error) throw error;
   if (data?.error) {
-    throw new Error(data.error.message || "Teklif Drive klasörü oluşturulamadı");
+    throw new Error(
+      data.error.message || "Teklif Drive klasörü oluşturulamadı",
+    );
   }
 
   const result = data?.result;
@@ -134,4 +136,53 @@ export async function createProjectDriveWorkspace(projectId: string) {
     throw new Error(content?.error || "Drive klasörleri oluşturulamadı");
   }
   return content;
+}
+
+export type CalendarEventResult = {
+  success: boolean;
+  event_id?: string;
+  event_url?: string;
+  error?: string;
+};
+
+/** Bağlı Google hesabının takvimine etkinlik ekler (mevcut
+ * create_nes_calendar_event aracı). Saatler Europe/Istanbul. */
+export async function createGoogleCalendarEvent(input: {
+  summary: string;
+  description?: string;
+  location?: string;
+  /** "YYYY-AA-GGTSS:DD:00" (saat dilimsiz, İstanbul saati). */
+  start: string;
+  end: string;
+}) {
+  const requestId = crypto.randomUUID();
+  const { data, error } = await supabase.functions.invoke<
+    WorkspaceToolResult<CalendarEventResult>
+  >("nes-workspace-control", {
+    body: {
+      jsonrpc: "2.0",
+      id: requestId,
+      method: "tools/call",
+      params: {
+        name: "create_nes_calendar_event",
+        arguments: input,
+      },
+    },
+  });
+  if (error) throw error;
+  if (data?.error) {
+    throw new Error(data.error.message || "Google Takvim etkinliği eklenemedi");
+  }
+  const result = data?.result;
+  const content = result?.structuredContent;
+  if (
+    !content ||
+    result?.isError ||
+    content.success === false ||
+    !content.event_id
+  ) {
+    throw new Error(content?.error || "Google Takvim etkinliği eklenemedi");
+  }
+  return content as Required<Pick<CalendarEventResult, "event_id">> &
+    CalendarEventResult;
 }

@@ -341,6 +341,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      google_calendar_links: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          google_event_id: string;
+          google_event_url: string | null;
+          id: string;
+          source_date: string;
+          source_id: string;
+          source_type: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          google_event_id: string;
+          google_event_url?: string | null;
+          id?: string;
+          source_date: string;
+          source_id: string;
+          source_type: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          google_event_id?: string;
+          google_event_url?: string | null;
+          id?: string;
+          source_date?: string;
+          source_id?: string;
+          source_type?: string;
+        };
+        Relationships: [];
+      };
       offer_catalog_items: {
         Row: {
           brand: string | null;
