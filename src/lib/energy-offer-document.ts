@@ -25,28 +25,14 @@ import {
   MONTH_LABELS,
 } from "@/lib/energy-offer";
 import { formatUsdPerWp, type FinanceResult } from "@/lib/energy-offer-finance";
+import {
+  LETTERHEAD_PAGE_CSS,
+  NES_COMPANY,
+  letterheadHtml,
+} from "@/lib/nes-company";
 
-export const NES_COMPANY = {
-  brand: "NES Enerji",
-  legalName:
-    "Nes Teknik Enerji Mühendislik İnşaat Sanayi ve Ticaret Limited Şirketi",
-  legalNameUpper:
-    "NES TEKNİK ENERJİ MÜHENDİSLİK İNŞAAT SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
-  addressUpper: "ORHANİYE MAHALLESİ 12 NOLU SOKAK NUR APARTMANI NO:6 C",
-  cityUpper: "MUĞLA / Menteşe",
-  footerLine: "0 554 610 24 16 | ORHANİYE MAH. 12 NOLU SK. NO:6C MENTEŞE/MUĞLA",
-  address: "Orhaniye Mah. 12 Nolu Sk. Nur Apt. No:6/C Menteşe / Muğla",
-  phone: "0 554 610 24 16",
-  phoneCompact: "05546102416",
-  taxOffice: "MUĞLA VERGİ DAİRESİ",
-  taxNo: "6312027568",
-  email: "info@nesgrup.com",
-  bank: "Akbank",
-  bankAccountName: "Nes Teknik Enerji Mühendislik İnş. San. ve Tic. Ltd. Şti.",
-  iban: "TR21 0004 6001 2888 8000 3242 29",
-  logoPath: "/nes-enerji-logo.png",
-  assetsPath: "/offer-assets",
-};
+// Şirket bilgileri ve antet tek kaynaktan gelir (src/lib/nes-company.ts).
+export { NES_COMPANY };
 
 export type OfferDocumentInput = {
   offerNo: string;
@@ -290,6 +276,11 @@ p{margin:0 0 4mm;text-align:justify}
 .plan{border:1.4px solid #222;padding:4mm;height:150mm;display:flex;align-items:center;justify-content:center}
 .plan svg{max-width:100%;max-height:100%}
 .note{font-size:7.5pt;line-height:1.5;color:#444;font-family:"Ubuntu",Arial,sans-serif}
+/* NES antet: kapak dışındaki sayfalar */
+.page.lh .body{padding:28mm 15mm 26mm}
+.page.lh .pj{margin-top:25mm;height:140mm}
+.page.lh .pj-photo{margin-right:15mm}
+${LETTERHEAD_PAGE_CSS}
 `;
 
 // ---------------------------------------------------------------- form stili
@@ -335,6 +326,10 @@ const formCss = `
 .form .spec h3{font-size:7.5pt;font-weight:600;margin:4mm 0 1mm;text-transform:uppercase}
 .form .spec p{margin:0 0 1mm}
 .form .spec-wrap{display:grid;grid-template-columns:1fr 60mm;gap:8mm}
+.page.form.lh{padding-bottom:26mm}
+.page.form.lh.cont{padding-top:28mm}
+.form .lh-foot .lh-left{max-width:45mm}
+${LETTERHEAD_PAGE_CSS}
 `;
 
 function fontLinks(families: string) {
@@ -416,8 +411,12 @@ function paymentRows(input: OfferDocumentInput) {
 }
 
 // ---------------------------------------------------------------- GES sunum dosyası
-function band() {
-  return `<div class="band">${esc(NES_COMPANY.footerLine)}</div>`;
+/** Kapak dışındaki sunum sayfalarına NES anteti (üst logo, filigran, alt bilgi). */
+function band(ctx: Ctx) {
+  return letterheadHtml({
+    logoUrl: ctx.logo,
+    title: `${ctx.input.offerNo} | ${ctx.input.title}`,
+  });
 }
 
 const tlWhole = (value: number) =>
@@ -497,7 +496,7 @@ function productionPage(ctx: Ctx): string | null {
 ${cumulativeChart(finance.cumulative)}
 <p class="note">Aylık ortalama ${num(finance.annualConsumptionKwh / 12, 0)} kWh tüketim ve aylık mahsuplaşma varsayımıyla hesaplanmıştır; yatırım tutarı ${tlWhole(finance.investmentTl)}. Grafik yıl sonu kümülatif nakdi gösterir (kırmızı: yatırım henüz geri dönmedi). Bakım, sigorta ve ekipman değişimi dahil değildir; sonuçlar gerçek tüketim, tarife ve hava koşullarına göre değişir.</p>`;
   }
-  return `<section class="page"><div class="body">
+  return `<section class="page lh"><div class="body">
 <div class="h">Üretim ve kazanç</div>
 <div class="sub">${esc(formatKwp(ctx.kwp))} kWp sistemin tahmini üretimi${ctx.input.location ? ` — ${esc(ctx.input.location)}` : ""}</div>
 <div class="kpis">${kpis.map(([l, v]) => `<div><small>${esc(l)}</small><b>${esc(v)}</b></div>`).join("")}</div>
@@ -505,21 +504,21 @@ ${cumulativeChart(finance.cumulative)}
 ${monthlyChart(production.monthly)}
 ${financeHtml}
 <p class="note">Üretim tahminidir${ctx.input.productionSource ? `; kaynak: ${esc(ctx.input.productionSource)} — Avrupa Komisyonu JRC uydu ışınım verisi, sistem kayıpları dahil` : ""}. Panel yönü, eğimi, gölgelenme ve yıllık güneşlenme farkına göre ±%10 değişebilir.</p>
-</div>${band()}</section>`;
+</div>${band(ctx)}</section>`;
 }
 
 function layoutPage(ctx: Ctx): string | null {
   const layout = ctx.input.layout;
   if (!layout || !layout.svg) return null;
   const rows = layout.faces.filter((face) => face.panels > 0);
-  return `<section class="page"><div class="body">
+  return `<section class="page lh"><div class="body">
 <div class="h">Panel yerleşimi</div>
 <div class="sub">Uydu görüntüsü üzerinden yapılan ön yerleşim; kesin yerleşim keşif ve statik inceleme sonrası netleşir.</div>
 <div class="plan">${layout.svg}</div>
 <table class="grid-table" style="margin-top:6mm"><thead><tr><th style="text-align:left">YÜZEY</th><th>PANEL</th><th>EĞİM</th><th>YÖN</th><th>ALAN</th></tr></thead><tbody>
 ${rows.map((face) => `<tr><td>${esc(face.name)}</td><td class="c">${face.panels}</td><td class="c">${face.tilt}°</td><td class="c">${esc(face.direction)}</td><td class="c">${num(face.areaM2, 0)} m²</td></tr>`).join("")}
 </tbody></table>
-</div>${band()}</section>`;
+</div>${band(ctx)}</section>`;
 }
 
 function buildGesPresentation(ctx: Ctx): string {
@@ -556,7 +555,7 @@ function buildGesPresentation(ctx: Ctx): string {
     ]);
   }
   summaryCols.push(["DETAY", systemDetail(ctx)]);
-  pages.push(`<section class="page">
+  pages.push(`<section class="page lh">
 <div class="pj"><div class="pj-left"><div class="pj-title">${projectTitle}</div>
 <div class="pj-cust">${esc(upperTr(input.recipientName || "-"))}</div>
 ${input.contactName ? `<div class="pj-addr">${esc(input.contactName)}</div>` : ""}
@@ -572,10 +571,10 @@ ${input.location ? `<div class="pj-addr">${esc(input.location)}</div>` : ""}
 <div class="summary"><div class="h" style="margin-top:12mm">Sistem Özeti</div>
 <table class="grid-table"><thead><tr>${summaryCols.map(([label]) => `<th>${esc(label)}</th>`).join("")}</tr></thead>
 <tbody><tr>${summaryCols.map(([, value]) => `<td class="c">${esc(value)}</td>`).join("")}</tr></tbody></table></div>
-${band()}</section>`);
+${band(ctx)}</section>`);
 
   // 3) Teklifin konusu ve iş akışı
-  pages.push(`<section class="page"><div class="body">
+  pages.push(`<section class="page lh"><div class="body">
 <div class="h">Teklifin konusu, taraflar ve şartlar</div>
 <p>İş bu “mühendislik, ürün tedarik ve kurulum” teklifi, ${esc(kwpText)} güçte fotovoltaik güneş enerjisine dayalı ${ges.roofType === "arazi" ? "arazi/teras" : "çatı"} uygulamalı elektrik üretim tesisinin (GES)${ctx.hasSarj ? " ve elektrikli araç şarj sisteminin" : ""} projelendirme, ürün tedarik, kurulum, test, devreye alma ve geçici hizmetlerinin <b>${esc(NES_COMPANY.legalName)}</b> tarafından gerçekleştirilmesine dair iş ve işlemlerin sunulması amacıyla hazırlanmıştır.</p>
 <p>Teklifin amacı ve konusu, söz konusu tesisin mühendislik, ürün tedarik, kurulum, test, devreye alma ve geçici kabul işlemlerinin gerçekleştirilerek, tesisin hatasız ve eksiksiz olarak, faal durumda, tarafınıza sözleşme süresi içinde şirketimiz tarafından teslim edilmesidir. Fotovoltaik modüllerin montajının yapılacağı çatı ve cephe alanlarının, uygulama öncesi montaja uygun hale getirilmiş ve tam izolasyona sahip olması gerekmektedir.</p>
@@ -585,16 +584,16 @@ ${band()}</section>`);
 ${ctx.batteryKwh > 0 ? `<p>Sistem, ${esc(formatKwp(ctx.batteryKwh))} kWh lityum batarya ile birlikte hibrit olarak kurulacak; gün içinde üretilen enerji önce tesisin ihtiyacını karşılayacak, fazlası bataryada depolanacak ve şebeke kesintilerinde yedeklenen yükler bataryadan beslenmeye devam edecektir.</p>` : ""}
 ${ctx.hasSarj ? `<p>Elektrikli araç şarj sistemi; ${sarj.stationCount} adet ${esc(`${ctx.station?.brand ?? ""} ${formatKwp(Number(ctx.station?.power_kw ?? 0))} kW`.trim())} şarj istasyonu, ${sarj.phase === "trifaze" ? "trifaze" : "monofaze"} besleme hattı ve kaçak akım / aşırı akım korumalı şarj panosu ile anahtar teslim kurulacaktır.</p>` : ""}
 <p>Tesisin, mühendislik, ürün tedarik, kurulum, test, devreye alma ve geçici kabul işlemlerinin gerçekleştirilmesi tümüyle şirketimiz sorumluluğundadır. Şirketimiz, tesisin kurulumu ve işletilmesinde kullanılacak tüm araç, makine ve teçhizatın temin edilmesi, sahaya getirilmesi ve bunların montajının nitelikli personel tarafından gerçekleştirilmesini sağlayacaktır.</p>
-</div>${band()}</section>`);
+</div>${band(ctx)}</section>`);
 
   // 4) Hizmet kapsamı
   const scope = [...gesScope, ...(ctx.hasSarj ? sarjScope : [])];
-  pages.push(`<section class="page"><div class="body">
+  pages.push(`<section class="page lh"><div class="body">
 <div class="h">Hizmet kapsamı</div>
 <div class="sub">(Hizmet Kapsamı Şebekeye bağlı Mahsuplaşmalı sistemler için geçerlidir. Öztüketim ve Off Grid Sistemlerde proje bulunmadığı için teklife dahil değildir.)</div>
 <table class="grid-table${scope.length > 20 ? " tight" : ""}"><thead><tr><th>KAPSAM</th><th style="width:22mm">DAHİL</th><th style="width:22mm">HARİÇ</th></tr></thead><tbody>
 ${scope.map(([text, included]) => `<tr><td>${esc(text)}</td><td class="c">${included ? "X" : ""}</td><td class="c">${included ? "" : "X"}</td></tr>`).join("")}
-</tbody></table></div>${band()}</section>`);
+</tbody></table></div>${band(ctx)}</section>`);
 
   // 5) Donanımlar
   const cards: [string, string, string[]][] = [];
@@ -674,20 +673,20 @@ ${scope.map(([text, included]) => `<tr><td>${esc(text)}</td><td class="c">${incl
   }
   const card = ([img, title, lines]: [string, string, string[]]) =>
     `<div><div class="img">${img ? `<img src="${esc(img)}" alt="">` : plugIcon}</div><b>${esc(title)}</b><span>${lines.map(esc).join("<br>")}</span></div>`;
-  pages.push(`<section class="page"><div class="body">
+  pages.push(`<section class="page lh"><div class="body">
 <div class="h">Donanımlar</div>
 <div class="sub">Sisteminiz, ihtiyacınıza uygun konfigürasyon ile maksimum verimlilikte çalışması için tasarlanmıştır. Aşağıda sistem ana bileşenlerinin bir listesini yaptık.</div>
 <div class="hw">${cards.map(card).join("")}</div>
 <div class="hw ${second.length > 3 ? "four" : "three"}" style="margin-top:8mm">${second.map(card).join("")}</div>
-</div>${band()}</section>`);
+</div>${band(ctx)}</section>`);
 
   // 6) Proje süreci
-  pages.push(`<section class="page"><div class="body">
+  pages.push(`<section class="page lh"><div class="body">
 <div class="h">Proje süreci</div>
 <div class="sub">(Şebekeye bağlı Mahsuplaşmalı sistemler için geçerlidir. Öztüketim ve Off Grid Sistemlerde proje bulunmadığı için teklife dahil değildir.)</div>
 <table class="grid-table proc" style="margin-top:8mm"><tbody>
 ${gesProcess.map(([when, items]) => `<tr><td>${esc(when)}</td><td>${items.map(esc).join("<br>")}</td></tr>`).join("")}
-</tbody></table></div>${band()}</section>`);
+</tbody></table></div>${band(ctx)}</section>`);
 
   // 6a) Panel yerleşimi
   const planPage = layoutPage(ctx);
@@ -722,7 +721,7 @@ ${gesProcess.map(([when, items]) => `<tr><td>${esc(when)}</td><td>${items.map(es
   if (otherTotal > 0) priceRows.push(["Diğer İşler", "1 Set", otherTotal]);
   const cur = input.currency;
   const curName = cur === "TRY" ? "TL" : cur;
-  pages.push(`<section class="page"><div class="body">
+  pages.push(`<section class="page lh"><div class="body">
 <div class="h">Ödenene değer fiyat teklifimiz</div>
 <div class="price-title">Anahtar teslim fiyat</div>
 <table class="grid-table"><thead><tr><th style="text-align:left">AÇIKLAMA</th><th style="width:30mm">BİRİM</th><th style="width:42mm">TUTAR</th></tr></thead><tbody>
@@ -751,7 +750,7 @@ ${termLines(input)
   .join("")}
 ${input.rates.USD > 0 || input.rates.EUR > 0 ? `<p>Hesaplamada kullanılan kurlar: ${[input.rates.USD > 0 ? `1 USD = ${num(input.rates.USD, 4)} TL` : "", input.rates.EUR > 0 ? `1 EUR = ${num(input.rates.EUR, 4)} TL` : ""].filter(Boolean).join(", ")}${input.rateSource === "TCMB" && input.tcmbDate ? ` (TCMB döviz satış kuru, ${esc(input.tcmbDate.split("-").reverse().join("."))})` : ""}.</p>` : ""}
 <p>Banka Hesap Bilgileri : ${esc(NES_COMPANY.bankAccountName)}<br>${esc(NES_COMPANY.bank)}<br>TL IBAN : ${esc(NES_COMPANY.iban)}</p>
-</div></div>${band()}</section>`);
+</div></div>${band(ctx)}</section>`);
 
   let html = pages.join("\n");
   if (input.showLinePrices) {
@@ -821,11 +820,15 @@ function formPages(
   const { input } = ctx;
   const cur = input.currency;
   const rows = formRows(ctx, options.annex);
-  const perPage = 20;
+  // Antet alt bilgisine taşmasın diye sayfa başına satır sınırlı.
+  const perPage = 16;
   const chunks: FormRow[][] = [];
   for (let i = 0; i < Math.max(rows.length, 1); i += perPage) {
     chunks.push(rows.slice(i, i + perPage));
   }
+  // Toplamlar bloğu son sayfada yer bulamıyorsa son satırları yeni sayfaya al.
+  const last = chunks[chunks.length - 1];
+  if (last.length > 12) chunks.push(last.splice(12));
   const specLines = termLines(input);
   const pageCount = chunks.length + (options.withSpec ? 1 : 0);
   const sale = rows.reduce((sum, row) => sum + row.total, 0);
@@ -835,8 +838,16 @@ function formPages(
 <div><b>BRÜT TOPLAM</b><span>${money(sale, cur)}</span></div>
 <div><b>TOPLAM K.D.V</b><span>${money(vat, cur)}</span></div>
 <div><b>GENEL TOPLAM</b><span>${money(sale + vat, cur)}</span></div></div>`;
-  const foot = (page: number) =>
-    `<div class="foot"><span><b>${dateDots(input.issueDate)}</b> tarihinde hazırlanmıştır.</span><span><b>SAYFA ${page} / ${pageCount}</b></span></div>`;
+  // NES anteti: filigran ve alt bilgi her sayfada; üst logo, kendi başlığı
+  // olmayan sayfalarda (ilk sayfada formun kendi logolu başlığı var).
+  const foot = (page: number, withHead: boolean) =>
+    letterheadHtml({
+      logoUrl: ctx.logo,
+      title: `${input.offerNo} | ${input.title}`,
+      footLeft: `${dateDots(input.issueDate)} tarihinde hazırlanmıştır.`,
+      pageLabel: `Sayfa ${page} / ${pageCount}`,
+      head: withHead,
+    });
   const head = `<div class="top"><div><img src="${esc(ctx.logo)}" alt="NES Enerji">
 <div class="co"><p>${esc(NES_COMPANY.legalNameUpper)}<br>${esc(NES_COMPANY.addressUpper)}</p><p>${esc(NES_COMPANY.cityUpper)}<br><span class="n">${esc(NES_COMPANY.phoneCompact)}</span></p><p>VD: ${esc(NES_COMPANY.taxOffice)}<br><span class="n">${esc(NES_COMPANY.taxNo)}</span></p></div></div>
 <div><div class="tk">${options.annex ? "FİYAT LİSTESİ" : "TEKLİF"}</div><div class="tk-rule"></div>
@@ -847,15 +858,15 @@ function formPages(
 
   const pages = chunks.map((chunk, index) => {
     const last = index === chunks.length - 1;
-    return `<section class="page form">${index === 0 ? head : ""}
+    return `<section class="page form lh${index === 0 ? "" : " cont"}">${index === 0 ? head : ""}
 <table class="items"${index === 0 ? "" : ' style="margin-top:0"'}><thead><tr><th>Hizmet / Ürün</th><th class="r">Miktar</th><th class="r">Br. Fiyat</th><th class="r">KDV</th><th class="r">Toplam</th></tr></thead><tbody>
 ${chunk.map((row) => `<tr><td style="width:46%">${esc(row.name)}</td><td class="r">${num(row.quantity)} ${esc(row.unit)}</td><td class="r">${money(row.unitPrice, cur)}</td><td class="r">%${num(input.vatRate * 100)}</td><td class="r">${money(row.total, cur)}</td></tr>`).join("")}
-</tbody></table>${last ? `<div class="line"></div>${totalsHtml}` : ""}${foot(index + 1)}</section>`;
+</tbody></table>${last ? `<div class="line"></div>${totalsHtml}` : ""}${foot(index + 1, index > 0)}</section>`;
   });
 
   if (options.withSpec) {
     const payment = paymentRows(input);
-    pages.push(`<section class="page form"><div class="spec-wrap"><div class="spec">
+    pages.push(`<section class="page form lh cont"><div class="spec-wrap"><div class="spec">
 <p style="text-transform:uppercase">Teklif ve teknik şartname</p>
 <p style="text-transform:uppercase">Proje adı: ${esc(input.title)}${input.location ? ` · ${esc(input.location)}` : ""}</p>
 <h3>1. Kapsam</h3><p>${esc(input.title)} kapsamında tabloda belirtilen malzemelerin tedariki, montajı, test ve devreye alma işleri anahtar teslim olarak teklif edilmiştir.</p>
@@ -864,7 +875,7 @@ ${payment.length ? `<h3>2. Ödeme şekli</h3>${payment.map((row) => `<p>• ${es
 <p>• İşbu teklif ${esc(dateLong(input.validUntil))} tarihine kadar geçerlidir.</p>
 ${input.rates.USD > 0 || input.rates.EUR > 0 ? `<p>• Hesaplamada kullanılan kurlar: ${[input.rates.USD > 0 ? `1 USD = ${num(input.rates.USD, 4)} TL` : "", input.rates.EUR > 0 ? `1 EUR = ${num(input.rates.EUR, 4)} TL` : ""].filter(Boolean).join(", ")}.</p>` : ""}
 <h3>Banka bilgileri</h3><p>${esc(NES_COMPANY.bankAccountName)} · ${esc(NES_COMPANY.bank)}<br>TL IBAN: ${esc(NES_COMPANY.iban)}</p>
-</div>${totalsHtml}</div>${foot(pageCount)}</section>`);
+</div>${totalsHtml}</div>${foot(pageCount, true)}</section>`);
   }
   return pages;
 }

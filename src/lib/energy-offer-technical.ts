@@ -5,10 +5,8 @@
 // (Gantt), fiyat teklifi + ödeme planı + ticari şartlar, kalite/İSG/garanti,
 // referanslar, iletişim ve onay, Ek-1 birim fiyat cetveli.
 
-import {
-  NES_COMPANY,
-  type OfferDocumentInput,
-} from "@/lib/energy-offer-document";
+import type { OfferDocumentInput } from "@/lib/energy-offer-document";
+import { NES_COMPANY, NES_CONTACT_LINE } from "@/lib/nes-company";
 import type {
   CatalogItem,
   Currency,
@@ -189,13 +187,16 @@ body{font-family:"Carlito","Calibri",Arial,sans-serif;font-size:10.5pt;line-heig
 .wrap>thead td{height:24mm;padding:0}.wrap>tfoot td{height:17mm;padding:0}
 .wrap>tbody>tr>td{padding:0}
 .run-head,.run-foot{position:fixed;left:0;right:0;z-index:1;background:#fff}
-.run-head{top:0;height:20mm;display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:3mm;border-bottom:1px solid #d6d6d6}
-.run-head img{height:8mm}
-.run-head span{font-size:8pt;color:#888}
-.run-foot{bottom:0;height:13mm;display:flex;align-items:center;font-size:7.5pt;color:#888;border-top:1px solid #d6d6d6}
+/* NES anteti: sağ üstte logo ve ince çizgi, altta çizgi ve adres/iletişim,
+   sayfa ortasında soluk logo filigranı (yazdırılan her sayfada tekrarlanır). */
+.run-head{top:0;height:20mm;display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:2mm;border-bottom:.6pt solid #222}
+.run-head img{height:10mm}
+.run-head span{font-size:7.5pt;color:#666}
+.run-foot{bottom:0;height:14mm;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:7pt;line-height:1.45;color:#333;border-top:.6pt solid #222}
+.run-mark{position:fixed;left:50%;top:50%;width:150mm;transform:translate(-50%,-50%);opacity:.13;z-index:-1;pointer-events:none}
 @media screen{
   body{background:#e9edf3}
-  .run-head,.run-foot{display:none}
+  .run-head,.run-foot,.run-mark{display:none}
   .sheet{width:210mm;margin:8mm auto;background:#fff;padding:12mm 17mm;box-shadow:0 6px 30px rgba(20,40,80,.12)}
   .wrap>thead td,.wrap>tfoot td{height:0}
 }
@@ -337,7 +338,7 @@ ${input.location || input.recipientAddress ? `<tr><td>Proje yeri</td><td>${esc(i
 <tr><td>Teklif no</td><td>${esc(input.offerNo)}</td></tr>
 <tr><td>Tarih</td><td>${dateDots(input.issueDate)}</td></tr>
 <tr><td>Geçerlilik</td><td>${validDays !== null ? `${validDays} takvim günü` : "-"}</td></tr>
-<tr><td>Hazırlayan</td><td>${esc(NES_COMPANY.legalName.replace("Limited Şirketi", "Ltd. Şti."))}</td></tr>
+<tr><td>Hazırlayan</td><td>${esc(NES_COMPANY.legalNameShort)}</td></tr>
 </tbody></table>
 <img class="brands" src="${esc(brandsImg)}" alt="nesenerji nesşarj nesproje nestaahhüt neskontrol">
 </section>`;
@@ -355,7 +356,7 @@ ${input.location || input.recipientAddress ? `<tr><td>Proje yeri</td><td>${esc(i
 ${introText}
 <p>Teklifimizin uygun bulunacağını umar, her türlü sorunuz için hazır olduğumuzu belirtiriz.</p>
 <p>Saygılarımızla,</p>
-<p style="margin-top:10mm"><b>${esc(content.preparedByName)}</b><br>${esc(content.preparedByTitle)}<br>${esc(NES_COMPANY.phone.replace(/^0 /, "+90 "))} | ${esc(NES_COMPANY.email)}</p>`;
+<p style="margin-top:10mm"><b>${esc(content.preparedByName)}</b><br>${esc(content.preparedByTitle)}<br>${esc(NES_COMPANY.phone)} | ${esc(NES_COMPANY.email)}</p>`;
 
   // ---- 1. Teklif özeti
   const cards = lines(content.summaryCards)
@@ -478,10 +479,10 @@ ${references.map((row) => `<tr>${row.map((cell) => `<td>${esc(cell)}</td>`).join
   // ---- İletişim ve onay
   const contactSection = `<h2>${section++}. İletişim ve Onay</h2>
 <table class="info"><tbody>
-<tr><td>Firma</td><td>${esc(NES_COMPANY.legalName.replace("Limited Şirketi", "Ltd. Şti."))}</td></tr>
+<tr><td>Firma</td><td>${esc(NES_COMPANY.legalNameShort)}</td></tr>
 <tr><td>Adres</td><td>${esc(NES_COMPANY.address)}</td></tr>
 <tr><td>Yetkili</td><td>${esc(content.preparedByName)} – ${esc(content.preparedByTitle.replace(/\s*–\s*NES Grup$/, ""))}</td></tr>
-<tr><td>Telefon / e-posta</td><td>${esc(NES_COMPANY.phone.replace(/^0 /, "+90 "))} | ${esc(NES_COMPANY.email)}</td></tr>
+<tr><td>Telefon / e-posta</td><td>${esc(NES_COMPANY.phone)} | ${esc(NES_COMPANY.email)}</td></tr>
 <tr><td>Web</td><td>nesgrup.com</td></tr>
 </tbody></table>
 <div class="sign"><div><b>TEKLİF VEREN – NES Grup</b><p>Ad Soyad: ${esc(content.preparedByName)}</p><p>Tarih: ${dateDots(input.issueDate)}</p><p>Kaşe / İmza:</p></div>
@@ -527,8 +528,9 @@ ${groupTotals
   return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${esc(input.offerNo)} — ${esc(project)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Carlito:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>${css}</style></head><body>
-<div class="run-head"><img src="${esc(logo)}" alt="NES Enerji"><span>${esc(runTitle)}</span></div>
-<div class="run-foot">${esc(NES_COMPANY.address)} | ${esc(NES_COMPANY.phone.replace(/^0 /, "+90 "))} | ${esc(NES_COMPANY.email)}</div>
+<div class="run-head"><span>${esc(runTitle)}</span><img src="${esc(logo)}" alt="NES Enerji"></div>
+<img class="run-mark" src="${esc(logo)}" alt="">
+<div class="run-foot"><span>${esc(NES_COMPANY.address)}</span><span>${esc(NES_CONTACT_LINE)}</span></div>
 <div class="sheet"><table class="wrap"><thead><tr><td></td></tr></thead><tfoot><tr><td></td></tr></tfoot><tbody><tr><td>
 ${body}
 </td></tr></tbody></table></div>

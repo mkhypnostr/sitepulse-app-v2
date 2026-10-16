@@ -10,6 +10,7 @@ import {
   FileSpreadsheet,
   Percent,
   Plus,
+  CopyPlus,
   Printer,
   RefreshCw,
   Save,
@@ -121,6 +122,15 @@ import {
   type SiteConfig,
 } from "@/lib/solar-site";
 import { SiteDesigner } from "@/components/energy-offer/site-designer";
+import {
+  DEFAULT_MARKUP_RATE,
+  DEFAULT_VAT_RATE,
+  MIN_GROSS_MARGIN,
+  baseOfferNo,
+  belowMarginFloor,
+  nextRevisionNo,
+  validityRule,
+} from "@/lib/offer-rules";
 import { ShareLinkPanel } from "@/components/energy-offer/share-link-panel";
 
 export const Route = createFileRoute("/_authenticated/energy-offer")({
@@ -328,8 +338,10 @@ function EnergyOfferPage() {
   const [customerId, setCustomerId] = useState("");
   const [status, setStatus] = useState<Status>("draft");
   const [currency, setCurrency] = useState<Currency>("TRY");
-  const [vatRate, setVatRate] = useState(0.2);
+  const [vatRate, setVatRate] = useState(DEFAULT_VAT_RATE);
   const [validUntil, setValidUntil] = useState(addDays(15));
+  // Geçerlilik tarihi elle değiştirildiyse kural önerisi otomatik uygulanmaz.
+  const [validityTouched, setValidityTouched] = useState(false);
   const [rates, setRates] = useState<ExchangeRates>({ USD: 0, EUR: 0 });
   const [ges, setGes] = useState<GesConfig>(defaultGes);
   const [sarj, setSarj] = useState<SarjConfig>(defaultSarj);
@@ -342,7 +354,7 @@ function EnergyOfferPage() {
   const [loadedOfferId, setLoadedOfferId] = useState<string | null>(null);
   const [recipient, setRecipient] = useState<OfferRecipient>(defaultRecipient);
   const [projectLocation, setProjectLocation] = useState("");
-  const [markupRate, setMarkupRate] = useState(0.2);
+  const [markupRate, setMarkupRate] = useState(DEFAULT_MARKUP_RATE);
   const [targetSale, setTargetSale] = useState(0);
   const [specificYield, setSpecificYield] = useState(DEFAULT_SPECIFIC_YIELD);
   const [showLinePrices, setShowLinePrices] = useState(false);
@@ -517,6 +529,7 @@ function EnergyOfferPage() {
     );
     setVatRate(Number(offer.vat_rate ?? 0.2));
     setValidUntil(offer.valid_until ?? addDays(15));
+    setValidityTouched(true);
     const er = (offer.exchange_rates ?? {}) as Partial<StoredRates>;
     setRates({ USD: Number(er.USD ?? 0), EUR: Number(er.EUR ?? 0) });
     setRateMeta({
@@ -590,6 +603,14 @@ function EnergyOfferPage() {
     [lines, currency, rates],
   );
   const totals = useMemo(() => summarize(priced, vatRate), [priced, vatRate]);
+  // NES kuralı: kalemlere göre geçerlilik süresi (7 / 15 / 30 gün).
+  const validity = useMemo(() => validityRule(priced), [priced]);
+  const suggestedValidUntil = addDays(validity.days);
+  useEffect(() => {
+    if (offerId || validityTouched || priced.length === 0) return;
+    setValidUntil(suggestedValidUntil);
+  }, [offerId, validityTouched, priced.length, suggestedValidUntil]);
+  const marginTooLow = belowMarginFloor(totals.sale, totals.margin);
   const monthlyPerKwp = monthlyPerKwpFor(specificYield, site.pvgis);
   const siteLayout = useMemo(() => layoutSite(site), [site]);
   const gesSale = totals.byModule.find((m) => m.module === "ges")?.sale ?? 0;
@@ -771,7 +792,9 @@ function EnergyOfferPage() {
   }
 
   const save = useMutation({
-    mutationFn: async () => {
+    // asRevision: mevcut teklifin -R1, -R2… numaralı yeni taslak kopyası.
+    mutationFn: async (options?: { asRevision?: boolean }) => {
+      const asRevision = Boolean(options?.asRevision && offerId);
       if (!user) throw new Error("Oturum bulunamadı.");
       if (errors.length > 0) throw new Error(errors[0].message);
       const moduleConfig: EnergyOfferConfig = {
@@ -794,7 +817,7 @@ function EnergyOfferPage() {
         title: title.trim(),
         customer_id: recipient.mode === "kayitli" ? customerId || null : null,
         offer_type: "diger",
-        status,
+        status: asRevision ? ("draft" as Status) : status,
         currency,
         vat_rate: vatRate,
         valid_until: validUntil || null,
@@ -814,7 +837,21 @@ function EnergyOfferPage() {
         terms_note: terms.trim() || null,
         lead_id: dataQuery.data?.lead?.id ?? null,
       };
-      let id = offerId;
+      let id = asRevision ? undefined : offerId;
+      let revisionNo: string | null = null;
+      if (asRevision) {
+        const current = dataQuery.data?.offer?.offer_no;
+        if (!current) throw new Error("Teklif numarası bulunamadı.");
+        const { data: siblings, error: siblingError } = await supabase
+          .from("offers")
+          .select("offer_no")
+          .like("offer_no", `${baseOfferNo(current)}%`);
+        if (siblingError) throw siblingError;
+        revisionNo = nextRevisionNo(
+          current,
+          (siblings ?? []).map((row) => row.offer_no as string),
+        );
+      }
       if (id) {
         const { error } = await supabase
           .from("offers")
@@ -829,7 +866,11 @@ function EnergyOfferPage() {
       } else {
         const { data, error } = await supabase
           .from("offers")
-          .insert({ ...header, created_by: user.id })
+          .insert({
+            ...header,
+            created_by: user.id,
+            ...(revisionNo ? { offer_no: revisionNo } : {}),
+          })
           .select("id")
           .single();
         if (error) throw error;
@@ -857,7 +898,7 @@ function EnergyOfferPage() {
       }
       // Fırsat henüz teklif aşamasına gelmediyse ilerlet ve geçmişe yaz.
       const lead = dataQuery.data?.lead;
-      if (lead && !offerId) {
+      if (lead && !offerId && !asRevision) {
         if (["yeni", "gorusuldu", "kesif"].includes(lead.stage)) {
           await supabase
             .from("sales_leads")
@@ -874,9 +915,22 @@ function EnergyOfferPage() {
       }
       return id as string;
     },
-    onSuccess: async (id) => {
+    onSuccess: async (id, options) => {
       await queryClient.invalidateQueries({ queryKey: ["offers-page"] });
-      toast.success("Teklif kaydedildi.");
+      toast.success(
+        options?.asRevision
+          ? "Revizyon taslak olarak oluşturuldu."
+          : "Teklif kaydedildi.",
+      );
+      if (
+        !options?.asRevision &&
+        status !== "draft" &&
+        belowMarginFloor(totals.sale, totals.margin)
+      ) {
+        toast.warning(
+          `Brüt marj %${fmtNum(totals.margin * 100, 1)}: NES alt sınırı %${fmtNum(MIN_GROSS_MARGIN * 100)}'un altında.`,
+        );
+      }
       if (id !== offerId) {
         setLoadedOfferId(id);
         await navigate({ to: "/energy-offer", search: { offerId: id } });
@@ -987,7 +1041,7 @@ function EnergyOfferPage() {
       toast.error(`Önce kırmızı kontrolleri düzeltin: ${errors[0].message}`);
       return null;
     }
-    await save.mutateAsync();
+    await save.mutateAsync(undefined);
     return customerHtml();
   }
 
@@ -1091,9 +1145,20 @@ function EnergyOfferPage() {
             >
               <Printer className="mr-2 h-4 w-4" /> Teklif dosyası (PDF)
             </Button>
+            {offerId && dataQuery.data?.offer?.offer_no ? (
+              <Button
+                variant="outline"
+                className="h-11"
+                onClick={() => save.mutate({ asRevision: true })}
+                disabled={save.isPending}
+                title="Bu teklifin ekrandaki haliyle -R1, -R2… numaralı yeni bir taslak oluşturur; eski teklif olduğu gibi kalır."
+              >
+                <CopyPlus className="mr-2 h-4 w-4" /> Revizyon oluştur
+              </Button>
+            ) : null}
             <Button
               className="h-11 font-bold"
-              onClick={() => save.mutate()}
+              onClick={() => save.mutate(undefined)}
               disabled={save.isPending}
             >
               <Save className="mr-2 h-4 w-4" />
@@ -1310,8 +1375,31 @@ function EnergyOfferPage() {
               <Input
                 type="date"
                 value={validUntil}
-                onChange={(e) => setValidUntil(e.target.value)}
+                onChange={(e) => {
+                  setValidUntil(e.target.value);
+                  setValidityTouched(true);
+                }}
               />
+              {priced.length > 0 ? (
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                  Kural: {validity.days} gün ({validity.reason})
+                  {validUntil !== suggestedValidUntil ? (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="font-semibold text-primary hover:underline"
+                        onClick={() => {
+                          setValidUntil(suggestedValidUntil);
+                          setValidityTouched(true);
+                        }}
+                      >
+                        Uygula
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
             </Field>
           </section>
 
@@ -2214,10 +2302,19 @@ function EnergyOfferPage() {
                 <span>Brüt kâr</span>
                 <span>{formatMoney(totals.profit, currency)}</span>
               </div>
-              <div className="flex justify-between">
+              <div
+                className={`flex justify-between ${marginTooLow ? "font-bold text-destructive" : ""}`}
+              >
                 <span>Kâr marjı (satış üzerinden)</span>
                 <span>%{fmtNum(totals.margin * 100, 1)}</span>
               </div>
+              {marginTooLow ? (
+                <p className="mt-1 rounded bg-destructive/10 p-2 text-destructive">
+                  Brüt marj NES alt sınırı %{fmtNum(MIN_GROSS_MARGIN * 100)}
+                  &apos;un altında. Bu fiyatla göndermek bilinçli karar
+                  gerektirir.
+                </p>
+              ) : null}
               <div className="flex justify-between">
                 <span>Ort. kâr oranı (maliyet üzerinden)</span>
                 <span>
