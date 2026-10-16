@@ -24,6 +24,7 @@ import {
   ShieldAlert,
   Sun,
   Target,
+  UserCog,
   UsersRound,
   Wallet,
   Wrench,
@@ -36,6 +37,8 @@ import { isOperationalManager } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 import { GlobalSearch } from "@/components/global-search";
 import { useTheme } from "@/lib/theme";
+import { PushBanner } from "@/components/push-settings";
+import { refreshPushSubscription } from "@/lib/push";
 
 // Bu liste yalnızca work_orders.status (work_status enum) için kullanılır;
 // "not_applicable" ve "external_approval" bu enum'da yok ve sorguya
@@ -79,6 +82,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       return next;
     });
   };
+  // Bildirim izni verilmiş cihazda aboneliği bu hesaba (yeniden) bağla.
+  useEffect(() => {
+    if (user?.id) void refreshPushSubscription();
+  }, [user?.id]);
   const isMac =
     typeof navigator !== "undefined" &&
     /Mac|iPhone|iPod|iPad/.test(navigator.userAgent);
@@ -263,6 +270,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           },
           { to: "/automations", label: "Otomatik Görevler", icon: Zap },
           { to: "/reports", label: "Raporlar", icon: BarChart3 },
+          { to: "/team", label: "Ekip ve Yetkiler", icon: UserCog },
         ]
       : role === "technical_office"
         ? [
@@ -296,6 +304,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               icon: ShieldAlert,
               badgeKey: "approvals",
             },
+            { to: "/team", label: "Taşeronlar", icon: UserCog },
           ]
         : role === "contractor"
           ? [
@@ -536,6 +545,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
 
         <main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 pt-6 pb-32 sm:px-6 lg:px-8 lg:pt-8 lg:pb-12">
+          {location.pathname.startsWith("/dashboard") ? (
+            <PushBanner
+              onOpenProfile={() =>
+                navigate({ to: "/profile", hash: "bildirimler" })
+              }
+            />
+          ) : null}
           {children}
         </main>
 
@@ -768,6 +784,7 @@ const NAV_TILE_COLORS: Record<string, string> = {
   "/approvals": "bg-rose-500",
   "/automations": "bg-purple-500",
   "/reports": "bg-cyan-600",
+  "/team": "bg-slate-600",
   "/my-jobs": "bg-orange-500",
   "/my-project-tasks": "bg-indigo-500",
   "/my-projects": "bg-indigo-500",

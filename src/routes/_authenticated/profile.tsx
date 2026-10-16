@@ -10,6 +10,7 @@ import { LoadingState, PageHeader } from "@/components/page-states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PushSettings } from "@/components/push-settings";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
@@ -153,8 +154,9 @@ function ProfilePage() {
 
           <p className="flex items-start gap-2 rounded-lg border border-highlight/30 bg-highlight/5 p-3 text-xs leading-relaxed text-muted-foreground">
             <MessageCircle className="mt-0.5 h-4 w-4 shrink-0 text-highlight" />
-            WhatsApp üzerinden görev bildirimleri alabilmeniz için bu alanın
-            dolu ve doğru olması gerekir.
+            Telefon numaranız ileride WhatsApp bildirimleri için kullanılacak.
+            Şimdilik bildirimler e-posta ve aşağıdaki telefon bildirimleriyle
+            gelir.
           </p>
 
           <Button
@@ -165,6 +167,15 @@ function ProfilePage() {
           >
             {savePhone.isPending ? "Kaydediliyor..." : "Kaydet"}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card id="bildirimler" className="mt-4 max-w-lg scroll-mt-4">
+        <CardHeader>
+          <CardTitle>Telefon bildirimleri</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PushSettings />
         </CardContent>
       </Card>
     </>

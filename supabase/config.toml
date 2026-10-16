@@ -4,3 +4,7 @@ project_id = "nes-enerji-is-takip"
 # validated inside the function against Supabase Auth and the NES admin role.
 [functions.nes-workspace-control]
 verify_jwt = false
+
+# Yalnız veritabanından paylaşılan anahtarla çağrılır (bkz. send-push/index.ts).
+[functions.send-push]
+verify_jwt = false

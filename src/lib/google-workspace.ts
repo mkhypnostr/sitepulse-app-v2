@@ -186,3 +186,24 @@ export async function createGoogleCalendarEvent(input: {
   return content as Required<Pick<CalendarEventResult, "event_id">> &
     CalendarEventResult;
 }
+
+/** Google Workspace bağlantısını başlatır; dönen adres Google onay sayfasıdır. */
+export async function startGoogleWorkspaceConnection() {
+  const { data, error } = await supabase.functions.invoke<
+    WorkspaceToolResult<{ success: boolean; authorization_url?: string }>
+  >("nes-workspace-control", {
+    body: {
+      jsonrpc: "2.0",
+      id: crypto.randomUUID(),
+      method: "tools/call",
+      params: { name: "start_google_workspace_connection", arguments: {} },
+    },
+  });
+  if (error) throw error;
+  if (data?.error) {
+    throw new Error(data.error.message || "Google bağlantısı başlatılamadı");
+  }
+  const url = data?.result?.structuredContent?.authorization_url;
+  if (!url) throw new Error("Google bağlantısı başlatılamadı");
+  return url;
+}
