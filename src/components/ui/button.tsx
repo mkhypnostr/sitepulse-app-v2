@@ -7,25 +7,25 @@ import { cn } from "@/lib/utils";
 const buttonVariants = cva(
   // max-md: dokunmatik hedef en az 44px olsun (mobil); masaüstünde (md ve üstü)
   // her size varyantının kendi h-* değeri geçerli kalır, burada dokunulmaz.
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 max-md:min-h-11 max-md:min-w-11",
+  "press inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/25 disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 max-md:min-h-11 max-md:min-w-11",
   {
     variants: {
       variant: {
-        default: "bg-[#1d4ed8] text-white shadow hover:bg-[#1d4ed8]/90",
+        default: "bg-primary text-primary-foreground hover:bg-primary/85",
         destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
-          "border border-input bg-transparent shadow-sm hover:bg-accent hover:text-accent-foreground",
+          "border border-border bg-card shadow-[var(--panel-shadow)] hover:bg-accent hover:text-accent-foreground",
         secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-highlight underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-10 rounded-md px-8",
-        icon: "h-9 w-9",
+        default: "h-10 px-5 py-2",
+        sm: "h-8 px-3.5 text-xs",
+        lg: "h-12 px-7 text-base",
+        icon: "h-10 w-10",
       },
     },
     defaultVariants: {

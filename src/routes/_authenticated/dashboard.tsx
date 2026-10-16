@@ -30,6 +30,9 @@ import {
   type ProjectTaskStatus,
 } from "@/lib/projects";
 import { PageHeader, LoadingState } from "@/components/page-states";
+import { NewBadge, StatusDot } from "@/components/status-dot";
+import { DashboardHero } from "@/components/dashboard-hero";
+import { greetingForHour, isRecentlyCreated } from "@/lib/greeting";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -76,10 +79,17 @@ type VisibleProjectTask = Pick<
   | "approved_progress_pct"
   | "planned_date"
   | "responsible_id"
+  | "created_at"
 >;
 type OperationalTaskSummary = Pick<
   Database["public"]["Tables"]["operational_tasks"]["Row"],
-  "id" | "title" | "project_id" | "planned_date" | "status" | "assigned_to"
+  | "id"
+  | "title"
+  | "project_id"
+  | "planned_date"
+  | "status"
+  | "assigned_to"
+  | "created_at"
 >;
 type ContractorTask = OperationalTaskSummary & {
   projects: { name: string; project_no: string } | null;
@@ -125,8 +135,36 @@ type DashboardWorkOrder = Database["public"]["Tables"]["work_orders"]["Row"] & {
   } | null;
 };
 
-const EYEBROW =
-  "text-[8.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground";
+const EYEBROW = "text-xs font-medium text-muted-foreground";
+
+// Ivy Energy tarzı konu renkleri: her özet kartının kendine ait yumuşak bir
+// zemin tonu var; dikkat gerektiğinde (attention) border güçlenir ve başlığın
+// yanında yanıp sönen nokta çıkar.
+type StatTone = "info" | "warning" | "danger" | "success";
+const statToneCard: Record<StatTone, { calm: string; attention: string }> = {
+  info: {
+    calm: "border-border/60 bg-card",
+    attention: "border-highlight/40 bg-highlight/10",
+  },
+  warning: {
+    calm: "border-border/60 bg-card",
+    attention: "border-warning/50 bg-warning/10",
+  },
+  danger: {
+    calm: "border-border/60 bg-card",
+    attention: "border-destructive/45 bg-destructive/[0.07]",
+  },
+  success: {
+    calm: "border-border/60 bg-card",
+    attention: "border-success/40 bg-success/12",
+  },
+};
+const statToneIcon: Record<StatTone, string> = {
+  info: "bg-blue-500 text-white",
+  warning: "bg-orange-500 text-white",
+  danger: "bg-red-500 text-white",
+  success: "bg-green-500 text-white",
+};
 
 const projectStatusVariant: Record<
   ProjectStatus,
@@ -143,6 +181,27 @@ function DashboardPage() {
   const { role, user } = useAuth();
   const operationalManager = isOperationalManager(role);
   const canFinance = canSeeFinancials(role);
+
+  // Karşılama için ad: AppShell ile aynı sorgu anahtarı, önbellekten gelir.
+  const profileQuery = useQuery({
+    queryKey: ["current-profile", user?.id],
+    enabled: Boolean(user?.id),
+    queryFn: async () => {
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const firstNameRaw = profileQuery.data?.full_name?.trim().split(/\s+/)[0];
+  const firstName = firstNameRaw
+    ? firstNameRaw.charAt(0).toLocaleUpperCase("tr-TR") +
+      firstNameRaw.slice(1).toLocaleLowerCase("tr-TR")
+    : "";
 
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -205,7 +264,7 @@ function DashboardPage() {
         const { data, error } = await supabase
           .from("operational_tasks")
           .select(
-            "id, title, project_id, planned_date, status, assigned_to, projects(name, project_no)",
+            "id, title, project_id, planned_date, status, assigned_to, created_at, projects(name, project_no)",
           )
           .eq("assigned_to", user.id)
           .order("planned_date", { ascending: true, nullsFirst: false });
@@ -225,13 +284,13 @@ function DashboardPage() {
             supabase
               .from("project_tasks")
               .select(
-                "id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date, responsible_id",
+                "id, project_id, task_name, phase_name, status, approved_progress_pct, planned_date, responsible_id, created_at",
               )
               .order("planned_date", { ascending: true, nullsFirst: false }),
             supabase
               .from("operational_tasks")
               .select(
-                "id, title, project_id, planned_date, status, assigned_to",
+                "id, title, project_id, planned_date, status, assigned_to, created_at",
               )
               .order("planned_date", { ascending: true, nullsFirst: false }),
           ]);
@@ -536,6 +595,7 @@ function DashboardPage() {
     title: string;
     status: ProjectTaskStatus;
     plannedDate: string | null;
+    createdAt: string | null;
     relation: string;
     href: string;
   };
@@ -548,6 +608,7 @@ function DashboardPage() {
         title: `#${order.work_order_no} · ${order.title}`,
         status: order.status as ProjectTaskStatus,
         plannedDate: order.scheduled_at,
+        createdAt: order.created_at,
         relation: order.projects
           ? `${order.projects.project_no} · ${order.projects.name}`
           : (order.customers?.name ?? "Bağımsız saha iş emri"),
@@ -561,6 +622,7 @@ function DashboardPage() {
         title: task.task_name,
         status: task.status,
         plannedDate: task.planned_date,
+        createdAt: task.created_at,
         relation: projectNameById.get(task.project_id) ?? "Proje",
         href: `/projects/${task.project_id}#task-${task.id}`,
       })),
@@ -572,6 +634,7 @@ function DashboardPage() {
         title: task.title,
         status: task.status,
         plannedDate: task.planned_date,
+        createdAt: task.created_at,
         relation: task.project_id
           ? (projectNameById.get(task.project_id) ?? "Proje")
           : "Bağımsız görev",
@@ -719,6 +782,7 @@ function DashboardPage() {
       detail: `${orders.length} toplam iş emri`,
       icon: ListChecks,
       href: "/tasks?source=work_order&filter=open",
+      tone: "info" as const,
     },
     {
       label: "Bekleyen Onaylar",
@@ -728,7 +792,8 @@ function DashboardPage() {
         : "Bekleyen kayıt yok",
       icon: ShieldAlert,
       href: "/approvals",
-      attention: pendingApprovalCount > 0 ? ("danger" as const) : undefined,
+      tone: "warning" as const,
+      attention: pendingApprovalCount > 0,
     },
     {
       label: "Geciken Görevler",
@@ -738,7 +803,8 @@ function DashboardPage() {
         : "Geciken görev yok",
       icon: AlertTriangle,
       href: "/tasks?filter=overdue",
-      attention: overdueTaskCount > 0 ? ("danger" as const) : undefined,
+      tone: "danger" as const,
+      attention: overdueTaskCount > 0,
     },
     {
       label: "Tamamlanan (Ay)",
@@ -746,6 +812,7 @@ function DashboardPage() {
       detail: monthLabel,
       icon: CheckCircle2,
       href: "/tasks?source=work_order&filter=completed",
+      tone: "success" as const,
     },
     {
       label: "Kritik Stok",
@@ -753,9 +820,18 @@ function DashboardPage() {
       detail: lowStock.length ? "Minimum seviyenin altında" : "Kritik stok yok",
       icon: Package,
       href: "/stock",
-      attention: lowStock.length > 0 ? ("warning" as const) : undefined,
+      tone: "warning" as const,
+      attention: lowStock.length > 0,
     },
-  ];
+  ] satisfies Array<{
+    label: string;
+    value: number;
+    detail: string;
+    icon: typeof Package;
+    href: string;
+    tone: StatTone;
+    attention?: boolean;
+  }>;
 
   const dateLabel = new Intl.DateTimeFormat("tr-TR", {
     weekday: "long",
@@ -770,25 +846,42 @@ function DashboardPage() {
 
   return (
     <>
-      <PageHeader
-        title="Genel Bakış"
-        description={`${dateLabel} · ${timeLabel}`}
+      <DashboardHero
+        greeting={`${greetingForHour(now.getHours())}${firstName ? `, ${firstName}` : ""}`}
+        subtitle={`${dateLabel} · ${timeLabel}`}
+        chips={[
+          { label: "Aktif iş", value: active },
+          {
+            label: "Geciken",
+            value: overdueTaskCount,
+            tone: "danger",
+          },
+          {
+            label: "Onay bekleyen",
+            value: pendingApprovalCount,
+            tone: "danger",
+          },
+        ]}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/reports">
-                <FileDown className="h-4 w-4" /> Rapor Al
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link
-                to="/work-orders"
-                search={{ create: true, projectId: undefined }}
-              >
-                <Plus className="h-4 w-4" /> Yeni İş Emri
-              </Link>
-            </Button>
-          </div>
+          <>
+            <Link
+              to="/reports"
+              className="press inline-flex h-10 items-center gap-2 rounded-full border border-white/50 bg-white/60 px-4 text-sm font-semibold text-neutral-900 backdrop-blur-md hover:bg-white/75 dark:bg-white/20 dark:text-white"
+            >
+              <FileDown className="h-4 w-4" /> Rapor Al
+            </Link>
+            <Link
+              to="/work-orders"
+              search={{
+                create: true,
+                projectId: undefined,
+                serviceRequestId: undefined,
+              }}
+              className="press inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-white/90"
+            >
+              <Plus className="h-4 w-4" /> Yeni İş Emri
+            </Link>
+          </>
         }
       />
 
@@ -797,34 +890,31 @@ function DashboardPage() {
           <a
             key={metric.label}
             href={metric.href}
-            className="block h-full transition-transform hover:-translate-y-0.5"
+            className="press block h-full"
           >
             <Card
               className={`h-full min-h-[132px] ${
-                metric.attention === "danger"
-                  ? "border-destructive/40 bg-destructive/5"
-                  : metric.attention === "warning"
-                    ? "border-warning/40 bg-warning/5"
-                    : "border-border bg-card"
+                metric.attention
+                  ? statToneCard[metric.tone].attention
+                  : statToneCard[metric.tone].calm
               }`}
             >
               <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
                 <div className="flex items-start justify-between gap-2">
-                  <p className={EYEBROW}>{metric.label}</p>
+                  <p className={`${EYEBROW} flex items-center gap-2`}>
+                    {metric.attention ? (
+                      <StatusDot tone={metric.tone} pulse />
+                    ) : null}
+                    {metric.label}
+                  </p>
                   <div
-                    className={`shrink-0 rounded-lg p-2 ${
-                      metric.attention === "danger"
-                        ? "bg-destructive/15 text-destructive"
-                        : metric.attention === "warning"
-                          ? "bg-warning/15 text-warning"
-                          : "bg-primary/15 text-highlight"
-                    }`}
+                    className={`shrink-0 rounded-[10px] p-2 shadow-[inset_0_1px_0_oklch(1_0_0/0.25)] ${statToneIcon[metric.tone]}`}
                   >
                     <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
                   </div>
                 </div>
                 <div>
-                  <p className="text-3xl font-black leading-none sm:text-4xl">
+                  <p className="text-3xl font-semibold leading-none tracking-tight sm:text-4xl">
                     {metric.value}
                   </p>
                   <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">
@@ -1089,16 +1179,21 @@ function DashboardPage() {
                   <Icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">
-                    {item.title}
-                  </p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {item.title}
+                    </p>
+                    {isRecentlyCreated(item.createdAt, now) ? (
+                      <NewBadge />
+                    ) : null}
+                  </div>
                   <p className="truncate text-xs text-muted-foreground">
                     {item.relation}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p
-                    className={`text-xs font-bold ${
+                    className={`flex items-center justify-end gap-1.5 text-xs font-semibold ${
                       bucket === "overdue"
                         ? "text-destructive"
                         : bucket === "today" || bucket === "tomorrow"
@@ -1106,6 +1201,11 @@ function DashboardPage() {
                           : "text-muted-foreground"
                     }`}
                   >
+                    {bucket === "overdue" ? (
+                      <StatusDot tone="danger" pulse />
+                    ) : bucket === "today" ? (
+                      <StatusDot tone="warning" />
+                    ) : null}
                     {bucket === "overdue"
                       ? "Gecikti"
                       : bucket === "today"

@@ -7,6 +7,7 @@ import {
   Boxes,
   BriefcaseBusiness,
   CalendarDays,
+  ChevronRight,
   ClipboardList,
   FolderKanban,
   FolderOpen,
@@ -15,13 +16,14 @@ import {
   Map as MapIcon,
   LogOut,
   Menu,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Receipt,
   Search,
   ShieldAlert,
+  Sun,
   Target,
-  UserCog,
   UsersRound,
   Wallet,
   Wrench,
@@ -33,6 +35,7 @@ import { roleLabels } from "@/lib/domain";
 import { isOperationalManager } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 import { GlobalSearch } from "@/components/global-search";
+import { useTheme } from "@/lib/theme";
 
 // Bu liste yalnızca work_orders.status (work_status enum) için kullanılır;
 // "not_applicable" ve "external_approval" bu enum'da yok ve sorguya
@@ -51,6 +54,7 @@ type NavEntry = NavItem | { section: string };
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { role, user, signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -342,339 +346,483 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate({ to: "/", replace: true });
   };
 
-  const navLink = (item: NavItem, closeAfterClick: boolean) => {
-    const active = location.pathname.startsWith(item.to);
+  const navItems = nav.filter((item): item is NavItem => !("section" in item));
+  const currentHash = location.hash.replace(/^#/, "");
+  // Aynı sayfaya giden öğeler (Genel Bakış / Finans Özeti) için hash ayrımı:
+  // hash'li öğe yalnız hash eşleşince, hash'siz öğe ise eşleşen hash'li bir
+  // kardeşi yokken aktif sayılır.
+  const isActive = (item: NavItem) => {
+    if (!location.pathname.startsWith(item.to)) return false;
+    if (item.hash) return currentHash === item.hash;
+    return !navItems.some(
+      (other) =>
+        other !== item &&
+        other.to === item.to &&
+        other.hash &&
+        other.hash === currentHash,
+    );
+  };
+
+  const roleLabel = role ? roleLabels[role] : "Kullanıcı";
+
+  // Masaüstü menü öğesi. Daraltılmışken yalnız renkli ikon karesi görünür;
+  // üzerine gelince ya da sabitliyken ad ve rozet açılır (sidebar-reveal).
+  const navLink = (item: NavItem) => {
+    const active = isActive(item);
     const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
     return (
       <Link
         key={item.label}
         to={item.to}
         hash={item.hash}
-        onClick={() => closeAfterClick && setMobileOpen(false)}
-        className={`relative flex h-8 shrink-0 items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-semibold whitespace-nowrap transition-colors ${
+        title={item.label}
+        aria-label={item.label}
+        className={`press relative flex h-9 shrink-0 items-center gap-3 rounded-xl px-[12px] text-[14px] whitespace-nowrap ${
           active
-            ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[2px] before:-translate-y-1/2 before:rounded-r before:bg-sidebar-active-border"
-            : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+            ? "bg-sidebar-active font-semibold text-foreground shadow-[0_1px_3px_oklch(0_0_0/0.08)]"
+            : "font-medium text-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
         }`}
       >
-        <item.icon className="h-5 w-5 shrink-0" />
-        <span className="sidebar-reveal">{item.label}</span>
+        <span className="relative">
+          <NavIconTile item={item} />
+          {badgeCount > 0 ? (
+            <span className="sidebar-collapsed-only absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-card" />
+          ) : null}
+        </span>
+        <span className="sidebar-reveal truncate">{item.label}</span>
         {badgeCount > 0 ? (
-          <span className="sidebar-reveal ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
-            {badgeCount}
-          </span>
+          <CountBadge count={badgeCount} className="sidebar-reveal ml-auto" />
         ) : null}
       </Link>
     );
   };
 
-  const navigation = (closeAfterClick = false) => (
-    // flex + gap-0.5 (space-y yerine): ayırıcıların kendi margin'iyle
-    // (my-0.5) çakışmayan, öngörülebilir tek bir dikey ritim. py-2/gap-0.5,
-    // 100% zoom'da tipik masaüstü ekran yüksekliğinde en uzun rol menüsünün
-    // (admin, 12 öğe) bile scroll'a düşmeden sığması için sıkılaştırıldı;
-    // overflow-y-auto + min-h-0 güvenlik ağı olarak kalıyor — daha kısa
-    // ekranlarda menü hâlâ kayabilir, içerik asla erişilemez olmuyor.
-    <nav className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-2 py-2">
-      {nav.map((item, index) =>
-        "section" in item ? (
-          <div key={`sec-${index}`} className="mt-1.5 shrink-0">
-            <div className="sidebar-divider mx-[13px] border-t border-sidebar-border" />
-            <p className="sidebar-reveal px-[13px] pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground/80">
-              {item.section}
-            </p>
-          </div>
-        ) : (
-          navLink(item, closeAfterClick)
-        ),
-      )}
-    </nav>
-  );
-
-  const accountArea = () => (
-    <div className="border-t border-sidebar-border p-2">
-      <button
-        type="button"
-        onClick={togglePinned}
-        title={pinned ? "Menüyü daralt" : "Menüyü açık sabitle"}
-        aria-pressed={pinned}
-        className="mb-0.5 flex h-9 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-semibold whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-active-border"
-      >
-        {pinned ? (
-          <PanelLeftClose className="h-5 w-5 shrink-0" />
-        ) : (
-          <PanelLeftOpen className="h-5 w-5 shrink-0" />
-        )}
-        <span className="sidebar-reveal">
-          {pinned ? "Menüyü daralt" : "Menüyü sabitle"}
-        </span>
-      </button>
-      {/* Avatar + isim/rol tek tıklanabilir profil giriş noktası: daraltılmış
-          sidebar'da yalnızca avatar görünür ama Link tüm satırı kaplıyor, bu
-          yüzden avatara tıklamak da yeterli. aria-label, sidebar-reveal ile
-          görsel olarak gizlenen metne screen reader için net bir yedek sağlar;
-          title ise daraltılmış haldeyken native tooltip veriyor. */}
-      <Link
-        to="/profile"
-        title={`Profilim — ${displayName} · ${role ? roleLabels[role] : "Kullanıcı"}`}
-        aria-label={`Profilim: ${displayName}, ${role ? roleLabels[role] : "Kullanıcı"}`}
-        className="mb-0.5 flex items-center gap-3 rounded-lg px-[13px] py-1 transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-active-border"
-      >
-        {/* sidebar-avatar-center: daraltılmış (hover olmayan) durumda 32px
-            avatarın merkezini 20px nav ikonlarının merkez hizasına getirmek
-            için 6px sola kaydırır ((32-20)/2px, ikisi de aynı sol kenardan
-            [px-13px] başladığı için). transform layout'u etkilemediğinden
-            geniş sidebar'da (hover) transform sıfırlanınca isim/rol
-            satırının konumu hiç değişmiyor. */}
-        <span className="sidebar-avatar-center flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-black text-primary">
-          {displayName.slice(0, 1)}
-        </span>
-        <span className="sidebar-reveal leading-tight">
-          <span className="block truncate text-sm font-bold text-foreground">
-            {displayName}
-          </span>
-          <span className="block truncate text-xs font-semibold text-muted-foreground">
-            {role ? roleLabels[role] : "Kullanıcı"}
-          </span>
-        </span>
-      </Link>
-      <button
-        type="button"
-        onClick={handleSignOut}
-        className="flex h-9 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-      >
-        <LogOut className="h-5 w-5 shrink-0" />
-        <span className="sidebar-reveal">Çıkış Yap</span>
-      </button>
-    </div>
-  );
-
   return (
-    <div className="flex min-h-screen overflow-x-hidden bg-background">
-      <aside
-        data-pinned={pinned ? "true" : "false"}
-        className={`group sidebar-steel sidebar-transition sticky top-0 z-40 hidden h-screen shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex ${pinned ? "w-[236px]" : "w-14 hover:w-[236px]"}`}
+    <div className="min-h-screen bg-background lg:flex">
+      {/* Masaüstü: yerleşimde dar bir yer tutucu; asıl kenar çubuğu onun
+          üzerinde yüzer. Daraltılmışken yalnız ikonlar görünür, üzerine
+          gelince içeriğin üstüne açılır (sayfa kaymaz). Sabitlenince yer
+          tutucu da genişler. */}
+      <div
+        className={`sidebar-transition hidden shrink-0 lg:block ${pinned ? "w-[260px]" : "w-[88px]"}`}
       >
-        <Link
-          to="/dashboard"
-          className="flex h-16 shrink-0 items-center gap-3 overflow-hidden border-b border-sidebar-border px-[13px]"
+        <aside
+          data-pinned={pinned ? "true" : "false"}
+          className={`group glass sidebar-transition fixed top-3 bottom-3 left-3 z-40 flex flex-col overflow-hidden rounded-[28px] text-sidebar-foreground ${
+            pinned ? "w-[248px]" : "w-[76px] hover:w-[248px]"
+          }`}
         >
-          <img
-            src="/app-icon.svg"
-            alt="NES Enerji"
-            className="h-8 w-8 shrink-0 rounded-lg bg-white object-cover shadow-sm"
-          />
-          <span className="sidebar-reveal leading-tight">
-            <span className="block text-sm font-black tracking-wide text-foreground">
-              NES ENERJİ
-            </span>
-            <span className="block text-[9px] font-bold uppercase tracking-[0.2em] text-highlight">
-              Saha Operasyon
-            </span>
-          </span>
-        </Link>
-        <div className="shrink-0 px-2 pt-1">
-          <button
-            type="button"
-            onClick={() => setSearchOpen(true)}
-            className="flex h-9 w-full items-center gap-3 overflow-hidden rounded-lg px-[13px] text-sm font-bold whitespace-nowrap text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+          <Link
+            to="/dashboard"
+            title="NES Enerji"
+            className="flex shrink-0 items-center gap-3 px-[18px] pt-3.5 pb-2.5"
           >
-            <Search className="h-5 w-5 shrink-0" />
-            <span className="sidebar-reveal">Ara</span>
-            <span className="sidebar-reveal ml-auto shrink-0 rounded border border-sidebar-border px-1.5 py-0.5 text-[10px] font-black text-muted-foreground">
-              {isMac ? "⌘K" : "Ctrl K"}
-            </span>
-          </button>
-        </div>
-        {navigation()}
-        {accountArea()}
-      </aside>
-
-      <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex h-16 items-center border-b border-sidebar-border bg-sidebar/95 px-4 backdrop-blur lg:hidden">
-          <button
-            type="button"
-            onClick={() => setMobileOpen(true)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sidebar-border text-foreground"
-            aria-label="Menüyü aç"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-          <Link to="/dashboard" className="ml-3 flex items-center gap-2">
             <img
               src="/app-icon.svg"
               alt="NES Enerji"
-              className="h-9 w-9 rounded-lg bg-white"
+              className="h-10 w-10 shrink-0 rounded-[11px] bg-white object-cover shadow-[0_1px_3px_oklch(0_0_0/0.15)]"
             />
-            <div className="leading-tight">
-              <div className="text-sm font-black">NES ENERJİ</div>
-              <div className="text-[9px] font-bold uppercase tracking-widest text-highlight">
+            <span className="sidebar-reveal leading-tight">
+              <span className="block text-[15px] font-semibold tracking-tight text-foreground">
+                NES Enerji
+              </span>
+              <span className="block text-xs text-muted-foreground">
                 Saha Operasyon
-              </div>
-            </div>
-          </Link>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="max-w-20 truncate text-xs text-muted-foreground">
-              {displayName}
+              </span>
             </span>
+          </Link>
+          <div className="shrink-0 px-3 pb-1">
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sidebar-border text-foreground"
+              title="Ara"
+              className="press flex h-9 w-full items-center gap-3 rounded-xl bg-foreground/[0.05] px-[18px] text-sm whitespace-nowrap text-muted-foreground hover:bg-foreground/[0.08]"
+            >
+              <Search className="h-4 w-4 shrink-0" />
+              <span className="sidebar-reveal truncate">Ara</span>
+              <span className="sidebar-reveal ml-auto shrink-0 text-[11px] font-medium text-muted-foreground/80">
+                {isMac ? "⌘K" : "Ctrl K"}
+              </span>
+            </button>
+          </div>
+          <nav className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto px-3 py-2">
+            {nav.map((item, index) =>
+              "section" in item ? (
+                <div key={`sec-${index}`} className="shrink-0 pt-1.5 pb-0.5">
+                  <div className="sidebar-collapsed-only mx-3 border-t border-sidebar-border" />
+                  <p className="sidebar-reveal px-[12px] text-[12px] whitespace-nowrap font-semibold text-muted-foreground">
+                    {item.section}
+                  </p>
+                </div>
+              ) : (
+                navLink(item)
+              ),
+            )}
+          </nav>
+          <div className="shrink-0 space-y-1 border-t border-sidebar-border p-3">
+            <Link
+              to="/profile"
+              title={`Profilim — ${displayName} · ${roleLabel}`}
+              aria-label={`Profilim: ${displayName}, ${roleLabel}`}
+              className="press flex items-center gap-3 rounded-xl px-[10px] py-1.5 hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-none"
+            >
+              <Avatar name={displayName} />
+              <span className="sidebar-reveal min-w-0 leading-tight">
+                <span className="block truncate text-sm font-semibold text-foreground">
+                  {displayName}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {roleLabel}
+                </span>
+              </span>
+            </Link>
+            {/* Daraltılmışken yalnız "sabitle" düğmesi görünür; açılınca tema
+                ve çıkış da aynı satıra gelir — alt alan yüksekliği sabit kalır. */}
+            <div className="flex h-9 items-center gap-1 pl-2">
+              <SidebarIconButton
+                onClick={togglePinned}
+                icon={pinned ? PanelLeftClose : PanelLeftOpen}
+                label={pinned ? "Menüyü daralt" : "Menüyü sabitle"}
+                pressed={pinned}
+              />
+              <div className="sidebar-reveal flex items-center gap-1">
+                <SidebarIconButton
+                  onClick={toggleTheme}
+                  icon={theme === "dark" ? Sun : Moon}
+                  label={theme === "dark" ? "Açık tema" : "Koyu tema"}
+                />
+                <SidebarIconButton
+                  onClick={handleSignOut}
+                  icon={LogOut}
+                  label="Çıkış yap"
+                  danger
+                />
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        {/* Mobil: üstte cam başlık çubuğu. */}
+        <header className="glass sticky top-0 z-30 flex h-14 items-center rounded-none border-x-0 border-t-0 px-4 shadow-none lg:hidden">
+          <Link to="/dashboard" className="flex items-center gap-2.5">
+            <img
+              src="/app-icon.svg"
+              alt="NES Enerji"
+              className="h-8 w-8 rounded-[9px] bg-white shadow-[0_1px_3px_oklch(0_0_0/0.15)]"
+            />
+            <span className="text-[15px] font-semibold tracking-tight">
+              NES Enerji
+            </span>
+          </Link>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="press inline-flex h-10 w-10 items-center justify-center rounded-full text-foreground hover:bg-foreground/5"
               aria-label="Ara"
             >
               <Search className="h-5 w-5" />
             </button>
+            <Link
+              to="/profile"
+              aria-label={`Profilim: ${displayName}`}
+              className="press inline-flex h-10 w-10 items-center justify-center rounded-full"
+            >
+              <Avatar name={displayName} />
+            </Link>
           </div>
         </header>
 
-        {mobileOpen ? (
-          <div className="fixed inset-0 z-50 lg:hidden">
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-              onClick={() => setMobileOpen(false)}
-              aria-label="Menüyü kapat"
-            />
-            <aside className="relative flex h-full w-[82%] max-w-80 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl">
-              <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
-                <img
-                  src="/app-icon.svg"
-                  alt="NES Enerji"
-                  className="h-11 w-11 rounded-xl bg-white"
-                />
-                <div className="leading-tight">
-                  <div className="font-black">NES ENERJİ</div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-highlight">
-                    Saha Operasyon
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setMobileOpen(false)}
-                  className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-xl border border-sidebar-border"
-                  aria-label="Menüyü kapat"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-4">
-                {nav.map((item, index) =>
-                  "section" in item ? (
-                    <p
-                      key={`sec-mobile-${index}`}
-                      className="px-4 pt-4 pb-1 text-xs font-semibold text-muted-foreground"
-                    >
-                      {item.section}
-                    </p>
-                  ) : (
-                    (() => {
-                      const active = location.pathname.startsWith(item.to);
-                      const badgeCount = item.badgeKey
-                        ? badgeCounts[item.badgeKey]
-                        : 0;
-                      return (
-                        <Link
-                          key={item.label}
-                          to={item.to}
-                          hash={item.hash}
-                          onClick={() => setMobileOpen(false)}
-                          className={`relative flex min-h-12 items-center gap-3 rounded-xl px-4 text-sm font-bold transition-colors ${
-                            active
-                              ? "bg-sidebar-active text-foreground before:absolute before:left-0 before:top-1/2 before:h-6 before:w-[2px] before:-translate-y-1/2 before:rounded-r before:bg-sidebar-active-border"
-                              : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-                          }`}
-                        >
-                          <item.icon className="h-5 w-5 shrink-0" />
-                          {item.label}
-                          {badgeCount > 0 ? (
-                            <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-black text-primary-foreground">
-                              {badgeCount}
-                            </span>
-                          ) : null}
-                        </Link>
-                      );
-                    })()
-                  ),
-                )}
-              </nav>
-              <div className="border-t border-sidebar-border p-3">
-                <Link
-                  to="/profile"
-                  onClick={() => setMobileOpen(false)}
-                  className="mb-3 block rounded-xl bg-sidebar-accent/60 p-3 transition-colors hover:bg-sidebar-accent"
-                >
-                  <p className="text-xs font-semibold text-muted-foreground">
-                    {role ? roleLabels[role] : "Kullanıcı"}
-                  </p>
-                  <p className="mt-1 truncate text-sm font-bold text-foreground">
-                    {displayName}
-                  </p>
-                </Link>
-                <Link
-                  to="/profile"
-                  onClick={() => setMobileOpen(false)}
-                  className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-                >
-                  <UserCog className="h-5 w-5" /> Profilim
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 text-sm font-bold text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <LogOut className="h-5 w-5" /> Çıkış Yap
-                </button>
-              </div>
-            </aside>
-          </div>
-        ) : null}
-
-        <main className="mx-auto min-h-screen w-full max-w-[1600px] px-4 pt-6 pb-28 sm:px-6 lg:px-8 lg:pb-6">
+        <main className="mx-auto min-h-screen w-full max-w-[1500px] px-4 pt-6 pb-32 sm:px-6 lg:px-8 lg:pt-8 lg:pb-12">
           {children}
         </main>
 
-        {/* Telefonda alt çubuk: en sık kullanılan ekranlar + tüm menü. */}
+        {/* Mobil: iOS tarzı yüzen alt sekme çubuğu. */}
         <nav
+          className="glass fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 flex h-16 items-stretch justify-around rounded-[26px] px-1 lg:hidden"
           aria-label="Hızlı menü"
-          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-sidebar-border bg-sidebar/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
         >
           {bottomItems.map((item) => {
-            const active = location.pathname.startsWith(item.to);
+            const active = isActive(item);
             const badgeCount = item.badgeKey ? badgeCounts[item.badgeKey] : 0;
             return (
               <Link
-                key={item.to}
+                key={item.label}
                 to={item.to}
-                className={`relative flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold ${active ? "text-primary" : "text-muted-foreground"}`}
+                hash={item.hash}
+                className={`press relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[20px] ${
+                  active ? "text-primary" : "text-muted-foreground"
+                }`}
               >
-                {active ? (
-                  <span className="absolute inset-x-5 top-0 h-0.5 rounded-b bg-primary" />
-                ) : null}
                 <span className="relative">
-                  <item.icon className="h-6 w-6" />
+                  <item.icon
+                    className="h-[22px] w-[22px]"
+                    strokeWidth={active ? 2.4 : 1.9}
+                  />
                   {badgeCount > 0 ? (
-                    <span className="absolute -right-2.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                      {badgeCount}
-                    </span>
+                    <CountBadge
+                      count={badgeCount}
+                      className="absolute -top-1.5 -right-2.5"
+                    />
                   ) : null}
                 </span>
-                <span className="max-w-full truncate">{item.label}</span>
+                <span
+                  className={`max-w-full truncate px-1 text-[10px] ${active ? "font-semibold" : "font-medium"}`}
+                >
+                  {item.label}
+                </span>
               </Link>
             );
           })}
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold text-muted-foreground"
+            className={`press flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[20px] ${
+              mobileOpen ? "text-primary" : "text-muted-foreground"
+            }`}
+            aria-label="Menüyü aç"
           >
-            <Menu className="h-6 w-6" />
-            Menü
+            <Menu className="h-[22px] w-[22px]" strokeWidth={1.9} />
+            <span className="text-[10px] font-medium">Menü</span>
           </button>
         </nav>
+
+        {/* Mobil: aşağıdan açılan iOS sayfası — bölüm başlıklı gruplu liste. */}
+        {mobileOpen ? (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+              onClick={() => setMobileOpen(false)}
+              aria-label="Menüyü kapat"
+            />
+            <div className="absolute inset-x-0 bottom-0 flex max-h-[88vh] flex-col rounded-t-[28px] bg-background shadow-[var(--float-shadow)] animate-in slide-in-from-bottom duration-300">
+              <div className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-foreground/15" />
+              <div className="flex shrink-0 items-center px-5 pt-3 pb-2">
+                <h2 className="text-xl font-bold tracking-tight">Menü</h2>
+                <button
+                  type="button"
+                  onClick={() => setMobileOpen(false)}
+                  className="press ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-foreground/[0.07] text-muted-foreground"
+                  aria-label="Menüyü kapat"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileOpen(false)}
+                  className="press flex items-center gap-3 rounded-2xl bg-card p-3 shadow-[var(--panel-shadow)]"
+                >
+                  <Avatar name={displayName} size="lg" />
+                  <span className="min-w-0 leading-tight">
+                    <span className="block truncate text-[15px] font-semibold">
+                      {displayName}
+                    </span>
+                    <span className="block truncate text-[13px] text-muted-foreground">
+                      {roleLabel} · Profilim
+                    </span>
+                  </span>
+                </Link>
+                {groupNav(nav).map((group, groupIndex) => (
+                  <div key={`group-${groupIndex}`}>
+                    {group.title ? (
+                      <p className="px-4 pb-1.5 text-[13px] text-muted-foreground">
+                        {group.title}
+                      </p>
+                    ) : null}
+                    <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--panel-shadow)]">
+                      {group.items.map((item, index) => {
+                        const active = isActive(item);
+                        const badgeCount = item.badgeKey
+                          ? badgeCounts[item.badgeKey]
+                          : 0;
+                        return (
+                          <Link
+                            key={item.label}
+                            to={item.to}
+                            hash={item.hash}
+                            onClick={() => setMobileOpen(false)}
+                            className={`flex min-h-12 items-center gap-3 pl-3 transition-colors active:bg-foreground/5 ${
+                              active ? "bg-primary/[0.06]" : ""
+                            }`}
+                          >
+                            <NavIconTile item={item} />
+                            <span
+                              className={`flex min-h-12 flex-1 items-center gap-2 pr-3 text-[15px] ${
+                                index > 0 ? "border-t border-border/70" : ""
+                              } ${active ? "font-semibold text-primary" : "font-medium"}`}
+                            >
+                              <span className="truncate">{item.label}</span>
+                              {badgeCount > 0 ? (
+                                <CountBadge count={badgeCount} />
+                              ) : null}
+                              <ChevronRight
+                                className={`h-4 w-4 shrink-0 text-muted-foreground/60 ${badgeCount > 0 ? "ml-1" : "ml-auto"}`}
+                              />
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--panel-shadow)]">
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="flex min-h-12 w-full items-center gap-3 px-3 text-[15px] font-medium active:bg-foreground/5"
+                  >
+                    <IconTile className="bg-indigo-500">
+                      {theme === "dark" ? (
+                        <Sun className="h-4 w-4" />
+                      ) : (
+                        <Moon className="h-4 w-4" />
+                      )}
+                    </IconTile>
+                    {theme === "dark" ? "Açık tema" : "Koyu tema"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="flex min-h-12 w-full items-center gap-3 border-t border-border/70 px-3 text-[15px] font-medium text-destructive active:bg-foreground/5"
+                  >
+                    <IconTile className="bg-red-500">
+                      <LogOut className="h-4 w-4" />
+                    </IconTile>
+                    Çıkış Yap
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <GlobalSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
+  );
+}
+
+function SidebarIconButton({
+  onClick,
+  icon: Icon,
+  label,
+  pressed,
+  danger = false,
+}: {
+  onClick: () => void;
+  icon: LucideIcon;
+  label: string;
+  pressed?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={pressed}
+      className={`press inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground ${
+        danger
+          ? "hover:bg-destructive/10 hover:text-destructive"
+          : "hover:bg-sidebar-accent hover:text-foreground"
+      }`}
+    >
+      <Icon className="h-[18px] w-[18px]" />
+    </button>
+  );
+}
+
+// Menüyü bölüm başlıklarına göre gruplara böler (iOS gruplu liste için).
+function groupNav(entries: NavEntry[]) {
+  const groups: { title?: string; items: NavItem[] }[] = [{ items: [] }];
+  for (const entry of entries) {
+    if ("section" in entry) groups.push({ title: entry.section, items: [] });
+    else groups[groups.length - 1].items.push(entry);
+  }
+  return groups.filter((group) => group.items.length > 0);
+}
+
+// iOS Ayarlar tarzı renkli ikon kareleri: her bölümün kendi rengi var.
+const NAV_TILE_COLORS: Record<string, string> = {
+  "/dashboard": "bg-blue-500",
+  "/dashboard#finance": "bg-emerald-500",
+  "/tasks": "bg-orange-500",
+  "/calendar": "bg-red-500",
+  "/map": "bg-lime-600",
+  "/projects": "bg-indigo-500",
+  "/service-requests": "bg-zinc-500",
+  "/stock": "bg-amber-600",
+  "/shared-files": "bg-sky-500",
+  "/sales": "bg-pink-500",
+  "/offers": "bg-green-600",
+  "/customers": "bg-violet-500",
+  "/receivables": "bg-emerald-700",
+  "/measurement-tracking": "bg-teal-500",
+  "/transformer-responsibility": "bg-yellow-500",
+  "/approvals": "bg-rose-500",
+  "/automations": "bg-purple-500",
+  "/reports": "bg-cyan-600",
+  "/my-jobs": "bg-orange-500",
+  "/my-project-tasks": "bg-indigo-500",
+  "/my-projects": "bg-indigo-500",
+};
+
+function IconTile({
+  className,
+  children,
+}: {
+  className: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-white shadow-[inset_0_1px_0_oklch(1_0_0/0.25)] ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function NavIconTile({ item }: { item: NavItem }) {
+  const key = item.hash ? `${item.to}#${item.hash}` : item.to;
+  return (
+    <IconTile className={NAV_TILE_COLORS[key] ?? "bg-slate-500"}>
+      <item.icon className="h-4 w-4" strokeWidth={2.2} />
+    </IconTile>
+  );
+}
+
+// iOS bildirim rozeti: kırmızı hap içinde sayı.
+function CountBadge({
+  count,
+  className = "ml-auto",
+}: {
+  count: number;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-white tabular-nums ${className}`}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+function Avatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
+  return (
+    <span
+      className={`flex shrink-0 items-center justify-center rounded-full bg-gradient-to-b from-slate-400 to-slate-500 font-semibold text-white ${
+        size === "lg" ? "h-11 w-11 text-base" : "h-8 w-8 text-xs"
+      }`}
+    >
+      {name.slice(0, 1)}
+    </span>
   );
 }
