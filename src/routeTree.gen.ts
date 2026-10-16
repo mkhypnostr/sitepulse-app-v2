@@ -35,6 +35,7 @@ import { Route as AuthenticatedWorkOrdersRouteImport } from './routes/_authentic
 import { Route as ApiPvgisRouteImport } from './routes/api/pvgis'
 import { Route as ApiTcmbRatesRouteImport } from './routes/api/tcmb-rates'
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
+import { Route as TeklifTokenRouteImport } from './routes/teklif.$token'
 import { Route as AuthenticatedJobReportJobIdRouteImport } from './routes/_authenticated/job-report/$jobId'
 import { Route as AuthenticatedJobsJobIdRouteImport } from './routes/_authenticated/jobs/$jobId'
 import { Route as AuthenticatedProjectReportProjectIdRouteImport } from './routes/_authenticated/project-report/$projectId'
@@ -175,6 +176,11 @@ const OauthConsentRoute = OauthConsentRouteImport.update({
   path: '/oauth/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeklifTokenRoute = TeklifTokenRouteImport.update({
+  id: '/teklif/$token',
+  path: '/teklif/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedJobReportJobIdRoute =
   AuthenticatedJobReportJobIdRouteImport.update({
     id: '/job-report/$jobId',
@@ -225,6 +231,7 @@ export interface FileRoutesByFullPath {
   '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
+  '/teklif/$token': typeof TeklifTokenRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
@@ -256,6 +263,7 @@ export interface FileRoutesByTo {
   '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
+  '/teklif/$token': typeof TeklifTokenRoute
   '/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
@@ -289,6 +297,7 @@ export interface FileRoutesById {
   '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
+  '/teklif/$token': typeof TeklifTokenRoute
   '/_authenticated/job-report/$jobId': typeof AuthenticatedJobReportJobIdRoute
   '/_authenticated/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/_authenticated/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
@@ -322,6 +331,7 @@ export interface FileRouteTypes {
     | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
+    | '/teklif/$token'
     | '/job-report/$jobId'
     | '/jobs/$jobId'
     | '/project-report/$projectId'
@@ -353,6 +363,7 @@ export interface FileRouteTypes {
     | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
+    | '/teklif/$token'
     | '/job-report/$jobId'
     | '/jobs/$jobId'
     | '/project-report/$projectId'
@@ -385,6 +396,7 @@ export interface FileRouteTypes {
     | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
+    | '/teklif/$token'
     | '/_authenticated/job-report/$jobId'
     | '/_authenticated/jobs/$jobId'
     | '/_authenticated/project-report/$projectId'
@@ -398,6 +410,7 @@ export interface RootRouteChildren {
   ApiPvgisRoute: typeof ApiPvgisRoute
   ApiTcmbRatesRoute: typeof ApiTcmbRatesRoute
   OauthConsentRoute: typeof OauthConsentRoute
+  TeklifTokenRoute: typeof TeklifTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -584,6 +597,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OauthConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/teklif/$token': {
+      id: '/teklif/$token'
+      path: '/teklif/$token'
+      fullPath: '/teklif/$token'
+      preLoaderRoute: typeof TeklifTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/job-report/$jobId': {
       id: '/_authenticated/job-report/$jobId'
       path: '/job-report/$jobId'
@@ -693,6 +713,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPvgisRoute: ApiPvgisRoute,
   ApiTcmbRatesRoute: ApiTcmbRatesRoute,
   OauthConsentRoute: OauthConsentRoute,
+  TeklifTokenRoute: TeklifTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

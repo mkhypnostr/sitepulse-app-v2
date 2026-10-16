@@ -158,6 +158,11 @@ type OfferRow = {
   total_amount: number;
   currency: string;
   customers: { name: string } | null;
+  offer_share_links: {
+    view_count: number;
+    last_viewed_at: string | null;
+    revoked_at: string | null;
+  }[];
 };
 
 function OffersPage() {
@@ -179,7 +184,7 @@ function OffersPage() {
         supabase
           .from("offers")
           .select(
-            "id, offer_no, title, offer_type, status, customer_id, primary_item_description, primary_item_quantity, primary_item_unit, drive_excel_url, drive_folder_url, created_at, module_config, total_amount, currency, customers(name)",
+            "id, offer_no, title, offer_type, status, customer_id, primary_item_description, primary_item_quantity, primary_item_unit, drive_excel_url, drive_folder_url, created_at, module_config, total_amount, currency, customers(name), offer_share_links(view_count, last_viewed_at, revoked_at)",
           )
           .order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name").order("name"),
@@ -604,6 +609,28 @@ function OffersPage() {
                         {statuses[offer.status as keyof typeof statuses] ??
                           offer.status}
                       </Badge>
+                      {(() => {
+                        const link = offer.offer_share_links?.find(
+                          (item) => !item.revoked_at,
+                        );
+                        if (!link) return null;
+                        return (
+                          <p
+                            className={`mt-1 text-xs ${link.view_count > 0 ? "font-semibold text-emerald-700" : "text-muted-foreground"}`}
+                          >
+                            {link.view_count > 0
+                              ? `Müşteri açtı (${link.view_count}) · ${new Date(
+                                  link.last_viewed_at ?? "",
+                                ).toLocaleString("tr-TR", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}`
+                              : "Link gönderildi, açılmadı"}
+                          </p>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-wrap justify-end gap-1.5">

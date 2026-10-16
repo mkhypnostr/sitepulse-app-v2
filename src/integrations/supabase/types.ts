@@ -402,6 +402,85 @@ export type Database = {
         };
         Relationships: [];
       };
+      offer_share_links: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          first_viewed_at: string | null;
+          html: string;
+          id: string;
+          last_viewed_at: string | null;
+          offer_id: string;
+          revoked_at: string | null;
+          token: string;
+          updated_at: string;
+          view_count: number;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          first_viewed_at?: string | null;
+          html: string;
+          id?: string;
+          last_viewed_at?: string | null;
+          offer_id: string;
+          revoked_at?: string | null;
+          token?: string;
+          updated_at?: string;
+          view_count?: number;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          first_viewed_at?: string | null;
+          html?: string;
+          id?: string;
+          last_viewed_at?: string | null;
+          offer_id?: string;
+          revoked_at?: string | null;
+          token?: string;
+          updated_at?: string;
+          view_count?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "offer_share_links_offer_id_fkey";
+            columns: ["offer_id"];
+            isOneToOne: false;
+            referencedRelation: "offers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      offer_share_views: {
+        Row: {
+          id: number;
+          link_id: string;
+          user_agent: string | null;
+          viewed_at: string;
+        };
+        Insert: {
+          id?: never;
+          link_id: string;
+          user_agent?: string | null;
+          viewed_at?: string;
+        };
+        Update: {
+          id?: never;
+          link_id?: string;
+          user_agent?: string | null;
+          viewed_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "offer_share_views_link_id_fkey";
+            columns: ["link_id"];
+            isOneToOne: false;
+            referencedRelation: "offer_share_links";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       offers: {
         Row: {
           created_at: string;
@@ -2307,6 +2386,14 @@ export type Database = {
       get_my_app_role: {
         Args: never;
         Returns: Database["public"]["Enums"]["app_role"];
+      };
+      get_shared_offer: {
+        Args: { p_token: string; p_user_agent?: string };
+        Returns: {
+          html: string;
+          offer_no: string;
+          title: string;
+        }[];
       };
       has_role: {
         Args: {
