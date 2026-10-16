@@ -9,6 +9,7 @@ import { errorMessage } from "@/lib/domain";
 import {
   createGoogleCalendarEvent,
   getGoogleWorkspaceStatus,
+  startGoogleWorkspaceConnection,
 } from "@/lib/google-workspace";
 import { todayIso } from "@/lib/sales";
 import { Button } from "@/components/ui/button";
@@ -291,10 +292,28 @@ export function GoogleCalendarSync() {
               {errorMessage(status.error)}
             </p>
           ) : !connected ? (
-            <p className="rounded-md bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-              Google hesabı bağlı değil. Ekip ekranındaki Google Workspace
-              bölümünden hesabı bağlayın, sonra tekrar deneyin.
-            </p>
+            <div className="space-y-2 rounded-md bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+              <p>
+                Google hesabı bağlı değil. Aşağıdaki düğmeyle nesgrup.com
+                hesabınızı bağlayın; Google onayından sonra bu pencereyi yeniden
+                açın.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const url = await startGoogleWorkspaceConnection();
+                    window.open(url, "_blank", "noopener");
+                  } catch (error) {
+                    toast.error(errorMessage(error));
+                  }
+                }}
+              >
+                Google hesabını bağla
+              </Button>
+            </div>
           ) : (
             <p className="text-sm">
               Bağlı hesap: <b>{status.data?.google_account}</b>

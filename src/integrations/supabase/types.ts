@@ -2825,6 +2825,20 @@ export type Database = {
         Returns: undefined;
       };
       run_automations_now: { Args: never; Returns: number };
+      delete_push_subscription: {
+        Args: { p_endpoint: string };
+        Returns: undefined;
+      };
+      save_push_subscription: {
+        Args: {
+          p_auth: string;
+          p_endpoint: string;
+          p_p256dh: string;
+          p_user_agent?: string;
+        };
+        Returns: undefined;
+      };
+      send_test_push: { Args: never; Returns: number };
       save_customer_details: {
         Args: {
           customer_billing_address: string;
