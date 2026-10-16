@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   BatteryCharging,
   CircleX,
+  Landmark,
   FileSpreadsheet,
   Percent,
   Plus,
@@ -68,6 +69,8 @@ import {
   type PaymentStep,
   type PricedLine,
   type SarjConfig,
+  type StoredRates,
+  convert,
 } from "@/lib/energy-offer";
 import {
   AccessDenied,
@@ -94,6 +97,22 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Field, NumField } from "@/components/energy-offer/fields";
+import { fmtNum } from "@/components/energy-offer/format";
+import {
+  FinancePanel,
+  PackagePicker,
+} from "@/components/energy-offer/ges-finance-panel";
+import {
+  defaultFinance,
+  financeAnalysis,
+  formatUsdPerWp,
+  monthlyPerKwpFor,
+  panelCostPerW,
+  usdPerWp,
+  type FinanceConfig,
+} from "@/lib/energy-offer-finance";
+import type { TcmbRates } from "@/lib/tcmb";
 
 export const Route = createFileRoute("/_authenticated/energy-offer")({
   validateSearch: (search: Record<string, unknown>): { offerId?: string } =>
@@ -209,71 +228,14 @@ function addDays(days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-function fmtNum(value: number, digits = 2) {
-  return new Intl.NumberFormat("tr-TR", {
-    maximumFractionDigits: digits,
-  }).format(value);
-}
-
-/** Ondalık virgülle yazmaya izin veren sayı alanı. */
-function NumField({
-  value,
-  onChange,
-  className,
-  placeholder,
-}: {
-  value: number;
-  onChange: (value: number) => void;
-  className?: string;
-  placeholder?: string;
-}) {
-  const [text, setText] = useState(value ? fmtNum(value, 4) : "");
-  useEffect(() => {
-    if (parseDecimal(text) !== value) setText(value ? fmtNum(value, 4) : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
-  return (
-    <Input
-      inputMode="decimal"
-      className={className}
-      placeholder={placeholder}
-      value={text}
-      onChange={(event) => {
-        setText(event.target.value);
-        onChange(parseDecimal(event.target.value));
-      }}
-    />
-  );
-}
-
-function Field({
-  label,
-  children,
-  hint,
-  className,
-}: {
-  label: string;
-  children: React.ReactNode;
-  hint?: string;
-  className?: string;
-}) {
-  return (
-    <label className={`grid gap-1.5 text-sm font-medium ${className ?? ""}`}>
-      {label}
-      {children}
-      {hint ? (
-        <span className="text-xs font-normal text-muted-foreground">
-          {hint}
-        </span>
-      ) : null}
-    </label>
-  );
-}
-
 function catalogLabel(item: CatalogItem) {
   const price = `${fmtNum(Number(item.cost_amount))} ${item.currency}`;
   const src = item.code.startsWith("EP-") ? "enerjipazari" : "NES maliyet";
-  return `${item.brand ? `${item.brand} · ` : ""}${item.name} — ${price} (${src})`;
+  const perW =
+    item.template_role === "ges_panel" && Number(item.power_w) > 0
+      ? ` · ${fmtNum(panelCostPerW(item), 3)} ${item.currency}/Wp`
+      : "";
+  return `${item.brand ? `${item.brand} · ` : ""}${item.name} — ${price}${perW} (${src})`;
 }
 
 function CatalogSelect({
@@ -372,6 +334,14 @@ function EnergyOfferPage() {
   const [technical, setTechnical] =
     useState<TechnicalContent>(defaultTechnical);
   const [exporting, setExporting] = useState(false);
+  const [finance, setFinance] = useState<FinanceConfig>(defaultFinance);
+  const [showPricePerWp, setShowPricePerWp] = useState(true);
+  const [rateMeta, setRateMeta] = useState<{
+    source: "TCMB" | "manual";
+    tcmbDate?: string;
+  }>({ source: "manual" });
+  const [fetchingRates, setFetchingRates] = useState(false);
+  const [autoRatesTried, setAutoRatesTried] = useState(false);
 
   const dataQuery = useQuery({
     queryKey: ["energy-offer", offerId ?? "new"],
@@ -429,6 +399,45 @@ function EnergyOfferPage() {
     [dataQuery.data],
   );
 
+  async function fetchTcmbRates(silent = false) {
+    setFetchingRates(true);
+    try {
+      const response = await fetch("/api/tcmb-rates");
+      const body = (await response.json()) as TcmbRates & { error?: string };
+      if (!response.ok || body.error) {
+        throw new Error(body.error ?? `HTTP ${response.status}`);
+      }
+      setRates({
+        USD: Math.round(body.USD.selling * 10000) / 10000,
+        EUR: Math.round(body.EUR.selling * 10000) / 10000,
+      });
+      setRateMeta({ source: "TCMB", tcmbDate: body.date });
+      if (!silent) {
+        toast.success(
+          `TCMB döviz satış kuru (${body.date.split("-").reverse().join(".")}): USD ${fmtNum(body.USD.selling, 4)}, EUR ${fmtNum(body.EUR.selling, 4)}`,
+        );
+      }
+    } catch (error) {
+      if (!silent) {
+        toast.error(
+          `TCMB kuru alınamadı: ${errorMessage(error)}. Kuru elle yazabilirsiniz.`,
+        );
+      }
+    } finally {
+      setFetchingRates(false);
+    }
+  }
+
+  // Yeni teklifte kur boşsa TCMB'den bir kez otomatik al. Kayıtlı teklifin
+  // kuru sabit kalır; güncellemek için düğmeye basılır.
+  useEffect(() => {
+    if (offerId || autoRatesTried || !isAdmin) return;
+    setAutoRatesTried(true);
+    if (rates.USD > 0 && rates.EUR > 0) return;
+    void fetchTcmbRates(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offerId, autoRatesTried, isAdmin]);
+
   // Kayıtlı teklifi bir kez forma yükle.
   useEffect(() => {
     const offer = dataQuery.data?.offer;
@@ -444,8 +453,12 @@ function EnergyOfferPage() {
     );
     setVatRate(Number(offer.vat_rate ?? 0.2));
     setValidUntil(offer.valid_until ?? addDays(15));
-    const er = (offer.exchange_rates ?? {}) as Partial<ExchangeRates>;
+    const er = (offer.exchange_rates ?? {}) as Partial<StoredRates>;
     setRates({ USD: Number(er.USD ?? 0), EUR: Number(er.EUR ?? 0) });
+    setRateMeta({
+      source: er.source === "TCMB" ? "TCMB" : "manual",
+      tcmbDate: er.tcmbDate,
+    });
     if (isEnergyOfferConfig(offer.module_config)) {
       const cfg = offer.module_config as EnergyOfferConfig;
       setGes({ ...defaultGes, ...cfg.ges });
@@ -457,6 +470,8 @@ function EnergyOfferPage() {
       setShowLinePrices(Boolean(cfg.showLinePrices));
       setLayout(cfg.layout ?? "otomatik");
       setTechnical({ ...defaultTechnical, ...cfg.technical });
+      setFinance({ ...defaultFinance, ...cfg.finance });
+      setShowPricePerWp(cfg.showPricePerWp ?? true);
     }
     if (Array.isArray(offer.payment_plan)) {
       setPaymentPlan(offer.payment_plan as unknown as PaymentStep[]);
@@ -508,6 +523,26 @@ function EnergyOfferPage() {
     [lines, currency, rates],
   );
   const totals = useMemo(() => summarize(priced, vatRate), [priced, vatRate]);
+  const monthlyPerKwp = monthlyPerKwpFor(specificYield);
+  const gesSale = totals.byModule.find((m) => m.module === "ges")?.sale ?? 0;
+  const gesCost = priced
+    .filter((line) => line.module === "ges")
+    .reduce((sum, line) => sum + line.totalCost, 0);
+  const gesInvestment = finance.includeVat ? gesSale * (1 + vatRate) : gesSale;
+  const investmentTl =
+    currency === "TRY"
+      ? gesInvestment
+      : rates[currency] > 0
+        ? convert(gesInvestment, currency, "TRY", rates)
+        : null;
+  const financeResult = financeAnalysis({
+    kwp,
+    monthlyPerKwp,
+    finance,
+    investmentTl: investmentTl ?? 0,
+  });
+  const salePerWp = usdPerWp(gesSale, currency, rates, kwp);
+  const costPerWp = usdPerWp(gesCost, currency, rates, kwp);
   const checks = runChecks({
     customerId,
     recipient,
@@ -663,6 +698,8 @@ function EnergyOfferPage() {
         showLinePrices,
         layout,
         technical: layout === "teknik" ? technical : undefined,
+        finance,
+        showPricePerWp,
       };
       const header = {
         title: title.trim(),
@@ -681,7 +718,9 @@ function EnergyOfferPage() {
           USD: rates.USD,
           EUR: rates.EUR,
           date: new Date().toISOString().slice(0, 10),
-        } as unknown as Json,
+          source: rateMeta.source,
+          tcmbDate: rateMeta.source === "TCMB" ? rateMeta.tcmbDate : undefined,
+        } satisfies StoredRates as unknown as Json,
         payment_plan: paymentPlan as unknown as Json,
         terms_note: terms.trim() || null,
       };
@@ -770,6 +809,13 @@ function EnergyOfferPage() {
               ?.billing_address ?? "")
           : "",
       origin: window.location.origin,
+      production:
+        kwp > 0 ? productionEstimate(kwp, specificYield, monthlyPerKwp) : null,
+      finance: financeResult,
+      showPricePerWp,
+      salePerWp,
+      rateSource: rateMeta.source,
+      tcmbDate: rateMeta.tcmbDate,
     };
   }
 
@@ -1037,19 +1083,45 @@ function EnergyOfferPage() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="USD kuru (TL)" hint="1 USD kaç TL">
+            <Field
+              label="USD kuru (TL)"
+              hint={
+                rateMeta.source === "TCMB" && rateMeta.tcmbDate
+                  ? `TCMB döviz satış, ${rateMeta.tcmbDate.split("-").reverse().join(".")}`
+                  : "Elle girildi"
+              }
+            >
               <NumField
                 value={rates.USD}
-                onChange={(USD) => setRates((r) => ({ ...r, USD }))}
+                onChange={(USD) => {
+                  setRates((r) => ({ ...r, USD }));
+                  setRateMeta({ source: "manual" });
+                }}
                 placeholder="Örn. 41,85"
               />
             </Field>
             <Field label="EUR kuru (TL)" hint="1 EUR kaç TL">
-              <NumField
-                value={rates.EUR}
-                onChange={(EUR) => setRates((r) => ({ ...r, EUR }))}
-                placeholder="Örn. 48,60"
-              />
+              <div className="flex gap-1.5">
+                <NumField
+                  value={rates.EUR}
+                  onChange={(EUR) => {
+                    setRates((r) => ({ ...r, EUR }));
+                    setRateMeta({ source: "manual" });
+                  }}
+                  placeholder="Örn. 48,60"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 shrink-0 px-2.5"
+                  onClick={() => void fetchTcmbRates()}
+                  disabled={fetchingRates}
+                  title="TCMB döviz satış kurunu al (kayıtlı teklifin kuru siz basmadıkça değişmez)"
+                >
+                  <Landmark className="mr-1 h-4 w-4" />
+                  {fetchingRates ? "..." : "TCMB"}
+                </Button>
+              </div>
             </Field>
             <Field label="KDV oranı (%)">
               <NumField
@@ -1099,243 +1171,307 @@ function EnergyOfferPage() {
               />
             </div>
             {ges.enabled ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Sistem tipi">
-                  <Select
-                    value={ges.systemType}
-                    onValueChange={(v) =>
-                      setGes((g) => ({
-                        ...g,
-                        systemType: v as GesConfig["systemType"],
-                        inverterId: "",
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-11">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ongrid">
-                        On-grid (şebeke bağlantılı)
-                      </SelectItem>
-                      <SelectItem value="hibrit">Hibrit (bataryalı)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Montaj yeri">
-                  <Select
-                    value={ges.roofType}
-                    onValueChange={(v) =>
-                      setGes((g) => ({
-                        ...g,
-                        roofType: v as GesConfig["roofType"],
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="h-11">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="kiremit">Kiremit çatı</SelectItem>
-                      <SelectItem value="trapez">
-                        Trapez/sandviç çatı
-                      </SelectItem>
-                      <SelectItem value="arazi">
-                        Arazi/teras (alüminyum)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field
-                  label="Hedef güç (kWp)"
-                  hint="Girerseniz panel adedi hesaplanır"
-                >
-                  <NumField
-                    value={targetKwp}
-                    onChange={(v) => {
-                      setTargetKwp(v);
-                      if (panelW > 0) {
-                        const count = panelsForTarget(v, panelW);
-                        const newKwp = (count * panelW) / 1000;
+              <>
+                <PackagePicker
+                  ges={ges}
+                  catalog={catalog}
+                  rates={rates}
+                  onApply={(next, target) => {
+                    setGes(next);
+                    setTargetKwp(target);
+                  }}
+                />
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field label="Sistem tipi">
+                    <Select
+                      value={ges.systemType}
+                      onValueChange={(v) =>
                         setGes((g) => ({
                           ...g,
-                          panelCount: count,
-                          dcCableM: defaultDcCable(newKwp),
-                        }));
+                          systemType: v as GesConfig["systemType"],
+                          inverterId: "",
+                        }))
                       }
-                    }}
-                  />
-                </Field>
-                <Field
-                  label="Sözleşme gücü (kW)"
-                  hint="Aboneliğin bağlantı gücü"
-                >
-                  <NumField
-                    value={ges.contractPowerKw}
-                    onChange={(v) =>
-                      setGes((g) => ({ ...g, contractPowerKw: v }))
-                    }
-                  />
-                </Field>
-                <Field label="Panel" className="sm:col-span-2 lg:col-span-3">
-                  <CatalogSelect
-                    items={gesPanels}
-                    value={ges.panelId}
-                    placeholder="Panel seçin"
-                    onChange={(panelId) => {
-                      const p = catalog.find((i) => i.id === panelId);
-                      setGes((g) => {
-                        const count =
-                          targetKwp > 0 && p?.power_w
-                            ? panelsForTarget(targetKwp, p.power_w)
-                            : g.panelCount;
-                        const k = p?.power_w ? (count * p.power_w) / 1000 : 0;
-                        return {
+                    >
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ongrid">
+                          On-grid (şebeke bağlantılı)
+                        </SelectItem>
+                        <SelectItem value="hibrit">
+                          Hibrit (bataryalı)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field label="Montaj yeri">
+                    <Select
+                      value={ges.roofType}
+                      onValueChange={(v) =>
+                        setGes((g) => ({
                           ...g,
-                          panelId,
-                          panelCount: count,
-                          dcCableM: g.dcCableM || defaultDcCable(k),
-                        };
-                      });
-                    }}
-                  />
-                </Field>
-                <Field label="Panel adedi">
-                  <NumField
-                    value={ges.panelCount}
-                    onChange={(v) =>
-                      setGes((g) => ({
-                        ...g,
-                        panelCount: Math.max(0, Math.round(v)),
-                      }))
-                    }
-                  />
-                </Field>
-                <Field
-                  label="İnverter"
-                  className="sm:col-span-2 lg:col-span-3"
-                  hint={
-                    kwp > 0
-                      ? `Bu DC güç için uygun toplam inverter gücü: ${formatKwp(recommendedInverterRange(kwp).min)}–${formatKwp(recommendedInverterRange(kwp).max)} kW`
-                      : undefined
-                  }
-                >
-                  <div className="flex gap-2">
-                    <div className="min-w-0 flex-1">
-                      <CatalogSelect
-                        items={gesInverters}
-                        value={ges.inverterId}
-                        placeholder="İnverter seçin"
-                        onChange={(inverterId) =>
-                          setGes((g) => ({ ...g, inverterId }))
-                        }
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11 shrink-0"
-                      onClick={pickSuggestedInverter}
-                      disabled={kwp <= 0}
-                      title="DC/AC oranını 0,90–1,35 aralığına sokan en ekonomik inverteri seçer"
+                          roofType: v as GesConfig["roofType"],
+                        }))
+                      }
                     >
-                      <Wand2 className="mr-1.5 h-4 w-4" /> Uygun olanı seç
-                    </Button>
-                  </div>
-                </Field>
-                <Field label="İnverter adedi">
-                  <NumField
-                    value={ges.inverterCount}
-                    onChange={(v) =>
-                      setGes((g) => ({
-                        ...g,
-                        inverterCount: Math.max(0, Math.round(v)),
-                      }))
-                    }
-                  />
-                </Field>
-                {ges.systemType === "hibrit" ? (
-                  <>
-                    <Field
-                      label="Batarya"
-                      className="sm:col-span-2 lg:col-span-3"
-                    >
-                      <CatalogSelect
-                        items={gesBatteries}
-                        value={ges.batteryId}
-                        placeholder="Batarya seçin"
-                        onChange={(batteryId) =>
-                          setGes((g) => ({ ...g, batteryId }))
-                        }
-                      />
-                    </Field>
-                    <Field label="Batarya adedi">
-                      <NumField
-                        value={ges.batteryCount}
-                        onChange={(v) =>
+                      <SelectTrigger className="h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="kiremit">Kiremit çatı</SelectItem>
+                        <SelectItem value="trapez">
+                          Trapez/sandviç çatı
+                        </SelectItem>
+                        <SelectItem value="arazi">
+                          Arazi/teras (alüminyum)
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field
+                    label="Hedef güç (kWp)"
+                    hint="Girerseniz panel adedi hesaplanır"
+                  >
+                    <NumField
+                      value={targetKwp}
+                      onChange={(v) => {
+                        setTargetKwp(v);
+                        if (panelW > 0) {
+                          const count = panelsForTarget(v, panelW);
+                          const newKwp = (count * panelW) / 1000;
                           setGes((g) => ({
                             ...g,
-                            batteryCount: Math.max(0, Math.round(v)),
-                          }))
+                            panelCount: count,
+                            dcCableM: defaultDcCable(newKwp),
+                          }));
                         }
-                      />
-                    </Field>
-                  </>
-                ) : null}
-                <Field
-                  label="DC kablo (m)"
-                  hint="NES tablolarında 9–22,5 kWp için 100–120 m"
-                >
-                  <NumField
-                    value={ges.dcCableM}
-                    onChange={(v) =>
-                      setGes((g) => ({
-                        ...g,
-                        dcCableM: Math.max(0, Math.round(v)),
-                      }))
+                      }}
+                    />
+                  </Field>
+                  <Field
+                    label="Sözleşme gücü (kW)"
+                    hint="Aboneliğin bağlantı gücü"
+                  >
+                    <NumField
+                      value={ges.contractPowerKw}
+                      onChange={(v) =>
+                        setGes((g) => ({ ...g, contractPowerKw: v }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Panel" className="sm:col-span-2 lg:col-span-3">
+                    <CatalogSelect
+                      items={gesPanels}
+                      value={ges.panelId}
+                      placeholder="Panel seçin"
+                      onChange={(panelId) => {
+                        const p = catalog.find((i) => i.id === panelId);
+                        setGes((g) => {
+                          const count =
+                            targetKwp > 0 && p?.power_w
+                              ? panelsForTarget(targetKwp, p.power_w)
+                              : g.panelCount;
+                          const k = p?.power_w ? (count * p.power_w) / 1000 : 0;
+                          return {
+                            ...g,
+                            panelId,
+                            panelCount: count,
+                            dcCableM: g.dcCableM || defaultDcCable(k),
+                          };
+                        });
+                      }}
+                    />
+                  </Field>
+                  <Field label="Panel adedi">
+                    <NumField
+                      value={ges.panelCount}
+                      onChange={(v) =>
+                        setGes((g) => ({
+                          ...g,
+                          panelCount: Math.max(0, Math.round(v)),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="İnverter"
+                    className="sm:col-span-2 lg:col-span-3"
+                    hint={
+                      kwp > 0
+                        ? `Bu DC güç için uygun toplam inverter gücü: ${formatKwp(recommendedInverterRange(kwp).min)}–${formatKwp(recommendedInverterRange(kwp).max)} kW`
+                        : undefined
                     }
-                  />
-                </Field>
-                <Field label="AC kablo (m)" hint="İnverter–pano arası">
-                  <NumField
-                    value={ges.acCableM}
-                    onChange={(v) =>
-                      setGes((g) => ({
-                        ...g,
-                        acCableM: Math.max(0, Math.round(v)),
-                      }))
-                    }
-                  />
-                </Field>
-                <Field
-                  label="Özgül üretim (kWh/kWp·yıl)"
-                  hint="Muğla için tipik 1.450–1.550"
-                >
-                  <NumField
-                    value={specificYield}
-                    onChange={(v) => setSpecificYield(Math.max(0, v))}
-                  />
-                </Field>
-                <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
-                  <Badge variant="secondary">DC: {formatKwp(kwp)} kWp</Badge>
-                  {kwp > 0 ? (
-                    <Badge variant="secondary">
-                      Yıllık ~
-                      {fmtNum(productionEstimate(kwp, specificYield).annual, 0)}{" "}
-                      kWh
-                    </Badge>
+                  >
+                    <div className="flex gap-2">
+                      <div className="min-w-0 flex-1">
+                        <CatalogSelect
+                          items={gesInverters}
+                          value={ges.inverterId}
+                          placeholder="İnverter seçin"
+                          onChange={(inverterId) =>
+                            setGes((g) => ({ ...g, inverterId }))
+                          }
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 shrink-0"
+                        onClick={pickSuggestedInverter}
+                        disabled={kwp <= 0}
+                        title="DC/AC oranını 0,90–1,35 aralığına sokan en ekonomik inverteri seçer"
+                      >
+                        <Wand2 className="mr-1.5 h-4 w-4" /> Uygun olanı seç
+                      </Button>
+                    </div>
+                  </Field>
+                  <Field label="İnverter adedi">
+                    <NumField
+                      value={ges.inverterCount}
+                      onChange={(v) =>
+                        setGes((g) => ({
+                          ...g,
+                          inverterCount: Math.max(0, Math.round(v)),
+                        }))
+                      }
+                    />
+                  </Field>
+                  {ges.systemType === "hibrit" ? (
+                    <>
+                      <Field
+                        label="Batarya"
+                        className="sm:col-span-2 lg:col-span-3"
+                      >
+                        <CatalogSelect
+                          items={gesBatteries}
+                          value={ges.batteryId}
+                          placeholder="Batarya seçin"
+                          onChange={(batteryId) =>
+                            setGes((g) => ({ ...g, batteryId }))
+                          }
+                        />
+                      </Field>
+                      <Field label="Batarya adedi">
+                        <NumField
+                          value={ges.batteryCount}
+                          onChange={(v) =>
+                            setGes((g) => ({
+                              ...g,
+                              batteryCount: Math.max(0, Math.round(v)),
+                            }))
+                          }
+                        />
+                      </Field>
+                    </>
                   ) : null}
-                  <Badge variant="secondary">AC: {formatKwp(acKw)} kW</Badge>
-                  {acKw > 0 && kwp > 0 ? (
-                    <Badge variant="outline">DC/AC {fmtNum(kwp / acKw)}</Badge>
-                  ) : null}
-                  {batteryKwh > 0 ? (
-                    <Badge variant="secondary">
-                      Batarya: {formatKwp(batteryKwh)} kWh
-                    </Badge>
-                  ) : null}
+                  <Field
+                    label="DC kablo (m)"
+                    hint="NES tablolarında 9–22,5 kWp için 100–120 m"
+                  >
+                    <NumField
+                      value={ges.dcCableM}
+                      onChange={(v) =>
+                        setGes((g) => ({
+                          ...g,
+                          dcCableM: Math.max(0, Math.round(v)),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="AC kablo (m)" hint="İnverter–pano arası">
+                    <NumField
+                      value={ges.acCableM}
+                      onChange={(v) =>
+                        setGes((g) => ({
+                          ...g,
+                          acCableM: Math.max(0, Math.round(v)),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label="Özgül üretim (kWh/kWp·yıl)"
+                    hint="Muğla için tipik 1.450–1.550"
+                  >
+                    <NumField
+                      value={specificYield}
+                      onChange={(v) => setSpecificYield(Math.max(0, v))}
+                    />
+                  </Field>
+                  <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-3">
+                    <Badge variant="secondary">DC: {formatKwp(kwp)} kWp</Badge>
+                    {kwp > 0 ? (
+                      <Badge variant="secondary">
+                        Yıllık ~
+                        {fmtNum(
+                          productionEstimate(kwp, specificYield).annual,
+                          0,
+                        )}{" "}
+                        kWh
+                      </Badge>
+                    ) : null}
+                    <Badge variant="secondary">AC: {formatKwp(acKw)} kW</Badge>
+                    {acKw > 0 && kwp > 0 ? (
+                      <Badge variant="outline">
+                        DC/AC {fmtNum(kwp / acKw)}
+                      </Badge>
+                    ) : null}
+                    {batteryKwh > 0 ? (
+                      <Badge variant="secondary">
+                        Batarya: {formatKwp(batteryKwh)} kWh
+                      </Badge>
+                    ) : null}
+                    {salePerWp !== null ? (
+                      <Badge variant="outline">
+                        Satış {formatUsdPerWp(salePerWp)}
+                      </Badge>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+                <FinancePanel
+                  finance={finance}
+                  onChange={setFinance}
+                  kwp={kwp}
+                  monthlyPerKwp={monthlyPerKwp}
+                  specificYield={specificYield}
+                  investmentTl={investmentTl}
+                  ges={ges}
+                  catalog={catalog}
+                  onTargetKwp={(target) => {
+                    setTargetKwp(target);
+                    if (panelW > 0) {
+                      const count = panelsForTarget(target, panelW);
+                      setGes((g) => ({
+                        ...g,
+                        panelCount: count,
+                        dcCableM: defaultDcCable((count * panelW) / 1000),
+                      }));
+                      toast.success(
+                        `${count} panel ayarlandı. "Kalemleri oluştur"a basın.`,
+                      );
+                    } else {
+                      toast.message("Önce panel seçin; hedef güç yazıldı.");
+                    }
+                  }}
+                  onBattery={(batteryId, count) => {
+                    const wasOngrid = ges.systemType !== "hibrit";
+                    setGes((g) => ({
+                      ...g,
+                      systemType: "hibrit",
+                      batteryId,
+                      batteryCount: count,
+                      inverterId: wasOngrid ? "" : g.inverterId,
+                    }));
+                    toast.success(
+                      wasOngrid
+                        ? 'Sistem hibrite çevrildi ve batarya eklendi. Hibrit inverter seçin ("Uygun olanı seç"), sonra "Kalemleri oluştur".'
+                        : 'Batarya eklendi. Kontrolleri ve inverter uyumunu gözden geçirip "Kalemleri oluştur"a basın.',
+                    );
+                  }}
+                />
+              </>
             ) : (
               <p className="text-sm text-muted-foreground">
                 GES bu teklifte yok.
@@ -1897,10 +2033,18 @@ function EnergyOfferPage() {
                   )}
                 </span>
               </div>
-              {kwp > 0 && totals.sale > 0 ? (
+              {kwp > 0 && gesSale > 0 ? (
                 <div className="flex justify-between">
-                  <span>kWp başı satış</span>
-                  <span>{formatMoney(totals.sale / kwp, currency)}</span>
+                  <span>GES kWp başı satış</span>
+                  <span>{formatMoney(gesSale / kwp, currency)}</span>
+                </div>
+              ) : null}
+              {salePerWp !== null ? (
+                <div className="flex justify-between">
+                  <span>GES satış / maliyet</span>
+                  <span>
+                    {formatUsdPerWp(salePerWp)} / {formatUsdPerWp(costPerWp)}
+                  </span>
                 </div>
               ) : null}
             </div>
@@ -1935,6 +2079,13 @@ function EnergyOfferPage() {
                 </SelectContent>
               </Select>
             </Field>
+            <label className="flex items-center justify-between gap-3">
+              <span>Watt başı fiyatı göster ($/Wp)</span>
+              <Switch
+                checked={showPricePerWp}
+                onCheckedChange={setShowPricePerWp}
+              />
+            </label>
             <label className="flex items-center justify-between gap-3">
               <span>Ayrıntılı fiyat listesi ekle</span>
               <Switch

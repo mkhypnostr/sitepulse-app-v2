@@ -2,6 +2,8 @@
 // Arayüzden bağımsızdır: katalog + kullanıcı girdisi -> teklif kalemleri,
 // kur çevrimi, toplamlar ve kontrol uyarıları.
 
+import type { FinanceConfig } from "@/lib/energy-offer-finance";
+
 export type Currency = "TRY" | "USD" | "EUR";
 export type OfferModule = "ges" | "sarj" | "taahhut" | "genel";
 export type LineCategory = "malzeme" | "iscilik" | "nakliye_sarf" | "diger";
@@ -179,6 +181,19 @@ export type EnergyOfferConfig = {
   showLinePrices?: boolean;
   layout?: OfferLayout;
   technical?: TechnicalContent;
+  /** Tüketim ve tarife: geri dönüş hesabı ve batarya önerisi için. */
+  finance?: FinanceConfig;
+  /** Müşteri dosyasında watt başı fiyat (USD/Wp) gösterilsin mi. */
+  showPricePerWp?: boolean;
+};
+
+/** Teklifte saklanan kurlar ve kaynağı. Kaydedilen teklifin kuru sabit kalır. */
+export type StoredRates = ExchangeRates & {
+  /** Kaydın yapıldığı gün. */
+  date?: string;
+  source?: "TCMB" | "manual";
+  /** TCMB bülten tarihi (kaynak TCMB ise). */
+  tcmbDate?: string;
 };
 
 export const defaultRecipient: OfferRecipient = {
@@ -215,9 +230,20 @@ export const MONTH_LABELS = [
 /** Türkiye şebekesi için yaklaşık emisyon faktörü, kg CO2 / kWh. */
 export const GRID_CO2_KG_PER_KWH = 0.44;
 
-export function productionEstimate(kwp: number, specificYield: number) {
-  const annual = Math.round(kwp * specificYield);
-  const monthly = MONTHLY_PROFILE.map((share) => Math.round(annual * share));
+export function productionEstimate(
+  kwp: number,
+  specificYield: number,
+  /** 12 ayın kWh/kWp üretimi (PVGIS). Verilmezse Muğla profili kullanılır. */
+  monthlyPerKwp?: number[] | null,
+) {
+  const monthly =
+    monthlyPerKwp && monthlyPerKwp.length === 12
+      ? monthlyPerKwp.map((value) => Math.round(kwp * value))
+      : MONTHLY_PROFILE.map((share) => Math.round(kwp * specificYield * share));
+  const annual =
+    monthlyPerKwp && monthlyPerKwp.length === 12
+      ? monthly.reduce((sum, value) => sum + value, 0)
+      : Math.round(kwp * specificYield);
   return {
     annual,
     daily: Math.round(annual / 365),
