@@ -71,24 +71,25 @@
 
 :root {
   --radius: 0.5rem;
-  /* NES Enerji — saha operasyon standardı (koyu zemin, tek mavi vurgu).
-     Hex kaynak değerleri: içerik zemini #0c0c14, kart #111120/#1a1a28,
-     menü zemini #0e0e1c, başlık #f1f5f9, detay #3d4a5c, vurgu #60a5fa,
-     pozitif #34d399, negatif #f87171, uyarı #fbbf24. */
-  --background: oklch(0.159 0.017 284.3);
+  /* NES Enerji — saha operasyon standardı (koyu grafit zemin, tek kurumsal
+     mavi vurgu). 2026-10: mor tonlu laciverden çelik/grafit maviye geçildi;
+     kart ve menüde ince metalik ışık çizgisi. Yaklaşık hex: zemin #0e131b,
+     kart #151b25, çizgi #263040, menü #10161f, metin #f1f5f9, ikincil metin
+     #9aa6b6, vurgu #60a5fa, pozitif #34d399, negatif #f87171, uyarı #fbbf24. */
+  --background: oklch(0.165 0.014 255);
   --foreground: oklch(0.968 0.007 247.9);
-  --card: oklch(0.186 0.03 283);
+  --card: oklch(0.2 0.018 255);
   --card-foreground: oklch(0.968 0.007 247.9);
-  --popover: oklch(0.186 0.03 283);
+  --popover: oklch(0.205 0.018 255);
   --popover-foreground: oklch(0.968 0.007 247.9);
-  /* Ana vurgu rengi artık tek mavi (#60a5fa) — buton/aktif durum/metin vurgusu hepsi aynı ton. */
+  /* Ana vurgu tek mavi (#60a5fa) — buton/aktif durum/metin vurgusu aynı ton. */
   --primary: oklch(0.714 0.143 254.6);
-  --primary-foreground: oklch(0.159 0.017 284.3);
-  --secondary: oklch(0.225 0.027 284);
+  --primary-foreground: oklch(0.165 0.014 255);
+  --secondary: oklch(0.25 0.02 255);
   --secondary-foreground: oklch(0.968 0.007 247.9);
-  --muted: oklch(0.186 0.03 283);
-  --muted-foreground: oklch(0.711 0.035 256.8);
-  --accent: oklch(0.225 0.027 284);
+  --muted: oklch(0.22 0.018 255);
+  --muted-foreground: oklch(0.73 0.024 252);
+  --accent: oklch(0.25 0.02 255);
   --accent-foreground: oklch(0.968 0.007 247.9);
   --destructive: oklch(0.711 0.166 22.2);
   --destructive-foreground: oklch(0.16 0.03 25);
@@ -98,31 +99,30 @@
   --warning-foreground: oklch(0.18 0.04 84);
   --highlight: oklch(0.714 0.143 254.6);
   --highlight-foreground: oklch(0.16 0.03 259);
-  --border: oklch(0.225 0.027 284);
-  --input: oklch(0.225 0.027 284);
+  --border: oklch(0.29 0.022 255);
+  --input: oklch(0.31 0.022 255);
   --ring: oklch(0.714 0.143 254.6);
   --chart-1: oklch(0.714 0.143 254.6);
   --chart-2: oklch(0.72 0.12 225);
   --chart-3: oklch(0.773 0.153 163.2);
   --chart-4: oklch(0.837 0.164 84.4);
   --chart-5: oklch(0.711 0.166 22.2);
-  /* Sol menü zemini: düz #0e0e1c. */
-  --sidebar: oklch(0.172 0.029 282.9);
+  --sidebar: oklch(0.178 0.015 255);
   --sidebar-foreground: oklch(0.968 0.007 247.9);
   --sidebar-primary: oklch(0.714 0.143 254.6);
-  --sidebar-primary-foreground: oklch(0.159 0.017 284.3);
-  --sidebar-accent: oklch(0.207 0.032 282.9);
+  --sidebar-primary-foreground: oklch(0.165 0.014 255);
+  --sidebar-accent: oklch(0.235 0.02 255);
   --sidebar-accent-foreground: oklch(0.968 0.007 247.9);
-  --sidebar-border: oklch(0.225 0.027 284);
+  --sidebar-border: oklch(0.27 0.02 255);
   --sidebar-ring: oklch(0.714 0.143 254.6);
-  /* Aktif menü öğesi zemini #0f1529, sol border #3b82f6. */
-  --sidebar-active: oklch(0.201 0.041 269.8);
+  /* Aktif menü öğesi: hafif mavi zemin, sol kenarda kurumsal mavi çizgi. */
+  --sidebar-active: oklch(0.255 0.045 258);
   --sidebar-active-border: oklch(0.623 0.188 259.8);
 }
 
 .dark {
   /* Zaten koyu tema; light/dark toggle yok. */
-  --background: oklch(0.159 0.017 284.3);
+  --background: oklch(0.165 0.014 255);
   --foreground: oklch(0.968 0.007 247.9);
 }
 
@@ -135,12 +135,18 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     -webkit-tap-highlight-color: transparent;
+    /* IBM Plex Sans: mühendislik kökenli, Türkçe karakterleri tam, saha
+       ekranında okunaklı. Rakamlar tablolarda alt alta hizalansın diye
+       sabit genişlikli (tabular) kullanılır. */
     font-family:
+      "IBM Plex Sans",
       system-ui,
       -apple-system,
       "Segoe UI",
       Roboto,
       sans-serif;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
   }
 
   h1,
@@ -179,14 +185,14 @@
 }
 
 @utility surface-panel {
-  /* Kart standardı: #111120 zemin, 1px #1a1a28 border, 14px radius,
-     subtle gölge — her ekranda bölüm zemininden net ayrışır. */
-  background: oklch(0.186 0.03 283);
-  border: 1px solid oklch(0.225 0.027 284);
+  /* Kart standardı: grafit kart zemini, ince çizgi, 14px radius; üst
+     kenarda ince metalik ışık çizgisi — bölüm zemininden net ayrışır. */
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 0.875rem;
   box-shadow:
-    inset 0 1px 0 oklch(0.968 0.007 247.9 / 0.04),
-    0 8px 20px oklch(0.03 0.02 250 / 0.28);
+    inset 0 1px 0 oklch(0.968 0.007 247.9 / 0.06),
+    0 10px 24px oklch(0.03 0.02 250 / 0.32);
 }
 
 @utility surface-panel-accent {
@@ -210,9 +216,21 @@
     opacity 0.18s ease;
 }
 
-.group:hover .sidebar-reveal {
-  max-width: 160px;
+.group:hover .sidebar-reveal,
+.group[data-pinned="true"] .sidebar-reveal {
+  max-width: 190px;
   opacity: 1;
+}
+
+@utility sidebar-steel {
+  /* Menü: üstten alta hafif çelik geçişi ve sağ kenarda ışık çizgisi. */
+  background-image: linear-gradient(
+    180deg,
+    oklch(0.205 0.02 255) 0%,
+    oklch(0.178 0.015 255) 38%,
+    oklch(0.165 0.014 255) 100%
+  );
+  box-shadow: inset -1px 0 0 oklch(0.968 0.007 247.9 / 0.05);
 }
 
 @utility sidebar-avatar-center {
@@ -225,7 +243,8 @@
   transition: transform 0.22s ease;
 }
 
-.group:hover .sidebar-avatar-center {
+.group:hover .sidebar-avatar-center,
+.group[data-pinned="true"] .sidebar-avatar-center {
   transform: translateX(0);
 }
 
