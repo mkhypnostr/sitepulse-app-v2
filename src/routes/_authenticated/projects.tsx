@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   createFileRoute,
   Link,
@@ -62,6 +62,10 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/_authenticated/projects")({
+  validateSearch: (search: Record<string, unknown>): { fromLead?: string } =>
+    typeof search.fromLead === "string" && search.fromLead
+      ? { fromLead: search.fromLead }
+      : {},
   component: ProjectsRoute,
 });
 
@@ -106,6 +110,46 @@ function ProjectsPage() {
     "all",
   );
   const [form, setForm] = useState(initialForm);
+  const { fromLead } = Route.useSearch();
+  const [linkLeadId, setLinkLeadId] = useState<string | null>(null);
+
+  // Satış Takibi'nden "Proje oluştur" ile gelindiyse formu fırsattan doldur.
+  useEffect(() => {
+    if (!fromLead || linkLeadId === fromLead) return;
+    setLinkLeadId(fromLead);
+    void (async () => {
+      const { data: lead, error } = await supabase
+        .from("sales_leads")
+        .select(
+          "id, title, customer_id, location, notes, estimated_value, currency, offers(total_amount, currency, status)",
+        )
+        .eq("id", fromLead)
+        .maybeSingle();
+      if (error || !lead) {
+        toast.error("Satış fırsatı bulunamadı.");
+        return;
+      }
+      const approved = (lead.offers ?? []).find(
+        (offer) => offer.status === "approved",
+      );
+      const amount =
+        approved && approved.currency === "TRY"
+          ? Number(approved.total_amount)
+          : lead.currency === "TRY" && lead.estimated_value
+            ? Number(lead.estimated_value)
+            : null;
+      setForm({
+        ...initialForm,
+        customerId: lead.customer_id ?? "",
+        name: lead.title,
+        quotedAmount: amount ? String(amount) : "",
+        contractAmount: amount ? String(amount) : "",
+        district: lead.location ?? "",
+        description: lead.notes ?? "",
+      });
+      setOpen(true);
+    })();
+  }, [fromLead, linkLeadId]);
 
   const pageQuery = useQuery({
     queryKey: ["projects-page"],
@@ -190,15 +234,42 @@ function ProjectsPage() {
         },
       );
       if (error) throw error;
-      const { error: financeError } = await supabase.from("projects").update({
-        referring_architect: form.referringArchitect.trim() || null,
-        quoted_amount: form.quotedAmount.trim() ? Number(form.quotedAmount.replace(",", ".")) : null,
-        contract_amount: form.contractAmount.trim() ? Number(form.contractAmount.replace(",", ".")) : null,
-      }).eq("id", data);
+      const { error: financeError } = await supabase
+        .from("projects")
+        .update({
+          referring_architect: form.referringArchitect.trim() || null,
+          quoted_amount: form.quotedAmount.trim()
+            ? Number(form.quotedAmount.replace(",", "."))
+            : null,
+          contract_amount: form.contractAmount.trim()
+            ? Number(form.contractAmount.replace(",", "."))
+            : null,
+        })
+        .eq("id", data);
       if (financeError) throw financeError;
       return data;
     },
     onSuccess: async (projectId) => {
+      if (linkLeadId) {
+        // Fırsatı projeye bağla ve kazanıldı yap; fırsatın teklifleri de projeye bağlanır.
+        await supabase
+          .from("sales_leads")
+          .update({ project_id: projectId, stage: "kazanildi" })
+          .eq("id", linkLeadId);
+        await supabase
+          .from("offers")
+          .update({ project_id: projectId })
+          .eq("lead_id", linkLeadId)
+          .is("project_id", null);
+        await supabase.from("sales_activities").insert({
+          lead_id: linkLeadId,
+          customer_id: form.customerId || null,
+          kind: "not",
+          summary: `Proje açıldı: ${form.name.trim()}`,
+        });
+        setLinkLeadId(null);
+        await queryClient.invalidateQueries({ queryKey: ["sales-page"] });
+      }
       await queryClient.invalidateQueries({ queryKey: ["projects-page"] });
       setOpen(false);
       setForm(initialForm);
@@ -373,7 +444,13 @@ function ProjectsPage() {
           <section className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-medium">
               Yönlendiren mimar / mimarlık ofisi
-              <Input value={form.referringArchitect} onChange={(event) => setForm({ ...form, referringArchitect: event.target.value })} placeholder="Örn. Ayşe Yılmaz · ABC Mimarlık" />
+              <Input
+                value={form.referringArchitect}
+                onChange={(event) =>
+                  setForm({ ...form, referringArchitect: event.target.value })
+                }
+                placeholder="Örn. Ayşe Yılmaz · ABC Mimarlık"
+              />
             </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Dış Referans Numarası
@@ -412,8 +489,28 @@ function ProjectsPage() {
                 }
               />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium"><span>Teklif bedeli (KDV hariç)</span><Input inputMode="decimal" value={form.quotedAmount} onChange={(event) => setForm({ ...form, quotedAmount: event.target.value })} placeholder="Örn. 250000" /></label>
-            <label className="grid gap-1.5 text-sm font-medium"><span>Sözleşme / onaylanan bedel (KDV hariç)</span><Input inputMode="decimal" value={form.contractAmount} onChange={(event) => setForm({ ...form, contractAmount: event.target.value })} placeholder="Örn. 235000" /></label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              <span>Teklif bedeli (KDV hariç)</span>
+              <Input
+                inputMode="decimal"
+                value={form.quotedAmount}
+                onChange={(event) =>
+                  setForm({ ...form, quotedAmount: event.target.value })
+                }
+                placeholder="Örn. 250000"
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              <span>Sözleşme / onaylanan bedel (KDV hariç)</span>
+              <Input
+                inputMode="decimal"
+                value={form.contractAmount}
+                onChange={(event) =>
+                  setForm({ ...form, contractAmount: event.target.value })
+                }
+                placeholder="Örn. 235000"
+              />
+            </label>
             <label className="grid gap-1.5 text-sm font-medium">
               Ada
               <Input

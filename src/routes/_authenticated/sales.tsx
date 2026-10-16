@@ -53,7 +53,7 @@ export const Route = createFileRoute("/_authenticated/sales")({
 });
 
 const LEAD_SELECT =
-  "id, title, customer_id, company_name, contact_name, phone, email, location, service, source, stage, estimated_value, currency, expected_close, next_action, next_action_at, lost_reason, notes, created_at, updated_at, stage_changed_at, closed_at, customers(name), offers(id, offer_no, title, status, total_amount, currency, offer_share_links(created_at, view_count, last_viewed_at, revoked_at))";
+  "id, title, customer_id, company_name, contact_name, phone, email, location, service, source, stage, estimated_value, currency, expected_close, next_action, next_action_at, lost_reason, notes, created_at, updated_at, stage_changed_at, closed_at, project_id, customers(name), offers(id, offer_no, title, status, total_amount, currency, offer_share_links(created_at, view_count, last_viewed_at, revoked_at))";
 
 const tl = (value: number) =>
   new Intl.NumberFormat("tr-TR", {
