@@ -113,6 +113,14 @@ import {
   type FinanceConfig,
 } from "@/lib/energy-offer-finance";
 import type { TcmbRates } from "@/lib/tcmb";
+import {
+  azimuthLabel,
+  defaultSite,
+  layoutSite,
+  layoutSvg,
+  type SiteConfig,
+} from "@/lib/solar-site";
+import { SiteDesigner } from "@/components/energy-offer/site-designer";
 
 export const Route = createFileRoute("/_authenticated/energy-offer")({
   validateSearch: (search: Record<string, unknown>): { offerId?: string } =>
@@ -341,6 +349,8 @@ function EnergyOfferPage() {
     tcmbDate?: string;
   }>({ source: "manual" });
   const [fetchingRates, setFetchingRates] = useState(false);
+  const [site, setSite] = useState<SiteConfig>(defaultSite);
+  const [showDesigner, setShowDesigner] = useState(false);
   const [autoRatesTried, setAutoRatesTried] = useState(false);
 
   const dataQuery = useQuery({
@@ -472,6 +482,9 @@ function EnergyOfferPage() {
       setTechnical({ ...defaultTechnical, ...cfg.technical });
       setFinance({ ...defaultFinance, ...cfg.finance });
       setShowPricePerWp(cfg.showPricePerWp ?? true);
+      const loadedSite = { ...defaultSite, ...cfg.site };
+      setSite(loadedSite);
+      setShowDesigner(loadedSite.faces.length > 0 || loadedSite.lat !== null);
     }
     if (Array.isArray(offer.payment_plan)) {
       setPaymentPlan(offer.payment_plan as unknown as PaymentStep[]);
@@ -523,7 +536,8 @@ function EnergyOfferPage() {
     [lines, currency, rates],
   );
   const totals = useMemo(() => summarize(priced, vatRate), [priced, vatRate]);
-  const monthlyPerKwp = monthlyPerKwpFor(specificYield);
+  const monthlyPerKwp = monthlyPerKwpFor(specificYield, site.pvgis);
+  const siteLayout = useMemo(() => layoutSite(site), [site]);
   const gesSale = totals.byModule.find((m) => m.module === "ges")?.sale ?? 0;
   const gesCost = priced
     .filter((line) => line.module === "ges")
@@ -560,6 +574,26 @@ function EnergyOfferPage() {
       field: "genel",
       message: "Teklif başlığı eksik.",
       fix: "Genel bilgiler > Teklif başlığı alanına en az 3 karakter yazın.",
+    });
+  }
+  if (
+    ges.enabled &&
+    site.faces.length > 0 &&
+    ges.panelCount > siteLayout.total
+  ) {
+    checks.push({
+      level: "warning",
+      field: "ges",
+      message: `GES: çizilen çatıya ${siteLayout.total} panel sığıyor, teklifte ${ges.panelCount} panel var.`,
+      fix: 'Panel adedini azaltın ("Panel adedini teklife aktar"), daha güçlü panel seçin, kenar boşluğunu küçültün veya başka bir yüzey çizin.',
+    });
+  }
+  if (ges.enabled && kwp > 0 && site.pvgis === null && site.lat !== null) {
+    checks.push({
+      level: "warning",
+      field: "ges",
+      message: "GES: konum/çatı değişti, üretim PVGIS ile güncellenmedi.",
+      fix: 'Saha bölümünde "PVGIS üretimini al"a basın; basmazsanız elle yazılan özgül üretim kullanılır.',
     });
   }
   const errors = checks.filter((c) => c.level === "error");
@@ -700,6 +734,7 @@ function EnergyOfferPage() {
         technical: layout === "teknik" ? technical : undefined,
         finance,
         showPricePerWp,
+        site,
       };
       const header = {
         title: title.trim(),
@@ -816,6 +851,31 @@ function EnergyOfferPage() {
       salePerWp,
       rateSource: rateMeta.source,
       tcmbDate: rateMeta.tcmbDate,
+      layout:
+        siteLayout.total > 0
+          ? {
+              svg: layoutSvg(site, ges.panelCount),
+              faces: site.faces.map((face, index) => ({
+                name: face.name,
+                panels: Math.min(
+                  siteLayout.faces[index]?.count ?? 0,
+                  Math.max(
+                    0,
+                    ges.panelCount -
+                      siteLayout.faces
+                        .slice(0, index)
+                        .reduce((sum, f) => sum + f.count, 0),
+                  ),
+                ),
+                tilt: face.tilt,
+                direction: azimuthLabel(face.azimuth),
+                areaM2: siteLayout.faces[index]?.areaM2 ?? 0,
+              })),
+            }
+          : null,
+      productionSource: site.pvgis
+        ? `PVGIS (${site.pvgis.db}), ${site.pvgis.lat.toFixed(4)}, ${site.pvgis.lon.toFixed(4)}`
+        : "",
     };
   }
 
@@ -1393,7 +1453,11 @@ function EnergyOfferPage() {
                   </Field>
                   <Field
                     label="Özgül üretim (kWh/kWp·yıl)"
-                    hint="Muğla için tipik 1.450–1.550"
+                    hint={
+                      site.pvgis
+                        ? `PVGIS: ${fmtNum(site.pvgis.kwhPerKwp, 0)} (eğim ${site.pvgis.tilt}°, ${azimuthLabel(site.pvgis.azimuth)})`
+                        : "Muğla için tipik 1.450–1.550; PVGIS ile hesaplatın"
+                    }
                   >
                     <NumField
                       value={specificYield}
@@ -1430,6 +1494,39 @@ function EnergyOfferPage() {
                     ) : null}
                   </div>
                 </div>
+                {showDesigner ? (
+                  <SiteDesigner
+                    site={site}
+                    onChange={setSite}
+                    panelW={panelW}
+                    currentPanelCount={ges.panelCount}
+                    defaultMount={ges.roofType === "arazi" ? "sehpa" : "cati"}
+                    onApplyPanelCount={(count) => {
+                      setGes((g) => ({
+                        ...g,
+                        panelCount: count,
+                        dcCableM: defaultDcCable((count * panelW) / 1000),
+                      }));
+                      setTargetKwp(0);
+                      toast.success(
+                        `${count} panel teklife aktarıldı. İnverteri kontrol edip "Kalemleri oluştur"a basın.`,
+                      );
+                    }}
+                    onPvgis={(result) => setSpecificYield(result.kwhPerKwp)}
+                    onLocationLabel={(label) => {
+                      if (!projectLocation.trim()) setProjectLocation(label);
+                    }}
+                  />
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4 w-full"
+                    onClick={() => setShowDesigner(true)}
+                  >
+                    Haritada çatı çiz ve PVGIS üretimi al
+                  </Button>
+                )}
                 <FinancePanel
                   finance={finance}
                   onChange={setFinance}

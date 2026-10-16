@@ -87,6 +87,19 @@ export type OfferDocumentInput = {
   /** GES satışının USD/Wp karşılığı (KDV hariç). */
   salePerWp?: number | null;
   rateSource?: "TCMB" | "manual";
+  /** Çatı yerleşim planı (SVG) ve yüzey özeti. */
+  layout?: {
+    svg: string;
+    faces: {
+      name: string;
+      panels: number;
+      tilt: number;
+      direction: string;
+      areaM2: number;
+    }[];
+  } | null;
+  /** Üretim tahmininin kaynağı, ör. "PVGIS (PVGIS-SARAH3), 37.2, 28.3". */
+  productionSource?: string;
   tcmbDate?: string;
   /** Uygulamanın kök adresi (logo ve görseller için), ör. https://app.nesgrup.com */
   origin: string;
@@ -274,6 +287,8 @@ p{margin:0 0 4mm;text-align:justify}
 .kpis small{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;color:#4a5556}
 .kpis b{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:13pt;margin-top:1mm}
 .chart{width:100%;height:auto;display:block;margin-bottom:6mm}
+.plan{border:1.4px solid #222;padding:4mm;height:150mm;display:flex;align-items:center;justify-content:center}
+.plan svg{max-width:100%;max-height:100%}
 .note{font-size:7.5pt;line-height:1.5;color:#444;font-family:"Ubuntu",Arial,sans-serif}
 `;
 
@@ -489,7 +504,21 @@ ${cumulativeChart(finance.cumulative)}
 <div class="price-title" style="margin-top:0">Aylık tahmini üretim (kWh)</div>
 ${monthlyChart(production.monthly)}
 ${financeHtml}
-<p class="note">Üretim tahminidir; panel yönü, eğimi, gölgelenme ve yıllık güneşlenme farkına göre ±%10 değişebilir.</p>
+<p class="note">Üretim tahminidir${ctx.input.productionSource ? `; kaynak: ${esc(ctx.input.productionSource)} — Avrupa Komisyonu JRC uydu ışınım verisi, sistem kayıpları dahil` : ""}. Panel yönü, eğimi, gölgelenme ve yıllık güneşlenme farkına göre ±%10 değişebilir.</p>
+</div>${band()}</section>`;
+}
+
+function layoutPage(ctx: Ctx): string | null {
+  const layout = ctx.input.layout;
+  if (!layout || !layout.svg) return null;
+  const rows = layout.faces.filter((face) => face.panels > 0);
+  return `<section class="page"><div class="body">
+<div class="h">Panel yerleşimi</div>
+<div class="sub">Uydu görüntüsü üzerinden yapılan ön yerleşim; kesin yerleşim keşif ve statik inceleme sonrası netleşir.</div>
+<div class="plan">${layout.svg}</div>
+<table class="grid-table" style="margin-top:6mm"><thead><tr><th style="text-align:left">YÜZEY</th><th>PANEL</th><th>EĞİM</th><th>YÖN</th><th>ALAN</th></tr></thead><tbody>
+${rows.map((face) => `<tr><td>${esc(face.name)}</td><td class="c">${face.panels}</td><td class="c">${face.tilt}°</td><td class="c">${esc(face.direction)}</td><td class="c">${num(face.areaM2, 0)} m²</td></tr>`).join("")}
+</tbody></table>
 </div>${band()}</section>`;
 }
 
@@ -659,6 +688,10 @@ ${scope.map(([text, included]) => `<tr><td>${esc(text)}</td><td class="c">${incl
 <table class="grid-table proc" style="margin-top:8mm"><tbody>
 ${gesProcess.map(([when, items]) => `<tr><td>${esc(when)}</td><td>${items.map(esc).join("<br>")}</td></tr>`).join("")}
 </tbody></table></div>${band()}</section>`);
+
+  // 6a) Panel yerleşimi
+  const planPage = layoutPage(ctx);
+  if (planPage) pages.push(planPage);
 
   // 6b) Üretim ve kazanç
   const prodPage = productionPage(ctx);

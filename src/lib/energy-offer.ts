@@ -3,6 +3,7 @@
 // kur çevrimi, toplamlar ve kontrol uyarıları.
 
 import type { FinanceConfig } from "@/lib/energy-offer-finance";
+import type { SiteConfig } from "@/lib/solar-site";
 
 export type Currency = "TRY" | "USD" | "EUR";
 export type OfferModule = "ges" | "sarj" | "taahhut" | "genel";
@@ -185,6 +186,8 @@ export type EnergyOfferConfig = {
   finance?: FinanceConfig;
   /** Müşteri dosyasında watt başı fiyat (USD/Wp) gösterilsin mi. */
   showPricePerWp?: boolean;
+  /** Konum, çatı yüzeyleri ve PVGIS sonucu. */
+  site?: SiteConfig;
 };
 
 /** Teklifte saklanan kurlar ve kaynağı. Kaydedilen teklifin kuru sabit kalır. */

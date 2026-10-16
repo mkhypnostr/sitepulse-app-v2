@@ -143,13 +143,19 @@ export function recommendedKwpForConsumption(
   return round2((monthlyConsumptionKwh * 12) / specificYield);
 }
 
-/** 12 aylık kWh/kWp dizisi: PVGIS sonucu varsa o, yoksa özgül üretim ×
- * Muğla profili. */
+/** 12 aylık kWh/kWp dizisi. PVGIS sonucu varsa onun aylık dağılımı
+ * kullanılır ve yıllık toplam girilen özgül üretime ölçeklenir (özgül üretim
+ * elle değiştirilirse dağılım korunur); yoksa Muğla profili. */
 export function monthlyPerKwpFor(
   specificYield: number,
-  pvgisMonthly?: number[] | null,
+  pvgis?: { kwhPerKwp: number; monthlyPerKwp: number[] } | null,
 ) {
-  if (pvgisMonthly && pvgisMonthly.length === 12) return pvgisMonthly;
+  if (pvgis && pvgis.monthlyPerKwp.length === 12) {
+    const sum = pvgis.monthlyPerKwp.reduce((s, v) => s + v, 0);
+    if (sum > 0) {
+      return pvgis.monthlyPerKwp.map((v) => (v * specificYield) / sum);
+    }
+  }
   return MONTHLY_PROFILE.map((share) => specificYield * share);
 }
 
