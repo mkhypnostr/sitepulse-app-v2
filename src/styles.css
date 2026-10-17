@@ -264,7 +264,7 @@
 @utility sidebar-transition {
   /* iOS benzeri yumuşak açılış: hızlı başlar, yavaşlayarak durur. */
   transition:
-    width 0.36s cubic-bezier(0.32, 0.72, 0, 1),
+    width 0.26s cubic-bezier(0.32, 0.72, 0, 1),
     background-color 0.3s ease,
     box-shadow 0.3s ease;
 }
@@ -277,7 +277,7 @@
   overflow: hidden;
   transform: translateX(-4px);
   transition:
-    max-width 0.36s cubic-bezier(0.32, 0.72, 0, 1),
+    max-width 0.26s cubic-bezier(0.32, 0.72, 0, 1),
     opacity 0.14s ease,
     transform 0.2s ease;
 }
@@ -289,9 +289,9 @@
   opacity: 1;
   transform: none;
   transition:
-    max-width 0.36s cubic-bezier(0.32, 0.72, 0, 1),
-    opacity 0.24s ease 0.1s,
-    transform 0.3s cubic-bezier(0.32, 0.72, 0, 1) 0.1s;
+    max-width 0.26s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.18s ease 0.06s,
+    transform 0.22s cubic-bezier(0.32, 0.72, 0, 1) 0.06s;
 }
 
 .group[data-expanded="true"] .sidebar-collapsed-only {
