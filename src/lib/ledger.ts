@@ -21,8 +21,20 @@ export const paymentMethodLabels = {
 } as const;
 export type PaymentMethod = keyof typeof paymentMethodLabels;
 
+/** Hareketin geldiği yer. "cari" dışındakiler kendi modülünde düzenlenir;
+ * cari hesapta salt okunurdur (customer_ledger_feed görünümü). */
+export type LedgerSource = "cari" | "trafo" | "olcum";
+
+export const ledgerSourceLabels: Record<LedgerSource, string> = {
+  cari: "Cari hesap",
+  trafo: "Trafo Sorumluluğu",
+  olcum: "Ölçüm ve Tahsilat",
+};
+
 export type LedgerEntry = {
   id: string;
+  /** Yoksa "cari" kabul edilir. */
+  source?: LedgerSource;
   customer_id: string;
   project_id: string | null;
   entry_type: LedgerType;
