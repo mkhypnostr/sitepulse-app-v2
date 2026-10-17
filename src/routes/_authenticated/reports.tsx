@@ -45,6 +45,26 @@ export const Route = createFileRoute("/_authenticated/reports")({
 
 const NES_LOGO_URL = NES_COMPANY.logoPath;
 
+async function withStockCosts<
+  T extends {
+    stock_items: { id: string; code: string | null; name: string } | null;
+  },
+>(rows: T[]) {
+  const { data, error } = await supabase
+    .from("stock_item_costs")
+    .select("stock_item_id, unit_price");
+  if (error) throw error;
+  const price = new Map(
+    (data ?? []).map((row) => [row.stock_item_id, Number(row.unit_price)]),
+  );
+  return rows.map((row) => ({
+    ...row,
+    stock_items: row.stock_items
+      ? { ...row.stock_items, unit_price: price.get(row.stock_items.id) ?? 0 }
+      : null,
+  }));
+}
+
 const monthOptions = [
   { value: "all", label: "Tüm Aylar" },
   { value: "01", label: "Ocak" },
@@ -100,7 +120,7 @@ function ReportsPage() {
         supabase
           .from("work_order_materials")
           .select(
-            "*, stock_items(code, name, unit_price), work_orders(work_order_no, title, customers(name))",
+            "*, stock_items(id, code, name), work_orders(work_order_no, title, customers(name))",
           )
           .gte("created_at", start)
           .lt("created_at", end)
@@ -137,7 +157,8 @@ function ReportsPage() {
       );
 
       return {
-        materials: materialsResult.data,
+        // Birim fiyatlar yalnız yöneticiye açık stock_item_costs tablosunda.
+        materials: await withStockCosts(materialsResult.data ?? []),
         approvals: completions.map((item) => ({
           id: item.id,
           approved_at: item.reviewed_at ?? item.submitted_at,
