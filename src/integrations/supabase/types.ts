@@ -1039,6 +1039,8 @@ export type Database = {
       };
       operational_tasks: {
         Row: {
+          assigned_at: string | null;
+          assigned_by: string | null;
           assigned_to: string | null;
           completed_at: string | null;
           completed_by: string | null;
@@ -1055,6 +1057,8 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          assigned_at?: string | null;
+          assigned_by?: string | null;
           assigned_to?: string | null;
           completed_at?: string | null;
           completed_by?: string | null;
@@ -1071,6 +1075,8 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          assigned_at?: string | null;
+          assigned_by?: string | null;
           assigned_to?: string | null;
           completed_at?: string | null;
           completed_by?: string | null;
@@ -1087,6 +1093,13 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "operational_tasks_assigned_by_fkey";
+            columns: ["assigned_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "operational_tasks_assigned_to_fkey";
             columns: ["assigned_to"];
@@ -1510,6 +1523,8 @@ export type Database = {
         Row: {
           actual_date: string | null;
           approved_progress_pct: number;
+          assigned_at: string | null;
+          assigned_by: string | null;
           completed_at: string | null;
           completed_by: string | null;
           created_at: string;
@@ -1534,6 +1549,8 @@ export type Database = {
         Insert: {
           actual_date?: string | null;
           approved_progress_pct?: number;
+          assigned_at?: string | null;
+          assigned_by?: string | null;
           completed_at?: string | null;
           completed_by?: string | null;
           created_at?: string;
@@ -1558,6 +1575,8 @@ export type Database = {
         Update: {
           actual_date?: string | null;
           approved_progress_pct?: number;
+          assigned_at?: string | null;
+          assigned_by?: string | null;
           completed_at?: string | null;
           completed_by?: string | null;
           created_at?: string;
@@ -1580,6 +1599,13 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "project_tasks_assigned_by_fkey";
+            columns: ["assigned_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "project_tasks_completed_by_fkey";
             columns: ["completed_by"];
@@ -2617,24 +2643,34 @@ export type Database = {
       };
       work_order_assignments: {
         Row: {
+          assigned_by: string | null;
           contractor_id: string;
           created_at: string;
           id: string;
           work_order_id: string;
         };
         Insert: {
+          assigned_by?: string | null;
           contractor_id: string;
           created_at?: string;
           id?: string;
           work_order_id: string;
         };
         Update: {
+          assigned_by?: string | null;
           contractor_id?: string;
           created_at?: string;
           id?: string;
           work_order_id?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "work_order_assignments_assigned_by_fkey";
+            columns: ["assigned_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "work_order_assignments_work_order_id_fkey";
             columns: ["work_order_id"];
