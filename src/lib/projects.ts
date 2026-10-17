@@ -86,6 +86,28 @@ export function formatProjectDate(value: string | null | undefined) {
   );
 }
 
+/** Hedef bitiş tarihi geçmiş ve hâlâ açık (taslak, devam, beklemede) proje
+ * için geçen gün sayısı; değilse 0. */
+export function projectOverdueDays(project: {
+  target_end_date: string | null;
+  status: ProjectStatus;
+}) {
+  if (!project.target_end_date) return 0;
+  if (project.status === "completed" || project.status === "cancelled")
+    return 0;
+  const [year, month, day] = project.target_end_date
+    .slice(0, 10)
+    .split("-")
+    .map(Number);
+  const target = new Date(year, month - 1, day);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(
+    0,
+    Math.round((today.getTime() - target.getTime()) / 86400000),
+  );
+}
+
 export function formatProjectDateTime(value: string | null | undefined) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("tr-TR", {

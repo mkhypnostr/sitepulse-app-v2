@@ -11,8 +11,12 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
+    // Çok düğmeli sayfalarda (ör. enerji teklifi) başlık ile düğmeler orta
+    // genişlikte yan yana sığmıyor, başlık tek kelimelik sütuna sıkışıyordu.
+    // Yan yana düzen yalnız geniş ekranda (lg); düğmeler gerekirse alt satıra
+    // kayar.
+    <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0 lg:flex-1">
         <h1 className="text-[28px] font-bold leading-tight tracking-tight text-foreground sm:text-[34px]">
           {title}
         </h1>
@@ -22,7 +26,11 @@ export function PageHeader({
           </p>
         ) : null}
       </div>
-      {actions ? <div className="shrink-0">{actions}</div> : null}
+      {actions ? (
+        <div className="min-w-0 max-w-full lg:max-w-[65%] lg:shrink-0">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

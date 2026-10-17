@@ -151,10 +151,13 @@ function ReceivablesPage() {
     );
   }
 
-  const fmtList = (list: [string, number][]) =>
-    list.length === 0
+  // Sıfır olan para birimleri yazılmaz ("₺85.000 + $0,00" yerine "₺85.000").
+  const fmtList = (list: [string, number][]) => {
+    const nonZero = list.filter(([, v]) => Math.abs(v) > 0.005);
+    return nonZero.length === 0
       ? money(0, "TRY")
-      : list.map(([cur, v]) => money(v, cur)).join(" + ");
+      : nonZero.map(([cur, v]) => money(v, cur)).join(" + ");
+  };
 
   return (
     <>

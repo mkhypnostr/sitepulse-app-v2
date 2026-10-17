@@ -92,6 +92,7 @@ type AssignedWorkOrder = {
 type WorkOrderAssignment = { work_order_id: string; contractor_id: string };
 
 const statusLabel: Record<string, string> = {
+  draft: "Taslak",
   planned: "Planlandı",
   not_started: "Planlandı",
   in_progress: "Devam ediyor",
