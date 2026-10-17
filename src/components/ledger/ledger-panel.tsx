@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { errorMessage } from "@/lib/domain";
 import {
+  ledgerSourceLabels,
   ledgerTypeLabels,
   money,
   openAmounts,
@@ -29,8 +30,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// customer_ledger_feed: cari hareketler + müşteriye bağlı trafo ve ölçüm
+// kayıtları. Yeni kayıt ve silme yalnız customer_ledger_entries üzerinde.
 const LEDGER_SELECT =
-  "id, customer_id, project_id, entry_type, entry_date, due_date, amount, currency, payment_method, document_no, description";
+  "id, source, customer_id, project_id, entry_type, entry_date, due_date, amount, currency, payment_method, document_no, description";
 
 const dateTr = (v: string | null) =>
   v ? v.split("-").reverse().join(".") : "-";
@@ -70,7 +73,7 @@ export function LedgerPanel({
     queryKey: key,
     queryFn: async () => {
       let q = supabase
-        .from("customer_ledger_entries")
+        .from("customer_ledger_feed")
         .select(LEDGER_SELECT)
         .eq("customer_id", customerId);
       if (projectId) q = q.eq("project_id", projectId);
@@ -321,6 +324,11 @@ export function LedgerPanel({
                       {ledgerTypeLabels[row.entry_type]}
                     </span>
                     {row.document_no ? ` · ${row.document_no}` : ""}
+                    {row.source && row.source !== "cari" ? (
+                      <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                        {ledgerSourceLabels[row.source]}
+                      </span>
+                    ) : null}
                     {row.entry_type === "fatura" && row.due_date ? (
                       <span
                         className={`block text-xs ${(open.get(row.id) ?? 0) <= 0 ? "text-emerald-600" : row.due_date < today ? "font-semibold text-destructive" : "text-muted-foreground"}`}
@@ -357,19 +365,21 @@ export function LedgerPanel({
                     {money(row.balance, row.currency)}
                   </td>
                   <td>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      aria-label="Kaydı sil"
-                      onClick={() => {
-                        if (window.confirm("Bu hareket silinsin mi?"))
-                          remove.mutate(row.id);
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    {row.source && row.source !== "cari" ? null : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        aria-label="Kaydı sil"
+                        onClick={() => {
+                          if (window.confirm("Bu hareket silinsin mi?"))
+                            remove.mutate(row.id);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -13,6 +13,7 @@ import {
 } from "@/lib/ledger";
 import { todayIso } from "@/lib/sales";
 import { LedgerPanel } from "@/components/ledger/ledger-panel";
+import { LedgerSourceLinks } from "@/components/ledger/source-links";
 import {
   AccessDenied,
   LoadingState,
@@ -60,10 +61,11 @@ function ReceivablesPage() {
     queryFn: async () => {
       const [entriesResult, customersResult, projectsResult] =
         await Promise.all([
+          // Cari hareketler + müşteriye bağlı trafo ve ölçüm kayıtları.
           supabase
-            .from("customer_ledger_entries")
+            .from("customer_ledger_feed")
             .select(
-              "id, customer_id, project_id, entry_type, entry_date, due_date, amount, currency, payment_method, document_no, description",
+              "id, source, customer_id, project_id, entry_type, entry_date, due_date, amount, currency, payment_method, document_no, description",
             ),
           supabase.from("customers").select("id, name").order("name"),
           supabase.from("projects").select("id, name, customer_id"),
@@ -215,6 +217,8 @@ function ReceivablesPage() {
           </p>
         </div>
       </div>
+
+      <LedgerSourceLinks customers={pageQuery.data?.customers ?? []} />
 
       <div className="mb-3 flex flex-col gap-2 sm:flex-row">
         <div className="relative flex-1">
