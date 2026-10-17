@@ -197,11 +197,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           supabase
             .from("project_tasks")
             .select("id, responsible_id, approved_progress_pct, status")
-            .not("status", "in", "(completed,cancelled,not_applicable)"),
+            // project_task_status türünde "cancelled" yok; sorguya yazılırsa
+            // veritabanı 400 döner ve sayaç görevleri hiç saymaz.
+            .not("status", "in", "(completed,not_applicable)"),
           supabase
             .from("operational_tasks")
             .select("id", { count: "exact", head: true })
-            .not("status", "in", "(completed,cancelled,not_applicable)"),
+            .not("status", "in", "(completed,not_applicable)"),
         ]);
         stock = (stockResult.data ?? []).filter(
           (item) => item.quantity <= item.min_quantity,
