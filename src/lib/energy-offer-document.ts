@@ -276,6 +276,27 @@ p{margin:0 0 4mm;text-align:justify}
 .plan{border:1.4px solid #222;padding:4mm;height:150mm;display:flex;align-items:center;justify-content:center}
 .plan svg{max-width:100%;max-height:100%}
 .note{font-size:7.5pt;line-height:1.5;color:#444;font-family:"Ubuntu",Arial,sans-serif}
+/* bir bakışta */
+.ov-head{display:flex;justify-content:space-between;align-items:flex-end;gap:6mm;margin-bottom:6mm}
+.ov-head .who{font-family:"Ubuntu",Arial,sans-serif;font-size:8.5pt;color:#4a5556;text-align:right;line-height:1.5}
+.ov-head .who b{display:block;color:var(--ink);font-size:10pt;letter-spacing:.04em}
+.ov-hero{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-bottom:5mm}
+.ov-hero div{border-radius:4mm;padding:5mm 6mm;color:#fff;background:var(--sage-dark)}
+.ov-hero div.alt{background:var(--sage)}
+.ov-hero small{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:7.5pt;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
+.ov-hero b{display:block;font-family:"Montserrat",Arial,sans-serif;font-weight:900;font-size:24pt;line-height:1.15;margin-top:1.5mm}
+.ov-hero span{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:8pt;opacity:.9;margin-top:1mm}
+.ov-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-bottom:6mm}
+.ov-kpis div{background:var(--mist);border-radius:3mm;padding:3.5mm 3.5mm 3mm}
+.ov-kpis small{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:6.8pt;letter-spacing:.08em;text-transform:uppercase;color:#4a5556}
+.ov-kpis b{display:block;font-family:"Montserrat",Arial,sans-serif;font-weight:700;font-size:12.5pt;margin-top:1mm;white-space:nowrap}
+.ov-kpis span{display:block;font-family:"Ubuntu",Arial,sans-serif;font-size:7pt;color:#4a5556;margin-top:.5mm}
+.ov-sec{font-family:"Raleway",Arial,sans-serif;font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:9pt;margin:0 0 2.5mm;color:var(--sage-dark)}
+.ov-flow{border:1px solid var(--mist2);border-radius:4mm;padding:3mm 4mm;margin-bottom:6mm}
+.ov-flow svg{display:block;width:100%;height:auto;max-height:80mm;margin:0 auto}
+.ov-pay{border:1px solid var(--mist2);border-radius:4mm;padding:4mm 5mm}
+.ov-pay svg{display:block;width:100%;height:auto}
+.ov-pay p{font-family:"Ubuntu",Arial,sans-serif;font-size:8pt;margin:2mm 0 0;text-align:left;color:#333}
 /* NES antet: kapak dışındaki sayfalar */
 .page.lh .body{padding:28mm 15mm 26mm}
 .page.lh .pj{margin-top:25mm;height:140mm}
@@ -507,6 +528,217 @@ ${financeHtml}
 </div>${band(ctx)}</section>`;
 }
 
+/** Enerji akış şeması: güneş → paneller → inverter → tesis; yanlarda
+ * batarya (varsa) ve şebeke (fazla üretim / mahsuplaşma). */
+function flowDiagram(ctx: Ctx) {
+  const { ges } = ctx.input;
+  const sage = "#5f7474";
+  const mist = "#dfe9ea";
+  const hasBattery = ctx.batteryKwh > 0;
+  const panelW = Number(ctx.panel?.power_w ?? 0);
+  const node = (
+    x: number,
+    title: string,
+    detail: string,
+    icon: string,
+    fill = mist,
+  ) =>
+    `<g transform="translate(${x} 14)"><rect width="34" height="34" rx="5" fill="${fill}"/>${icon}<text x="17" y="44" text-anchor="middle" font-size="3.6" font-weight="700" fill="#1f2324">${esc(title)}</text><text x="17" y="49" text-anchor="middle" font-size="3" fill="#4a5556">${esc(detail)}</text></g>`;
+  const arrow = (x1: number, x2: number) =>
+    `<line x1="${x1}" y1="31" x2="${x2 - 1.5}" y2="31" stroke="${sage}" stroke-width="1.1" stroke-dasharray="2.4 1.6"/><path d="M${x2 - 2} 28.6 L${x2 + 0.6} 31 L${x2 - 2} 33.4 Z" fill="${sage}"/>`;
+  const sun = `<circle cx="17" cy="17" r="6.5" fill="#f2b84b"/>${Array.from(
+    { length: 8 },
+    (_, i) => {
+      const a = (i * Math.PI) / 4;
+      return `<line x1="${(17 + Math.cos(a) * 9).toFixed(2)}" y1="${(17 + Math.sin(a) * 9).toFixed(2)}" x2="${(17 + Math.cos(a) * 12).toFixed(2)}" y2="${(17 + Math.sin(a) * 12).toFixed(2)}" stroke="#f2b84b" stroke-width="1.4" stroke-linecap="round"/>`;
+    },
+  ).join("")}`;
+  const panels = `<g transform="translate(6 9) skewX(-12)">${[0, 1, 2]
+    .map((r) =>
+      [0, 1, 2]
+        .map(
+          (c) =>
+            `<rect x="${c * 7.6}" y="${r * 5.6}" width="7" height="5" rx=".6" fill="#2f5d7c"/>`,
+        )
+        .join(""),
+    )
+    .join("")}</g><rect x="15" y="26" width="1.6" height="4" fill="${sage}"/>`;
+  const inverter = `<rect x="9" y="7" width="16" height="20" rx="2" fill="#fff" stroke="${sage}" stroke-width="1"/><rect x="12" y="10" width="10" height="5" rx="1" fill="${mist}"/><path d="M13 21 q2 -3 4 0 t4 0" fill="none" stroke="${sage}" stroke-width="1"/>`;
+  const home = `<path d="M6 18 L17 8 L28 18 Z" fill="#d79a6a"/><rect x="9" y="18" width="16" height="10" fill="#fff" stroke="${sage}" stroke-width=".8"/><rect x="15" y="21" width="4" height="7" fill="${mist}"/>`;
+  const battery = `<rect x="11" y="9" width="12" height="18" rx="2" fill="#5f9e6e"/><rect x="14.5" y="7" width="5" height="2" rx=".6" fill="#3f7a4e"/><path d="M18 12 L14.5 18.5 H17.5 L16 24 L20 16.5 H17 Z" fill="#fff"/>`;
+  const grid = `<path d="M17 6 L11 28 M17 6 L23 28 M12.5 21 H21.5 M14 15 H20 M9 11 H25" stroke="${sage}" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
+  const items = [
+    node(2, "Güneş", "Muğla ışınımı", sun, "#fff6e3"),
+    node(
+      46,
+      "Paneller",
+      ges.panelCount > 0
+        ? `${ges.panelCount} × ${num(panelW, 0)} Wp`
+        : `${formatKwp(ctx.kwp)} kWp`,
+      panels,
+    ),
+    node(
+      90,
+      "İnverter",
+      `${formatKwp(ctx.acKw)} kW ${ges.systemType === "hibrit" ? "hibrit" : "on-grid"}`,
+      inverter,
+    ),
+    node(134, "Tesisiniz", "Öz tüketim", home, "#fbefe5"),
+  ];
+  const lines = [arrow(36, 46), arrow(80, 90), arrow(124, 134)];
+  // Alt dallar: inverterden bataryaya ve şebekeye.
+  const branchY = 66;
+  let branches = `<path d="M107 63 V${branchY + 4}" stroke="${sage}" stroke-width="1.1" stroke-dasharray="2.4 1.6"/>`;
+  const sideNode = (x: number, title: string, detail: string, icon: string) =>
+    `<g transform="translate(${x} ${branchY + 4})"><rect width="30" height="26" rx="5" fill="${mist}"/><g transform="translate(-2 -4) scale(.88)">${icon}</g><text x="15" y="33" text-anchor="middle" font-size="3.4" font-weight="700" fill="#1f2324">${esc(title)}</text><text x="15" y="38" text-anchor="middle" font-size="2.9" fill="#4a5556">${esc(detail)}</text></g>`;
+  if (hasBattery) {
+    branches += `<path d="M107 ${branchY + 4} H${70 + 15} V${branchY + 4}" stroke="${sage}" stroke-width="1.1" stroke-dasharray="2.4 1.6" fill="none"/>`;
+    branches += sideNode(
+      70,
+      "Batarya",
+      `${formatKwp(ctx.batteryKwh)} kWh · gece`,
+      battery,
+    );
+  }
+  branches += `<path d="M107 ${branchY + 4} H${130}" stroke="${sage}" stroke-width="1.1" stroke-dasharray="2.4 1.6" fill="none"/>`;
+  branches += sideNode(126, "Şebeke", "fazlası mahsup", grid);
+  return `<svg viewBox="0 0 170 ${branchY + 46}" xmlns="http://www.w3.org/2000/svg" font-family="Ubuntu,Arial,sans-serif">${lines.join("")}${items.join("")}${branches}</svg>`;
+}
+
+/** 25 yıllık geri dönüş çizgisi: yatırımın kendini ödediği yıl işaretli. */
+function paybackStrip(paybackYears: number, years = 25) {
+  const w = 170;
+  const x0 = 4;
+  const x1 = w - 4;
+  const at = (year: number) => x0 + ((x1 - x0) * year) / years;
+  const p = Math.min(paybackYears, years);
+  const ticks = [0, 5, 10, 15, 20, 25]
+    .map(
+      (y) =>
+        `<line x1="${at(y)}" y1="17" x2="${at(y)}" y2="19.5" stroke="#4a5556" stroke-width=".3"/><text x="${at(y)}" y="24" font-size="2.8" text-anchor="middle" fill="#4a5556">${y}. yıl</text>`,
+    )
+    .join("");
+  return `<svg viewBox="0 0 ${w} 26" xmlns="http://www.w3.org/2000/svg" font-family="Ubuntu,Arial,sans-serif">
+<rect x="${x0}" y="10" width="${at(p) - x0}" height="7" rx="1.5" fill="#d9a59b"/>
+<rect x="${at(p)}" y="10" width="${x1 - at(p)}" height="7" rx="1.5" fill="#5f9e6e"/>
+<text x="${(x0 + at(p)) / 2}" y="14.8" font-size="3" text-anchor="middle" fill="#fff" font-weight="700">${at(p) - x0 > 22 ? "Yatırım geri dönüyor" : ""}</text>
+<text x="${(at(p) + x1) / 2}" y="14.8" font-size="3" text-anchor="middle" fill="#fff" font-weight="700">${x1 - at(p) > 22 ? "Kazanç dönemi" : ""}</text>
+<path d="M${at(p)} 3 V17" stroke="#1f2324" stroke-width=".5"/>
+<circle cx="${at(p)}" cy="4" r="2.2" fill="#1f2324"/>
+<text x="${at(p) + (p > 20 ? -3.5 : 3.5)}" y="5.2" font-size="3.2" font-weight="700" text-anchor="${p > 20 ? "end" : "start"}" fill="#1f2324">${num(paybackYears, 1)}. yılda kendini öder</text>
+${ticks}</svg>`;
+}
+
+/** "Bir bakışta": kapaktan sonra tek sayfada yatırımın özeti. */
+function overviewPage(ctx: Ctx): string {
+  const { input } = ctx;
+  const production = input.production;
+  const finance = input.finance;
+  const cur = input.currency;
+  const annual = production?.annual ?? 0;
+  const hero: [string, string, string, boolean][] = [
+    [
+      "Kurulu güç",
+      `${formatKwp(ctx.kwp)} kWp`,
+      [
+        input.ges.panelCount > 0 ? `${input.ges.panelCount} panel` : "",
+        ctx.acKw > 0 ? `${formatKwp(ctx.acKw)} kW inverter` : "",
+        ctx.batteryKwh > 0 ? `${formatKwp(ctx.batteryKwh)} kWh batarya` : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      false,
+    ],
+  ];
+  if (finance && finance.paybackYears !== null) {
+    hero.push([
+      "Geri dönüş süresi",
+      `${num(finance.paybackYears, 1)} yıl`,
+      `Sonraki ${num(Math.max(0, 25 - finance.paybackYears), 0)} yıl net kazanç`,
+      true,
+    ]);
+  } else {
+    hero.push([
+      "Anahtar teslim fiyat",
+      money(input.grandTotal, cur),
+      "KDV dahil",
+      true,
+    ]);
+  }
+  const kpis: [string, string, string][] = [];
+  if (annual > 0) {
+    kpis.push([
+      "Yıllık üretim",
+      `${num(annual, 0)} kWh`,
+      `Günde ort. ${num(production?.daily ?? 0, 0)} kWh`,
+    ]);
+  }
+  if (finance) {
+    kpis.push([
+      "1. yıl tasarruf",
+      tlWhole(finance.firstYearSavingTl),
+      `Ayda ort. ${tlWhole(finance.firstYearSavingTl / 12)}`,
+    ]);
+    kpis.push([
+      "Tüketimi karşılama",
+      `%${num(finance.coverage * 100, 0)}`,
+      `Yıllık ${num(finance.annualConsumptionKwh, 0)} kWh tüketim`,
+    ]);
+    const net = finance.cumulative.at(-1) ?? 0;
+    kpis.push([
+      "25 yıl net kazanç",
+      tlWhole(net),
+      `Toplam tasarruf ${tlWhole(finance.totalSavingTl)}`,
+    ]);
+  }
+  if (production && production.co2Tons > 0) {
+    kpis.push([
+      "Önlenen CO₂",
+      `${num(production.co2Tons, 1)} ton/yıl`,
+      `≈ ${num(production.co2Tons / 0.022, 0)} ağacın yıllık emdiği`,
+    ]);
+  }
+  // Geri dönüş varsa fiyat büyük kartta değil; burada gösterilir.
+  if (finance && finance.paybackYears !== null) {
+    kpis.push([
+      "Yatırım",
+      money(input.grandTotal, cur),
+      "KDV dahil, anahtar teslim",
+    ]);
+  }
+  if (input.showPricePerWp && input.salePerWp) {
+    kpis.push(["Watt başı", formatUsdPerWp(input.salePerWp), "KDV hariç"]);
+  }
+  // Tek sıra (4 kart) sayfaya sığar; öncelik sırasına göre seçilir. CO₂ ve
+  // karşılama oranı "Üretim ve kazanç" sayfasında da var.
+  const priority = [
+    "Yıllık üretim",
+    "1. yıl tasarruf",
+    "25 yıl net kazanç",
+    "Yatırım",
+    "Önlenen CO₂",
+    "Tüketimi karşılama",
+    "Watt başı",
+  ];
+  const shown = priority
+    .map((label) => kpis.find(([l]) => l === label))
+    .filter((kpi): kpi is [string, string, string] => Boolean(kpi))
+    .slice(0, 4);
+  return `<section class="page lh"><div class="body">
+<div class="ov-head"><div><div class="h" style="margin:0">Bir bakışta</div><div class="sub" style="margin:1mm 0 0">Teklifimizin özeti; ayrıntılar sonraki sayfalardadır.</div></div>
+<div class="who"><b>${esc(upperTr(input.recipientName || "-"))}</b>${input.location ? `${esc(input.location)}<br>` : ""}${dateDots(input.issueDate)} · ${esc(input.offerNo)}</div></div>
+<div class="ov-hero">${hero.map(([label, value, detail, alt]) => `<div class="${alt ? "alt" : ""}"><small>${esc(label)}</small><b>${esc(value)}</b>${detail ? `<span>${esc(detail)}</span>` : ""}</div>`).join("")}</div>
+${shown.length ? `<div class="ov-kpis">${shown.map(([label, value, detail]) => `<div><small>${esc(label)}</small><b>${esc(value)}</b><span>${esc(detail)}</span></div>`).join("")}</div>` : ""}
+<div class="ov-sec">Sisteminiz nasıl çalışır?</div>
+<div class="ov-flow">${flowDiagram(ctx)}</div>
+${
+  finance && finance.paybackYears !== null
+    ? `<div class="ov-sec">Yatırımın geri dönüşü</div><div class="ov-pay">${paybackStrip(finance.paybackYears)}<p>Panellerin 25 yıl performans garantisi vardır. Hesap; aylık ortalama ${num(finance.annualConsumptionKwh / 12, 0)} kWh tüketim, güncel tarife ve aylık mahsuplaşma varsayımıyla yapılmıştır.</p></div>`
+    : ""
+}
+</div>${band(ctx)}</section>`;
+}
+
 function layoutPage(ctx: Ctx): string | null {
   const layout = ctx.input.layout;
   if (!layout || !layout.svg) return null;
@@ -539,6 +771,9 @@ function buildGesPresentation(ctx: Ctx): string {
 <div class="cv-photo" style="background-image:url('${esc(ctx.asset("kapak-ev.jpg"))}')"></div>
 <div class="cv-label"><b>NESENERJİ</b><span>MÜHENDİSLİK</span></div>
 </section>`);
+
+  // 1a) Bir bakışta: güç, üretim, tasarruf, geri dönüş ve enerji akışı.
+  pages.push(overviewPage(ctx));
 
   // 2) Proje, giriş ve sistem özeti
   const summaryCols: [string, string][] = [
