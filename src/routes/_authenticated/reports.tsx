@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { NES_COMPANY } from "@/lib/nes-company";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { formatDate, formatTRY } from "@/lib/format";
@@ -42,7 +43,7 @@ export const Route = createFileRoute("/_authenticated/reports")({
   component: ReportsPage,
 });
 
-const NES_LOGO_URL = "/nes-enerji-logo.png";
+const NES_LOGO_URL = NES_COMPANY.logoPath;
 
 const monthOptions = [
   { value: "all", label: "Tüm Aylar" },

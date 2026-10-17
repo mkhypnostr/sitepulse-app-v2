@@ -8,18 +8,22 @@ import { formatProjectDateTime } from "@/lib/projects";
 import { EmptyState, LoadingState } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  LetterheadFooter,
+  LetterheadHeader,
+} from "@/components/print-letterhead";
+import { NES_COMPANY } from "@/lib/nes-company";
 import { Card, CardContent } from "@/components/ui/card";
 
 export const Route = createFileRoute("/_authenticated/job-report/$jobId")({
   component: JobReportPage,
 });
 
-// NES_ANTENT.docx şirket antet şablonundan alınmıştır (logo + iletişim).
-const NES_LOGO_URL = "/nes-enerji-logo.png";
-const NES_CONTACT_ADDRESS =
-  "Orhaniye Mahallesi 12 Nolu Sokak Nur Apartmanı No:6/C Menteşe / Muğla";
-const NES_CONTACT_PHONE = "+90 554 610 24 16";
-const NES_CONTACT_EMAIL = "info@nesgrup.com";
+// Antet bilgileri NES_ANTENT.docx'ten alınıp tek yerde tutulur.
+const NES_LOGO_URL = NES_COMPANY.logoPath;
+const NES_CONTACT_ADDRESS = NES_COMPANY.address;
+const NES_CONTACT_PHONE = NES_COMPANY.phone;
+const NES_CONTACT_EMAIL = NES_COMPANY.email;
 
 function escapeHtml(value: unknown) {
   return String(value ?? "")
@@ -232,20 +236,11 @@ function JobReportPage() {
         </div>
       </div>
 
-      <article className="rounded-xl bg-white p-6 pb-20 text-slate-950 shadow-sm print:rounded-none print:p-0 print:pb-24 print:shadow-none">
-        <header className="flex items-start justify-between gap-6 border-b-4 border-blue-700 pb-5">
-          <div>
-            <h1 className="text-3xl font-black">Fotoğraflı İş Raporu</h1>
-            <p className="mt-1 text-slate-500">
-              #{order.work_order_no} · {order.title}
-            </p>
-          </div>
-          <img
-            src={NES_LOGO_URL}
-            alt="NES Enerji"
-            className="h-10 w-auto shrink-0 object-contain print:h-12"
-          />
-        </header>
+      <article className="rounded-xl bg-white p-6 pb-20 text-slate-950 shadow-sm print:rounded-none print:p-0 print:pt-24 print:pb-24 print:shadow-none">
+        <LetterheadHeader
+          title="Fotoğraflı İş Raporu"
+          subtitle={`#${order.work_order_no} · ${order.title}`}
+        />
 
         <section className="mt-6 grid gap-3 rounded-xl bg-blue-50 p-5 sm:grid-cols-2">
           <p>
@@ -362,18 +357,7 @@ function JobReportPage() {
           </div>
         </section>
 
-        <footer className="fixed inset-x-0 bottom-0 hidden border-t border-slate-200 bg-white px-6 py-2 text-center text-[10px] leading-4 text-slate-500 print:block">
-          <p>{NES_CONTACT_ADDRESS}</p>
-          <p>
-            Telefon: {NES_CONTACT_PHONE} · Mail: {NES_CONTACT_EMAIL}
-          </p>
-        </footer>
-        <footer className="mt-10 border-t border-slate-200 pt-3 text-center text-xs leading-5 text-slate-500 print:hidden">
-          <p>{NES_CONTACT_ADDRESS}</p>
-          <p>
-            Telefon: {NES_CONTACT_PHONE} · Mail: {NES_CONTACT_EMAIL}
-          </p>
-        </footer>
+        <LetterheadFooter />
       </article>
     </div>
   );
