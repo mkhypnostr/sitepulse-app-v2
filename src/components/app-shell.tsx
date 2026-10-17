@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
@@ -71,7 +71,20 @@ export function AppShell({ children }: { children: ReactNode }) {
       // Depolama kapalıysa varsayılan: daraltılmış.
     }
   }, []);
+  // Daraltılmış menü üzerine gelince (veya klavyeyle içine girilince) geçici
+  // olarak açılır. "Menüyü daralt"a basıldığında fare hâlâ menünün üzerinde
+  // olsa bile hemen kapanması için bu durum CSS :hover yerine burada tutulur.
+  const [peek, setPeek] = useState(false);
+  // Daraltma düğmesine basıldıktan sonra fare menüden bir kez çıkana kadar
+  // menü kendiliğinden yeniden açılmaz (daralırken içerik kaydığı için
+  // tarayıcı yeni bir "fare girdi" olayı üretebiliyor).
+  const peekBlocked = useRef(false);
   const togglePinned = () => {
+    setPeek(false);
+    peekBlocked.current = true;
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     setPinned((current) => {
       const next = !current;
       try {
@@ -417,8 +430,25 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <aside
           data-pinned={pinned ? "true" : "false"}
+          data-expanded={pinned || peek ? "true" : "false"}
+          onMouseEnter={() => {
+            if (!peekBlocked.current) setPeek(true);
+          }}
+          onMouseLeave={() => {
+            peekBlocked.current = false;
+            setPeek(false);
+          }}
+          onFocus={(event) => {
+            if (!peekBlocked.current && event.target.matches(":focus-visible"))
+              setPeek(true);
+          }}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+              setPeek(false);
+            }
+          }}
           className={`group glass sidebar-transition fixed top-3 bottom-3 left-3 z-40 flex flex-col overflow-hidden rounded-[28px] text-sidebar-foreground ${
-            pinned ? "w-[248px]" : "w-[76px] hover:w-[248px]"
+            pinned || peek ? "w-[248px]" : "w-[76px]"
           }`}
         >
           <Link
