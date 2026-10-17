@@ -69,6 +69,9 @@ export type GesConfig = {
   acCableM: number;
   /** Abonelik sözleşme gücü (kW). 0 = bilinmiyor. */
   contractPowerKw: number;
+  /** Proje tipi seçicisinde seçilen tip (ör. "konut"). Yalnız bilgi amaçlı;
+   * sistem tipi ve montaj yerini önerir, hesaba girmez. */
+  projectType?: string;
 };
 
 export type SarjConfig = {

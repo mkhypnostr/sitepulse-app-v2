@@ -123,6 +123,10 @@ import {
 } from "@/lib/solar-site";
 import { SiteDesigner } from "@/components/energy-offer/site-designer";
 import {
+  OfferStepper,
+  ProjectTypePicker,
+} from "@/components/energy-offer/project-configurator";
+import {
   DEFAULT_MARKUP_RATE,
   DEFAULT_VAT_RATE,
   MIN_GROSS_MARGIN,
@@ -1183,6 +1187,78 @@ function EnergyOfferPage() {
           </Link>
         </p>
       ) : null}
+      {ges.enabled ? (
+        <div className="mb-4">
+          <OfferStepper
+            steps={[
+              {
+                id: "cati",
+                label: "Çatı",
+                done: site.faces.length > 0 || ges.panelCount > 0,
+                detail:
+                  site.faces.length > 0
+                    ? `${site.faces.length} yüzey çizildi`
+                    : ges.panelCount > 0
+                      ? "Paket / elle güç"
+                      : "Haritada çiz ya da paket seç",
+                target: "bolum-ges",
+              },
+              {
+                id: "tasarim",
+                label: "Tasarım",
+                done: Boolean(ges.panelId) && ges.panelCount > 0,
+                detail:
+                  ges.panelCount > 0
+                    ? `${ges.panelCount} panel · ${formatKwp(kwp)} kWp`
+                    : "Panel ve adet seçin",
+                target: "bolum-ges",
+              },
+              {
+                id: "sistem",
+                label: "Sistem",
+                done:
+                  Boolean(ges.inverterId) &&
+                  (ges.systemType !== "hibrit" || Boolean(ges.batteryId)),
+                detail: ges.inverterId
+                  ? `${formatKwp(acKw)} kW inverter${batteryKwh > 0 ? ` · ${formatKwp(batteryKwh)} kWh` : ""}`
+                  : "İnverter seçin",
+                target: "bolum-ges",
+              },
+              {
+                id: "teklif",
+                label: "Teklif",
+                done: lines.length > 0 && Boolean(dataQuery.data?.offer),
+                detail:
+                  lines.length > 0
+                    ? `${lines.length} kalem${dataQuery.data?.offer ? "" : " · kaydedilmedi"}`
+                    : "Kalemleri oluşturun",
+                target: "bolum-kalemler",
+              },
+            ]}
+            kpis={[
+              { label: "Güç", value: kwp > 0 ? `${formatKwp(kwp)} kWp` : "-" },
+              {
+                label: "Yıllık üretim",
+                value:
+                  kwp > 0 && financeResult
+                    ? `${fmtNum(financeResult.annualProductionKwh)} kWh`
+                    : "-",
+              },
+              {
+                label: "Geri dönüş",
+                value:
+                  financeResult?.paybackYears != null && investmentTl
+                    ? `${financeResult.paybackYears.toLocaleString("tr-TR")} yıl`
+                    : "-",
+              },
+              {
+                label: "Satış",
+                value: salePerWp !== null ? formatUsdPerWp(salePerWp) : "-",
+              },
+            ]}
+          />
+        </div>
+      ) : null}
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <div className="grid min-w-0 gap-4">
           {/* Genel bilgiler */}
@@ -1421,6 +1497,24 @@ function EnergyOfferPage() {
             </div>
             {ges.enabled ? (
               <>
+                <div className="mb-4">
+                  <ProjectTypePicker
+                    value={ges.projectType}
+                    onSelect={(type) => {
+                      setGes((g) => ({
+                        ...g,
+                        projectType: type.id,
+                        systemType: type.systemType,
+                        roofType: type.roofType,
+                        inverterId:
+                          type.systemType === g.systemType ? g.inverterId : "",
+                      }));
+                      toast.success(
+                        `${type.title}: ${type.systemType === "hibrit" ? "hibrit" : "on-grid"} sistem, ${type.roofType === "arazi" ? "arazi sehpası" : type.roofType === "trapez" ? "trapez çatı" : "kiremit çatı"} seçildi.`,
+                      );
+                    }}
+                  />
+                </div>
                 <PackagePicker
                   ges={ges}
                   catalog={catalog}

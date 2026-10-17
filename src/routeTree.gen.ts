@@ -24,6 +24,7 @@ import { Route as AuthenticatedMyJobsRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedMyProjectTasksRouteImport } from './routes/_authenticated/my-project-tasks'
 import { Route as AuthenticatedMyProjectsRouteImport } from './routes/_authenticated/my-projects'
 import { Route as AuthenticatedOffersRouteImport } from './routes/_authenticated/offers'
+import { Route as AuthenticatedPriceCatalogRouteImport } from './routes/_authenticated/price-catalog'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedReceivablesRouteImport } from './routes/_authenticated/receivables'
@@ -36,6 +37,7 @@ import { Route as AuthenticatedTasksRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated/team'
 import { Route as AuthenticatedTransformerResponsibilityRouteImport } from './routes/_authenticated/transformer-responsibility'
 import { Route as AuthenticatedWorkOrdersRouteImport } from './routes/_authenticated/work-orders'
+import { Route as ApiEnerjipazariPricesRouteImport } from './routes/api/enerjipazari-prices'
 import { Route as ApiPvgisRouteImport } from './routes/api/pvgis'
 import { Route as ApiTcmbRatesRouteImport } from './routes/api/tcmb-rates'
 import { Route as OauthConsentRouteImport } from './routes/oauth/consent'
@@ -123,6 +125,12 @@ const AuthenticatedOffersRoute = AuthenticatedOffersRouteImport.update({
   path: '/offers',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedPriceCatalogRoute =
+  AuthenticatedPriceCatalogRouteImport.update({
+    id: '/price-catalog',
+    path: '/price-catalog',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -187,6 +195,11 @@ const AuthenticatedWorkOrdersRoute = AuthenticatedWorkOrdersRouteImport.update({
   path: '/work-orders',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const ApiEnerjipazariPricesRoute = ApiEnerjipazariPricesRouteImport.update({
+  id: '/api/enerjipazari-prices',
+  path: '/api/enerjipazari-prices',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPvgisRoute = ApiPvgisRouteImport.update({
   id: '/api/pvgis',
   path: '/api/pvgis',
@@ -246,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
   '/my-projects': typeof AuthenticatedMyProjectsRoute
   '/offers': typeof AuthenticatedOffersRoute
+  '/price-catalog': typeof AuthenticatedPriceCatalogRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/receivables': typeof AuthenticatedReceivablesRoute
@@ -258,6 +272,7 @@ export interface FileRoutesByFullPath {
   '/team': typeof AuthenticatedTeamRoute
   '/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/enerjipazari-prices': typeof ApiEnerjipazariPricesRoute
   '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
@@ -282,6 +297,7 @@ export interface FileRoutesByTo {
   '/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
   '/my-projects': typeof AuthenticatedMyProjectsRoute
   '/offers': typeof AuthenticatedOffersRoute
+  '/price-catalog': typeof AuthenticatedPriceCatalogRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/receivables': typeof AuthenticatedReceivablesRoute
@@ -294,6 +310,7 @@ export interface FileRoutesByTo {
   '/team': typeof AuthenticatedTeamRoute
   '/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/enerjipazari-prices': typeof ApiEnerjipazariPricesRoute
   '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
@@ -320,6 +337,7 @@ export interface FileRoutesById {
   '/_authenticated/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
   '/_authenticated/my-projects': typeof AuthenticatedMyProjectsRoute
   '/_authenticated/offers': typeof AuthenticatedOffersRoute
+  '/_authenticated/price-catalog': typeof AuthenticatedPriceCatalogRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/_authenticated/receivables': typeof AuthenticatedReceivablesRoute
@@ -332,6 +350,7 @@ export interface FileRoutesById {
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/transformer-responsibility': typeof AuthenticatedTransformerResponsibilityRoute
   '/_authenticated/work-orders': typeof AuthenticatedWorkOrdersRoute
+  '/api/enerjipazari-prices': typeof ApiEnerjipazariPricesRoute
   '/api/pvgis': typeof ApiPvgisRoute
   '/api/tcmb-rates': typeof ApiTcmbRatesRoute
   '/oauth/consent': typeof OauthConsentRoute
@@ -358,6 +377,7 @@ export interface FileRouteTypes {
     | '/my-project-tasks'
     | '/my-projects'
     | '/offers'
+    | '/price-catalog'
     | '/profile'
     | '/projects'
     | '/receivables'
@@ -370,6 +390,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/transformer-responsibility'
     | '/work-orders'
+    | '/api/enerjipazari-prices'
     | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
@@ -394,6 +415,7 @@ export interface FileRouteTypes {
     | '/my-project-tasks'
     | '/my-projects'
     | '/offers'
+    | '/price-catalog'
     | '/profile'
     | '/projects'
     | '/receivables'
@@ -406,6 +428,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/transformer-responsibility'
     | '/work-orders'
+    | '/api/enerjipazari-prices'
     | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
@@ -431,6 +454,7 @@ export interface FileRouteTypes {
     | '/_authenticated/my-project-tasks'
     | '/_authenticated/my-projects'
     | '/_authenticated/offers'
+    | '/_authenticated/price-catalog'
     | '/_authenticated/profile'
     | '/_authenticated/projects'
     | '/_authenticated/receivables'
@@ -443,6 +467,7 @@ export interface FileRouteTypes {
     | '/_authenticated/team'
     | '/_authenticated/transformer-responsibility'
     | '/_authenticated/work-orders'
+    | '/api/enerjipazari-prices'
     | '/api/pvgis'
     | '/api/tcmb-rates'
     | '/oauth/consent'
@@ -457,6 +482,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AuthRoute: typeof AuthRoute
+  ApiEnerjipazariPricesRoute: typeof ApiEnerjipazariPricesRoute
   ApiPvgisRoute: typeof ApiPvgisRoute
   ApiTcmbRatesRoute: typeof ApiTcmbRatesRoute
   OauthConsentRoute: typeof OauthConsentRoute
@@ -570,6 +596,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOffersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/price-catalog': {
+      id: '/_authenticated/price-catalog'
+      path: '/price-catalog'
+      fullPath: '/price-catalog'
+      preLoaderRoute: typeof AuthenticatedPriceCatalogRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
       path: '/profile'
@@ -653,6 +686,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/work-orders'
       preLoaderRoute: typeof AuthenticatedWorkOrdersRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/api/enerjipazari-prices': {
+      id: '/api/enerjipazari-prices'
+      path: '/api/enerjipazari-prices'
+      fullPath: '/api/enerjipazari-prices'
+      preLoaderRoute: typeof ApiEnerjipazariPricesRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/pvgis': {
       id: '/api/pvgis'
@@ -739,6 +779,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedMyProjectTasksRoute: typeof AuthenticatedMyProjectTasksRoute
   AuthenticatedMyProjectsRoute: typeof AuthenticatedMyProjectsRoute
   AuthenticatedOffersRoute: typeof AuthenticatedOffersRoute
+  AuthenticatedPriceCatalogRoute: typeof AuthenticatedPriceCatalogRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRouteWithChildren
   AuthenticatedReceivablesRoute: typeof AuthenticatedReceivablesRoute
@@ -769,6 +810,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMyProjectTasksRoute: AuthenticatedMyProjectTasksRoute,
   AuthenticatedMyProjectsRoute: AuthenticatedMyProjectsRoute,
   AuthenticatedOffersRoute: AuthenticatedOffersRoute,
+  AuthenticatedPriceCatalogRoute: AuthenticatedPriceCatalogRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRouteWithChildren,
   AuthenticatedReceivablesRoute: AuthenticatedReceivablesRoute,
@@ -796,6 +838,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AuthRoute: AuthRoute,
+  ApiEnerjipazariPricesRoute: ApiEnerjipazariPricesRoute,
   ApiPvgisRoute: ApiPvgisRoute,
   ApiTcmbRatesRoute: ApiTcmbRatesRoute,
   OauthConsentRoute: OauthConsentRoute,
