@@ -52,6 +52,8 @@ interface NavItem {
   icon: LucideIcon;
   badgeKey?: "approvals" | "stock" | "tasks" | "sales";
   hash?: string;
+  /** Telefondaki alt çubukta görünen kısa ad (uzun adlar kesilmesin). */
+  short?: string;
 }
 type NavEntry = NavItem | { section: string };
 
@@ -340,6 +342,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               {
                 to: "/approvals",
                 label: "Onay ve Uyarı Merkezi",
+                short: "Onaylar",
                 icon: ShieldAlert,
                 badgeKey: "approvals",
               },
@@ -348,7 +351,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           : [
               { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
               { to: "/my-projects", label: "Projelerim", icon: FolderKanban },
-              { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
+              { to: "/my-jobs", label: "İşlerim", icon: BriefcaseBusiness },
               {
                 to: "/service-requests",
                 label: "Teknik Servis",
@@ -626,7 +629,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <span
                   className={`max-w-full truncate px-1 text-[10px] ${active ? "font-semibold" : "font-medium"}`}
                 >
-                  {item.label}
+                  {item.short ?? item.label}
                 </span>
               </Link>
             );
