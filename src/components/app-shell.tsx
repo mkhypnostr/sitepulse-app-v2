@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Receipt,
+  Tags,
   Search,
   ShieldAlert,
   Sun,
@@ -271,6 +272,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             badgeKey: "sales",
           },
           { to: "/offers", label: "Teklifler", icon: Receipt },
+          { to: "/price-catalog", label: "Fiyat Kataloğu", icon: Tags },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
           { section: "Finans" },
           {
@@ -819,6 +821,7 @@ const NAV_TILE_COLORS: Record<string, string> = {
   "/shared-files": "bg-sky-500",
   "/sales": "bg-pink-500",
   "/offers": "bg-green-600",
+  "/price-catalog": "bg-amber-500",
   "/customers": "bg-violet-500",
   "/receivables": "bg-emerald-700",
   "/measurement-tracking": "bg-teal-500",
