@@ -105,6 +105,7 @@ import {
   PackagePicker,
 } from "@/components/energy-offer/ges-finance-panel";
 import {
+  applyPackage,
   defaultFinance,
   financeAnalysis,
   formatUsdPerWp,
@@ -138,16 +139,30 @@ import {
 import { ShareLinkPanel } from "@/components/energy-offer/share-link-panel";
 
 export const Route = createFileRoute("/_authenticated/energy-offer")({
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { offerId?: string; leadId?: string } => ({
-    ...(typeof search.offerId === "string" && search.offerId
-      ? { offerId: search.offerId }
-      : {}),
-    ...(typeof search.leadId === "string" && search.leadId
-      ? { leadId: search.leadId }
-      : {}),
-  }),
+  validateSearch: (search: Record<string, unknown>): OfferSearch => {
+    const text = (key: string) =>
+      typeof search[key] === "string" && search[key]
+        ? { [key]: String(search[key]).slice(0, 200) }
+        : {};
+    const number = (key: string) => {
+      const value = Number(search[key]);
+      return Number.isFinite(value) && value > 0 ? { [key]: value } : {};
+    };
+    return {
+      ...text("offerId"),
+      ...text("leadId"),
+      // Asistanın "GES teklifi hazırla" bağlantısı (yeni teklifte ön doldurma).
+      ...number("kwp"),
+      ...(search.sistem === "hibrit" || search.sistem === "ongrid"
+        ? { sistem: search.sistem }
+        : {}),
+      ...number("batarya"),
+      ...text("musteri"),
+      ...text("aday"),
+      ...text("konum"),
+      ...text("baslik"),
+    };
+  },
   component: EnergyOfferPage,
 });
 
@@ -163,6 +178,18 @@ const categoryLabels: Record<LineCategory, string> = {
   iscilik: "İşçilik",
   nakliye_sarf: "Nakliye/Sarf",
   diger: "Diğer",
+};
+
+type OfferSearch = {
+  offerId?: string;
+  leadId?: string;
+  kwp?: number;
+  sistem?: "ongrid" | "hibrit";
+  batarya?: number;
+  musteri?: string;
+  aday?: string;
+  konum?: string;
+  baslik?: string;
 };
 
 const statuses = {
@@ -334,7 +361,8 @@ type LoadedLine = {
 function EnergyOfferPage() {
   const { role, user } = useAuth();
   const isAdmin = role === "admin";
-  const { offerId, leadId: leadParam } = Route.useSearch();
+  const search = Route.useSearch();
+  const { offerId, leadId: leadParam } = search;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -688,6 +716,55 @@ function EnergyOfferPage() {
       `${generated.length} kalem oluşturuldu; kâr oranı %${fmtNum(markupRate * 100)} uygulandı.`,
     );
   }
+
+  // Asistandan gelen ön doldurma: yeni teklifte bir kez uygulanır, sonra
+  // kalemler oluşturulur. Kullanıcı kontrol edip Kaydet'e basar.
+  const [prefillDone, setPrefillDone] = useState(false);
+  const [prefillRegenerate, setPrefillRegenerate] = useState(false);
+  useEffect(() => {
+    if (offerId || prefillDone || !search.kwp) return;
+    if (catalog.length === 0 || !(rates.USD > 0)) return;
+    setPrefillDone(true);
+    const systemType = search.sistem ?? "ongrid";
+    const { ges: next, notes } = applyPackage(
+      {
+        id: "asistan",
+        name: "Asistan",
+        description: "",
+        systemType,
+        targetKwp: search.kwp,
+        batteryKwh: systemType === "hibrit" ? (search.batarya ?? 0) : 0,
+      },
+      {
+        ...ges,
+        systemType,
+        projectType: systemType === "hibrit" ? "hibrit" : ges.projectType,
+      },
+      catalog,
+      rates,
+    );
+    setGes(next);
+    setTargetKwp(search.kwp);
+    if (search.baslik) setTitle(search.baslik);
+    if (search.konum) setProjectLocation(search.konum);
+    if (search.musteri) {
+      setRecipient((r) => ({ ...r, mode: "kayitli" }));
+      setCustomerId(search.musteri);
+    } else if (search.aday) {
+      setRecipient((r) => ({ ...r, mode: "aday", name: search.aday ?? "" }));
+    }
+    setPrefillRegenerate(true);
+    toast.success(
+      `Asistan teklifi hazırladı (${fmtNum(search.kwp)} kWp ${systemType === "hibrit" ? "hibrit" : "on-grid"}). Kontrol edip Kaydet'e basın.${notes.length ? ` ${notes.join(" ")}` : ""}`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offerId, prefillDone, search, catalog, rates]);
+  useEffect(() => {
+    if (!prefillRegenerate) return;
+    setPrefillRegenerate(false);
+    regenerate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillRegenerate, ges]);
 
   function applyGlobalMarkup() {
     // Taahhüt kalemleri kütüphanedeki kategori kâr oranlarıyla gelir
