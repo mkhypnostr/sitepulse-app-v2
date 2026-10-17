@@ -46,6 +46,7 @@ import { Route as AuthenticatedJobReportJobIdRouteImport } from './routes/_authe
 import { Route as AuthenticatedJobsJobIdRouteImport } from './routes/_authenticated/jobs/$jobId'
 import { Route as AuthenticatedProjectReportProjectIdRouteImport } from './routes/_authenticated/project-report/$projectId'
 import { Route as AuthenticatedProjectsProjectIdRouteImport } from './routes/_authenticated/projects/$projectId'
+import { Route as AuthenticatedTeklifDosyasiOfferIdRouteImport } from './routes/_authenticated/teklif-dosyasi.$offerId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -243,6 +244,12 @@ const AuthenticatedProjectsProjectIdRoute =
     path: '/$projectId',
     getParentRoute: () => AuthenticatedProjectsRoute,
   } as any)
+const AuthenticatedTeklifDosyasiOfferIdRoute =
+  AuthenticatedTeklifDosyasiOfferIdRouteImport.update({
+    id: '/teklif-dosyasi/$offerId',
+    path: '/teklif-dosyasi/$offerId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -281,6 +288,7 @@ export interface FileRoutesByFullPath {
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
+  '/teklif-dosyasi/$offerId': typeof AuthenticatedTeklifDosyasiOfferIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -319,6 +327,7 @@ export interface FileRoutesByTo {
   '/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
+  '/teklif-dosyasi/$offerId': typeof AuthenticatedTeklifDosyasiOfferIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -359,6 +368,7 @@ export interface FileRoutesById {
   '/_authenticated/jobs/$jobId': typeof AuthenticatedJobsJobIdRoute
   '/_authenticated/project-report/$projectId': typeof AuthenticatedProjectReportProjectIdRoute
   '/_authenticated/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
+  '/_authenticated/teklif-dosyasi/$offerId': typeof AuthenticatedTeklifDosyasiOfferIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -399,6 +409,7 @@ export interface FileRouteTypes {
     | '/jobs/$jobId'
     | '/project-report/$projectId'
     | '/projects/$projectId'
+    | '/teklif-dosyasi/$offerId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -437,6 +448,7 @@ export interface FileRouteTypes {
     | '/jobs/$jobId'
     | '/project-report/$projectId'
     | '/projects/$projectId'
+    | '/teklif-dosyasi/$offerId'
   id:
     | '__root__'
     | '/'
@@ -476,6 +488,7 @@ export interface FileRouteTypes {
     | '/_authenticated/jobs/$jobId'
     | '/_authenticated/project-report/$projectId'
     | '/_authenticated/projects/$projectId'
+    | '/_authenticated/teklif-dosyasi/$offerId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -750,6 +763,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedProjectsProjectIdRouteImport
       parentRoute: typeof AuthenticatedProjectsRoute
     }
+    '/_authenticated/teklif-dosyasi/$offerId': {
+      id: '/_authenticated/teklif-dosyasi/$offerId'
+      path: '/teklif-dosyasi/$offerId'
+      fullPath: '/teklif-dosyasi/$offerId'
+      preLoaderRoute: typeof AuthenticatedTeklifDosyasiOfferIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -795,6 +815,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedJobReportJobIdRoute: typeof AuthenticatedJobReportJobIdRoute
   AuthenticatedJobsJobIdRoute: typeof AuthenticatedJobsJobIdRoute
   AuthenticatedProjectReportProjectIdRoute: typeof AuthenticatedProjectReportProjectIdRoute
+  AuthenticatedTeklifDosyasiOfferIdRoute: typeof AuthenticatedTeklifDosyasiOfferIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -828,6 +849,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedJobsJobIdRoute: AuthenticatedJobsJobIdRoute,
   AuthenticatedProjectReportProjectIdRoute:
     AuthenticatedProjectReportProjectIdRoute,
+  AuthenticatedTeklifDosyasiOfferIdRoute:
+    AuthenticatedTeklifDosyasiOfferIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

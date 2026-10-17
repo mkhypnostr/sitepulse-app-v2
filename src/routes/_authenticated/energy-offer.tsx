@@ -845,6 +845,9 @@ function EnergyOfferPage() {
           dataQuery.data?.lead?.id ?? dataQuery.data?.offer?.lead_id ?? null,
       };
       let id = asRevision ? undefined : offerId;
+      let savedOfferNo = asRevision
+        ? null
+        : (dataQuery.data?.offer?.offer_no ?? null);
       let revisionNo: string | null = null;
       if (asRevision) {
         const current = dataQuery.data?.offer?.offer_no;
@@ -878,10 +881,11 @@ function EnergyOfferPage() {
             created_by: user.id,
             ...(revisionNo ? { offer_no: revisionNo } : {}),
           })
-          .select("id")
+          .select("id, offer_no")
           .single();
         if (error) throw error;
         id = data.id as string;
+        savedOfferNo = (data.offer_no as string) ?? null;
       }
       const rows = priced.map((line, index) => ({
         offer_id: id as string,
@@ -902,6 +906,22 @@ function EnergyOfferPage() {
       if (rows.length > 0) {
         const { error } = await supabase.from("offer_line_items").insert(rows);
         if (error) throw error;
+      }
+      // Müşteri dosyası da saklanır: Teklifler listesinden hazırlayıcıya
+      // girmeden açılıp PDF olarak yazdırılabilsin. Belge üretilemezse kayıt
+      // yine de başarılı sayılır.
+      try {
+        const { error: documentError } = await supabase
+          .from("offer_documents")
+          .upsert({
+            offer_id: id as string,
+            html: customerHtml(savedOfferNo ?? undefined),
+            updated_by: user.id,
+            updated_at: new Date().toISOString(),
+          });
+        if (documentError) throw documentError;
+      } catch (documentError) {
+        console.error("Teklif dosyası saklanamadı", documentError);
       }
       // Fırsat henüz teklif aşamasına gelmediyse ilerlet ve geçmişe yaz.
       const lead = dataQuery.data?.lead;
@@ -948,9 +968,9 @@ function EnergyOfferPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  function documentInput() {
+  function documentInput(offerNoOverride?: string) {
     return {
-      offerNo: dataQuery.data?.offer?.offer_no ?? "TASLAK",
+      offerNo: offerNoOverride ?? dataQuery.data?.offer?.offer_no ?? "TASLAK",
       issueDate: new Date(),
       validUntil,
       title,
@@ -1013,8 +1033,8 @@ function EnergyOfferPage() {
   }
 
   /** Müşteri dosyasının HTML'i (yazdır düğmesi dahil). */
-  function customerHtml() {
-    const input = documentInput();
+  function customerHtml(offerNoOverride?: string) {
+    const input = documentInput(offerNoOverride);
     const offerHtml =
       layout === "teknik"
         ? buildTechnicalOffer(input, technical)

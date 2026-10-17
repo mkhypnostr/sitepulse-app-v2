@@ -717,6 +717,35 @@ export type Database = {
         };
         Relationships: [];
       };
+      offer_documents: {
+        Row: {
+          html: string;
+          offer_id: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          html: string;
+          offer_id: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          html?: string;
+          offer_id?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "offer_documents_offer_id_fkey";
+            columns: ["offer_id"];
+            isOneToOne: true;
+            referencedRelation: "offers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       offer_line_items: {
         Row: {
           applied_sale_amount: number;

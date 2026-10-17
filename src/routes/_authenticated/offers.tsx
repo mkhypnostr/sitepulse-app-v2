@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FilePlus2,
   FileSpreadsheet,
+  FileText,
   FolderOpen,
   Pencil,
   Plus,
@@ -684,20 +685,31 @@ function OffersPage() {
                           </Button>
                         ) : null}
                         {isEnergy ? (
-                          <Button
-                            asChild
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                          >
-                            <Link
-                              to="/energy-offer"
-                              search={{ offerId: offer.id }}
+                          <>
+                            <Button asChild type="button" size="sm">
+                              <Link
+                                to="/teklif-dosyasi/$offerId"
+                                params={{ offerId: offer.id }}
+                              >
+                                <FileText className="mr-1.5 h-3.5 w-3.5" />
+                                Teklifi Gör
+                              </Link>
+                            </Button>
+                            <Button
+                              asChild
+                              type="button"
+                              variant="outline"
+                              size="sm"
                             >
-                              <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                              Hazırlayıcıda Aç
-                            </Link>
-                          </Button>
+                              <Link
+                                to="/energy-offer"
+                                search={{ offerId: offer.id }}
+                              >
+                                <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                                Düzenle
+                              </Link>
+                            </Button>
+                          </>
                         ) : (
                           <Button
                             type="button"
