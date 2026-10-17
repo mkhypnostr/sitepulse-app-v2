@@ -2075,11 +2075,16 @@ function EnergyOfferPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="min-w-[260px]">Açıklama</TableHead>
+                      {/* Sayı kutuları sabit genişlikte: tablo dar ekranda
+                          sütunları sıkıştırıp kutuları 25-40 px'e
+                          düşürüyor, değer (ör. kâr %30) görünmüyordu. */}
+                      <TableHead className="min-w-[240px]">Açıklama</TableHead>
                       <TableHead>Modül</TableHead>
-                      <TableHead className="w-24">Miktar</TableHead>
-                      <TableHead className="w-28">Alış (kaynak)</TableHead>
-                      <TableHead className="w-20">Kâr %</TableHead>
+                      <TableHead className="min-w-[96px]">Miktar</TableHead>
+                      <TableHead className="min-w-[150px]">
+                        Alış (birim)
+                      </TableHead>
+                      <TableHead className="min-w-[96px]">Kâr %</TableHead>
                       <TableHead className="text-right">Maliyet</TableHead>
                       <TableHead className="text-right">Satış</TableHead>
                       <TableHead className="w-16">Müşteri</TableHead>
@@ -2134,7 +2139,7 @@ function EnergyOfferPage() {
                         </TableCell>
                         <TableCell>
                           <NumField
-                            className="h-9"
+                            className="h-9 w-20 text-right"
                             value={line.quantity}
                             onChange={(quantity) =>
                               updateLine(line.key, { quantity })
@@ -2144,7 +2149,7 @@ function EnergyOfferPage() {
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <NumField
-                              className="h-9"
+                              className="h-9 w-28 text-right"
                               value={line.sourceUnitCost}
                               onChange={(sourceUnitCost) =>
                                 updateLine(line.key, { sourceUnitCost })
@@ -2157,7 +2162,7 @@ function EnergyOfferPage() {
                         </TableCell>
                         <TableCell>
                           <NumField
-                            className="h-9"
+                            className="h-9 w-20 text-right"
                             value={round2(line.markupRate * 100)}
                             onChange={(v) =>
                               updateLine(line.key, {
@@ -2166,10 +2171,10 @@ function EnergyOfferPage() {
                             }
                           />
                         </TableCell>
-                        <TableCell className="text-right text-xs">
+                        <TableCell className="whitespace-nowrap text-right text-xs">
                           {formatMoney(line.totalCost, currency)}
                         </TableCell>
-                        <TableCell className="text-right font-bold">
+                        <TableCell className="whitespace-nowrap text-right font-bold">
                           {formatMoney(line.saleAmount, currency)}
                         </TableCell>
                         <TableCell>
