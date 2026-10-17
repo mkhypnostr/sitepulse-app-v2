@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import type { GesConfig } from "@/lib/energy-offer";
 
@@ -338,6 +338,36 @@ export function ProjectTypePicker({
   value: string | undefined;
   onSelect: (type: ProjectType) => void;
 }) {
+  const selected = PROJECT_TYPES.find((type) => type.id === value);
+  // Seçim yapılınca kartlar tek satıra küçülür; "Değiştir" ile yeniden açılır.
+  const [expanded, setExpanded] = useState(false);
+  if (selected && !expanded) {
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/5 p-2 pr-3">
+        <span className="block h-12 w-20 shrink-0 overflow-hidden rounded-xl bg-gradient-to-b from-sky-50 to-transparent dark:from-sky-950/30">
+          {selected.art}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+            Proje tipi
+          </span>
+          <span className="block truncate text-sm font-bold">
+            {selected.title}
+          </span>
+          <span className="block truncate text-[11px] text-muted-foreground">
+            {selected.description}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="shrink-0 rounded-lg px-2.5 py-1.5 text-sm font-semibold text-primary hover:bg-primary/10"
+        >
+          Değiştir
+        </button>
+      </div>
+    );
+  }
   return (
     <div>
       <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
@@ -350,7 +380,10 @@ export function ProjectTypePicker({
             <button
               key={type.id}
               type="button"
-              onClick={() => onSelect(type)}
+              onClick={() => {
+                onSelect(type);
+                setExpanded(false);
+              }}
               aria-pressed={active}
               className={`group relative flex flex-col overflow-hidden rounded-2xl border text-left transition ${
                 active
