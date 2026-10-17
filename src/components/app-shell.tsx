@@ -446,11 +446,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           data-pinned={pinned ? "true" : "false"}
           data-expanded={pinned || peek ? "true" : "false"}
           onMouseEnter={() => {
-            if (!peekBlocked.current) schedulePeek(true, 140);
+            if (!peekBlocked.current) schedulePeek(true, 70);
           }}
           onMouseLeave={() => {
             peekBlocked.current = false;
-            schedulePeek(false, 120);
+            schedulePeek(false, 90);
           }}
           onFocus={(event) => {
             if (!peekBlocked.current && event.target.matches(":focus-visible"))
