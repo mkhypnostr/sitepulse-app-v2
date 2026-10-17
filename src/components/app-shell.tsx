@@ -79,7 +79,21 @@ export function AppShell({ children }: { children: ReactNode }) {
   // menü kendiliğinden yeniden açılmaz (daralırken içerik kaydığı için
   // tarayıcı yeni bir "fare girdi" olayı üretebiliyor).
   const peekBlocked = useRef(false);
+  // Üzerinden geçerken açılmasın: fare kısa bir an durunca açılır, çıkınca
+  // kısa bir gecikmeyle kapanır (yanlışlıkla taşınca titremez).
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePeek = (open: boolean, delay: number) => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => setPeek(open), delay);
+  };
+  useEffect(
+    () => () => {
+      if (peekTimer.current) clearTimeout(peekTimer.current);
+    },
+    [],
+  );
   const togglePinned = () => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
     setPeek(false);
     peekBlocked.current = true;
     if (document.activeElement instanceof HTMLElement) {
@@ -432,11 +446,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           data-pinned={pinned ? "true" : "false"}
           data-expanded={pinned || peek ? "true" : "false"}
           onMouseEnter={() => {
-            if (!peekBlocked.current) setPeek(true);
+            if (!peekBlocked.current) schedulePeek(true, 140);
           }}
           onMouseLeave={() => {
             peekBlocked.current = false;
-            setPeek(false);
+            schedulePeek(false, 120);
           }}
           onFocus={(event) => {
             if (!peekBlocked.current && event.target.matches(":focus-visible"))

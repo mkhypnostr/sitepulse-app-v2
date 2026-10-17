@@ -262,7 +262,11 @@
 }
 
 @utility sidebar-transition {
-  transition: width 0.22s ease;
+  /* iOS benzeri yumuşak açılış: hızlı başlar, yavaşlayarak durur. */
+  transition:
+    width 0.36s cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 /* Daraltılabilir kenar çubuğu: etiketler yalnız üzerine gelince ya da
@@ -271,14 +275,23 @@
   max-width: 0;
   opacity: 0;
   overflow: hidden;
+  transform: translateX(-4px);
   transition:
-    max-width 0.22s ease,
-    opacity 0.18s ease;
+    max-width 0.36s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.14s ease,
+    transform 0.2s ease;
 }
 
+/* Açılırken yazılar menü genişledikten sonra belirir; kapanırken önce
+   yazılar kaybolur. */
 .group[data-expanded="true"] .sidebar-reveal {
   max-width: 190px;
   opacity: 1;
+  transform: none;
+  transition:
+    max-width 0.36s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.24s ease 0.1s,
+    transform 0.3s cubic-bezier(0.32, 0.72, 0, 1) 0.1s;
 }
 
 .group[data-expanded="true"] .sidebar-collapsed-only {
