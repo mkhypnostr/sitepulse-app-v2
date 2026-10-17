@@ -299,23 +299,42 @@ function buildEmail(
   }
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Resend saniyede en fazla 10 istek kabul eder. pg_cron gecikme kontrolü
+// aynı anda birçok çağrı başlatabildiği için (9 kayıt × 3 yönetici = 27
+// e-posta) 429 alınabilir; 2026-10-17'de 27 e-postanın 17'si bu yüzden
+// gitmedi. 429'da Retry-After (yoksa artan bekleme + rastgele pay) kadar
+// beklenip en fazla 5 kez yeniden denenir.
+const MAX_ATTEMPTS = 6;
+
 async function sendViaResend(to: string, subject: string, html: string) {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: RESEND_FROM_EMAIL,
-      to,
-      subject,
-      html,
-      reply_to: RESEND_REPLY_TO,
-    }),
-  });
-  if (!response.ok) {
+  for (let attempt = 1; ; attempt++) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: RESEND_FROM_EMAIL,
+        to,
+        subject,
+        html,
+        reply_to: RESEND_REPLY_TO,
+      }),
+    });
+    if (response.ok) return;
     const body = await response.text();
+    if (response.status === 429 && attempt < MAX_ATTEMPTS) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const waitMs =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : 500 * attempt;
+      await sleep(waitMs + Math.random() * 700);
+      continue;
+    }
     throw new Error(`Resend API hatası (${response.status}): ${body}`);
   }
 }
@@ -358,16 +377,22 @@ Deno.serve(async (req: Request) => {
   });
   if (validRecipients.length === 0) return json({ sent: 0 });
 
-  const results = await Promise.allSettled(
-    validRecipients.map(async (recipient) => {
-      const { subject, html } = buildEmail(
-        payload.event_type,
-        recipient,
-        payload.data ?? {},
-      );
+  // Alıcılara sırayla gönderilir (paralel değil); hız sınırına takılmamak için.
+  const results: PromiseSettledResult<void>[] = [];
+  for (const recipient of validRecipients) {
+    const { subject, html } = buildEmail(
+      payload.event_type,
+      recipient,
+      payload.data ?? {},
+    );
+    try {
       await sendViaResend(recipient.email, subject, html);
-    }),
-  );
+      results.push({ status: "fulfilled", value: undefined });
+    } catch (reason) {
+      results.push({ status: "rejected", reason });
+    }
+    await sleep(120);
+  }
 
   const failures = results.filter(
     (result): result is PromiseRejectedResult => result.status === "rejected",
