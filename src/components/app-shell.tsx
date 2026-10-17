@@ -338,11 +338,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
               { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
               {
-                to: "/my-project-tasks",
-                label: "Proje Görevlerim",
-                icon: ClipboardList,
-              },
-              {
                 to: "/approvals",
                 label: "Onay ve Uyarı Merkezi",
                 icon: ShieldAlert,
@@ -365,7 +360,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const bottomPaths: Record<string, string[]> = {
     admin: ["/dashboard", "/tasks", "/sales", "/calendar"],
     technical_office: ["/dashboard", "/tasks", "/projects", "/calendar"],
-    contractor: ["/dashboard", "/my-jobs", "/my-project-tasks", "/calendar"],
+    contractor: ["/dashboard", "/my-jobs", "/approvals", "/calendar"],
     customer: ["/dashboard", "/my-projects", "/my-jobs", "/service-requests"],
   };
   const bottomItems = (bottomPaths[role ?? "customer"] ?? [])
