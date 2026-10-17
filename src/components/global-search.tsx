@@ -142,7 +142,7 @@ async function searchProjectTasks(
           params: { projectId: row.project_id },
           hash: `task-${row.id}`,
         }
-      : { to: "/my-project-tasks" },
+      : { to: "/my-jobs", hash: "proje" },
   }));
 }
 

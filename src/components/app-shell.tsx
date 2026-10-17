@@ -53,6 +53,8 @@ interface NavItem {
   icon: LucideIcon;
   badgeKey?: "approvals" | "stock" | "tasks" | "sales";
   hash?: string;
+  /** Telefondaki alt çubukta görünen kısa ad (uzun adlar kesilmesin). */
+  short?: string;
 }
 type NavEntry = NavItem | { section: string };
 
@@ -80,7 +82,21 @@ export function AppShell({ children }: { children: ReactNode }) {
   // menü kendiliğinden yeniden açılmaz (daralırken içerik kaydığı için
   // tarayıcı yeni bir "fare girdi" olayı üretebiliyor).
   const peekBlocked = useRef(false);
+  // Üzerinden geçerken açılmasın: fare kısa bir an durunca açılır, çıkınca
+  // kısa bir gecikmeyle kapanır (yanlışlıkla taşınca titremez).
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePeek = (open: boolean, delay: number) => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => setPeek(open), delay);
+  };
+  useEffect(
+    () => () => {
+      if (peekTimer.current) clearTimeout(peekTimer.current);
+    },
+    [],
+  );
   const togglePinned = () => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
     setPeek(false);
     peekBlocked.current = true;
     if (document.activeElement instanceof HTMLElement) {
@@ -326,13 +342,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
               { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
               {
-                to: "/my-project-tasks",
-                label: "Proje Görevlerim",
-                icon: ClipboardList,
-              },
-              {
                 to: "/approvals",
                 label: "Onay ve Uyarı Merkezi",
+                short: "Onaylar",
                 icon: ShieldAlert,
                 badgeKey: "approvals",
               },
@@ -341,7 +353,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           : [
               { to: "/dashboard", label: "Panel", icon: LayoutDashboard },
               { to: "/my-projects", label: "Projelerim", icon: FolderKanban },
-              { to: "/my-jobs", label: "Görevlerim", icon: BriefcaseBusiness },
+              { to: "/my-jobs", label: "İşlerim", icon: BriefcaseBusiness },
               {
                 to: "/service-requests",
                 label: "Teknik Servis",
@@ -353,7 +365,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const bottomPaths: Record<string, string[]> = {
     admin: ["/dashboard", "/tasks", "/sales", "/calendar"],
     technical_office: ["/dashboard", "/tasks", "/projects", "/calendar"],
-    contractor: ["/dashboard", "/my-jobs", "/my-project-tasks", "/calendar"],
+    contractor: ["/dashboard", "/my-jobs", "/approvals", "/calendar"],
     customer: ["/dashboard", "/my-projects", "/my-jobs", "/service-requests"],
   };
   const bottomItems = (bottomPaths[role ?? "customer"] ?? [])
@@ -423,22 +435,22 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background lg:flex">
-      {/* Masaüstü: yerleşimde dar bir yer tutucu; asıl kenar çubuğu onun
-          üzerinde yüzer. Daraltılmışken yalnız ikonlar görünür, üzerine
-          gelince içeriğin üstüne açılır (sayfa kaymaz). Sabitlenince yer
-          tutucu da genişler. */}
+      {/* Masaüstü: kenar çubuğu yer tutucunun üzerinde durur. Daraltılmışken
+          yalnız ikonlar görünür; üzerine gelince ya da sabitlenince yer
+          tutucu da aynı yumuşak geçişle genişler, sağdaki içerik menünün
+          altında kalmaz, yana kayarak daralır. */}
       <div
-        className={`sidebar-transition hidden shrink-0 lg:block ${pinned ? "w-[260px]" : "w-[88px]"}`}
+        className={`sidebar-transition hidden shrink-0 lg:block ${pinned || peek ? "w-[260px]" : "w-[88px]"}`}
       >
         <aside
           data-pinned={pinned ? "true" : "false"}
           data-expanded={pinned || peek ? "true" : "false"}
           onMouseEnter={() => {
-            if (!peekBlocked.current) setPeek(true);
+            if (!peekBlocked.current) schedulePeek(true, 70);
           }}
           onMouseLeave={() => {
             peekBlocked.current = false;
-            setPeek(false);
+            schedulePeek(false, 90);
           }}
           onFocus={(event) => {
             if (!peekBlocked.current && event.target.matches(":focus-visible"))
@@ -619,7 +631,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <span
                   className={`max-w-full truncate px-1 text-[10px] ${active ? "font-semibold" : "font-medium"}`}
                 >
-                  {item.label}
+                  {item.short ?? item.label}
                 </span>
               </Link>
             );

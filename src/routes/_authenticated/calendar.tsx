@@ -360,7 +360,7 @@ function CalendarPage() {
                 params: { projectId: task.project_id },
                 hash: `task-${task.id}`,
               }
-            : { to: "/my-project-tasks" },
+            : { to: "/my-jobs", hash: "proje" },
         });
       }
 
