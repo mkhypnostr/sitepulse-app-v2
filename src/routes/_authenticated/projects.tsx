@@ -23,6 +23,7 @@ import { errorMessage } from "@/lib/domain";
 import { createProjectDriveWorkspace } from "@/lib/google-workspace";
 import {
   formatProjectDate,
+  projectOverdueDays,
   projectApprovedProgress,
   projectStatusLabel,
   projectStatusOptions,
@@ -767,9 +768,16 @@ function ProjectsPage() {
                         </h2>
                       </div>
                     </div>
-                    <Badge variant="outline" className="shrink-0">
-                      {projectStatusLabel[project.status]}
-                    </Badge>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <Badge variant="outline">
+                        {projectStatusLabel[project.status]}
+                      </Badge>
+                      {projectOverdueDays(project) > 0 ? (
+                        <Badge variant="destructive">
+                          Hedef geçti · {projectOverdueDays(project)} gün
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
@@ -799,14 +807,8 @@ function ProjectsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {projectProcesses.map((process) => (
-                      <Badge key={process.id} variant="secondary">
-                        {projectTypeLabel[process.process_type]}
-                      </Badge>
-                    ))}
-                  </div>
-
+                  {/* Süreç tipi ilerleme kartlarının başlığında yazar; ayrı
+                      rozet satırı aynı adı ikinci kez gösteriyordu. */}
                   <div className="mt-5 grid gap-3 sm:grid-cols-3">
                     {processProgresses.map((process) => (
                       <div
