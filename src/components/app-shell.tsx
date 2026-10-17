@@ -37,6 +37,7 @@ import { roleLabels } from "@/lib/domain";
 import { isOperationalManager } from "@/lib/permissions";
 import { supabase } from "@/integrations/supabase/client";
 import { GlobalSearch } from "@/components/global-search";
+import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { useTheme } from "@/lib/theme";
 import { PushBanner } from "@/components/push-settings";
 import { refreshPushSubscription } from "@/lib/push";
@@ -600,6 +601,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : null}
           {children}
         </main>
+
+        {/* Uygulama içi asistan: yalnız yönetici ve teknik ofis. */}
+        {role === "admin" || role === "technical_office" ? (
+          <AssistantPanel />
+        ) : null}
 
         {/* Mobil: iOS tarzı yüzen alt sekme çubuğu. */}
         <nav
