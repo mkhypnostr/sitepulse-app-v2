@@ -435,12 +435,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background lg:flex">
-      {/* Masaüstü: yerleşimde dar bir yer tutucu; asıl kenar çubuğu onun
-          üzerinde yüzer. Daraltılmışken yalnız ikonlar görünür, üzerine
-          gelince içeriğin üstüne açılır (sayfa kaymaz). Sabitlenince yer
-          tutucu da genişler. */}
+      {/* Masaüstü: kenar çubuğu yer tutucunun üzerinde durur. Daraltılmışken
+          yalnız ikonlar görünür; üzerine gelince ya da sabitlenince yer
+          tutucu da aynı yumuşak geçişle genişler, sağdaki içerik menünün
+          altında kalmaz, yana kayarak daralır. */}
       <div
-        className={`sidebar-transition hidden shrink-0 lg:block ${pinned ? "w-[260px]" : "w-[88px]"}`}
+        className={`sidebar-transition hidden shrink-0 lg:block ${pinned || peek ? "w-[260px]" : "w-[88px]"}`}
       >
         <aside
           data-pinned={pinned ? "true" : "false"}
