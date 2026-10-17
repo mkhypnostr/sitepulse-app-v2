@@ -1613,6 +1613,35 @@ export type Database = {
           },
         ];
       };
+      stock_item_costs: {
+        Row: {
+          stock_item_id: string;
+          unit_price: number;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          stock_item_id: string;
+          unit_price?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          stock_item_id?: string;
+          unit_price?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "stock_item_costs_stock_item_id_fkey";
+            columns: ["stock_item_id"];
+            isOneToOne: true;
+            referencedRelation: "stock_items";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       stock_items: {
         Row: {
           code: string | null;

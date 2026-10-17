@@ -74,6 +74,9 @@ function numericValue(value: unknown) {
 function StockPage() {
   const { role } = useAuth();
   const canManageStock = role === "admin" || role === "technical_office";
+  // Birim fiyat (maliyet) yalnız yöneticiye görünür; teknik ofis miktarları
+  // yönetir ama fiyat görmez (fiyatlar stock_item_costs tablosunda).
+  const canSeeCost = role === "admin";
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -94,7 +97,7 @@ function StockPage() {
   });
 
   const stockQuery = useQuery({
-    queryKey: ["stock-items"],
+    queryKey: ["stock-items", canSeeCost],
     enabled: canManageStock,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -102,7 +105,18 @@ function StockPage() {
         .select("*")
         .order("name");
       if (error) throw error;
-      return data;
+      if (!canSeeCost) return data;
+      const { data: costs, error: costError } = await supabase
+        .from("stock_item_costs")
+        .select("stock_item_id, unit_price");
+      if (costError) throw costError;
+      const priceById = new Map(
+        (costs ?? []).map((row) => [row.stock_item_id, Number(row.unit_price)]),
+      );
+      return data.map((item) => ({
+        ...item,
+        unit_price: priceById.get(item.id) ?? 0,
+      }));
     },
   });
 
@@ -439,16 +453,18 @@ function StockPage() {
               }
             />
           </label>
-          <label className="grid gap-1 text-sm">
-            Birim Fiyat (₺)
-            <Input
-              inputMode="decimal"
-              value={form.unitPrice}
-              onChange={(event) =>
-                setForm({ ...form, unitPrice: event.target.value })
-              }
-            />
-          </label>
+          {canSeeCost ? (
+            <label className="grid gap-1 text-sm">
+              Birim Fiyat (₺)
+              <Input
+                inputMode="decimal"
+                value={form.unitPrice}
+                onChange={(event) =>
+                  setForm({ ...form, unitPrice: event.target.value })
+                }
+              />
+            </label>
+          ) : null}
           <label className="grid gap-1 text-sm">
             Lokasyon
             <Input
@@ -588,7 +604,9 @@ function StockPage() {
                 <TableRow>
                   <TableHead>Malzeme</TableHead>
                   <TableHead className="text-right">Miktar</TableHead>
-                  <TableHead className="text-right">Birim fiyat</TableHead>
+                  {canSeeCost ? (
+                    <TableHead className="text-right">Birim fiyat</TableHead>
+                  ) : null}
                   <TableHead>İşlem</TableHead>
                 </TableRow>
               </TableHeader>
@@ -599,9 +617,11 @@ function StockPage() {
                     <TableCell className="text-right">
                       {row.quantity} {row.unit}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {formatTRY(row.unitPrice)}
-                    </TableCell>
+                    {canSeeCost ? (
+                      <TableCell className="text-right">
+                        {formatTRY(row.unitPrice)}
+                      </TableCell>
+                    ) : null}
                     <TableCell>
                       <Badge variant={row.existingId ? "warning" : "success"}>
                         {row.existingId ? "Mevcut kayıt" : "Yeni kayıt"}
@@ -626,14 +646,18 @@ function StockPage() {
         </DialogContent>
       </Dialog>
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground">Toplam Stok Değeri</p>
-            <p className="text-3xl font-black text-highlight">
-              {formatTRY(totalStockValue)}
-            </p>
-          </CardContent>
-        </Card>
+        {canSeeCost ? (
+          <Card>
+            <CardContent className="p-5">
+              <p className="text-sm text-muted-foreground">
+                Toplam Stok Değeri
+              </p>
+              <p className="text-3xl font-black text-highlight">
+                {formatTRY(totalStockValue)}
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
         <Card>
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground">
@@ -664,8 +688,12 @@ function StockPage() {
                 <TableHead>Malzeme</TableHead>
                 <TableHead>Lokasyon</TableHead>
                 <TableHead className="text-right">Stok</TableHead>
-                <TableHead className="text-right">Birim Fiyat</TableHead>
-                <TableHead className="text-right">Toplam Değer</TableHead>
+                {canSeeCost ? (
+                  <>
+                    <TableHead className="text-right">Birim Fiyat</TableHead>
+                    <TableHead className="text-right">Toplam Değer</TableHead>
+                  </>
+                ) : null}
                 <TableHead>Durum</TableHead>
               </TableRow>
             </TableHeader>
@@ -682,12 +710,16 @@ function StockPage() {
                     <TableCell className="text-right text-lg font-black">
                       {item.quantity} {item.unit}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {formatTRY(item.unit_price)}
-                    </TableCell>
-                    <TableCell className="text-right font-bold">
-                      {formatTRY(item.quantity * item.unit_price)}
-                    </TableCell>
+                    {canSeeCost ? (
+                      <>
+                        <TableCell className="text-right">
+                          {formatTRY(item.unit_price)}
+                        </TableCell>
+                        <TableCell className="text-right font-bold">
+                          {formatTRY(item.quantity * item.unit_price)}
+                        </TableCell>
+                      </>
+                    ) : null}
                     <TableCell>
                       {low ? (
                         <Badge variant="destructive">
