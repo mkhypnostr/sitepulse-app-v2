@@ -66,6 +66,10 @@ type IndependentTask = {
   assigned_to: string | null;
   status: string;
   planned_date: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  assigned_by: string | null;
+  assigned_at: string | null;
 };
 type ProjectTask = {
   id: string;
@@ -77,6 +81,9 @@ type ProjectTask = {
   planned_date: string | null;
   note: string | null;
   approved_progress_pct: number;
+  created_at: string | null;
+  assigned_by: string | null;
+  assigned_at: string | null;
 };
 type AssignedWorkOrder = {
   id: string;
@@ -88,8 +95,15 @@ type AssignedWorkOrder = {
   status: string;
   scheduled_at: string | null;
   progress_pct: number;
+  created_by: string | null;
+  created_at: string | null;
 };
-type WorkOrderAssignment = { work_order_id: string; contractor_id: string };
+type WorkOrderAssignment = {
+  work_order_id: string;
+  contractor_id: string;
+  assigned_by: string | null;
+  created_at: string | null;
+};
 
 const statusLabel: Record<string, string> = {
   draft: "Taslak",
@@ -225,27 +239,27 @@ function TasksPage() {
         supabase
           .from("operational_tasks" as never)
           .select(
-            "id, title, description, project_id, customer_id, assigned_to, status, planned_date",
+            "id, title, description, project_id, customer_id, assigned_to, status, planned_date, created_by, created_at, assigned_by, assigned_at",
           )
           .order("planned_date", { ascending: true, nullsFirst: false }),
         supabase
           .from("project_tasks")
           .select(
-            "id, project_id, task_name, phase_name, responsible_id, status, planned_date, note, approved_progress_pct",
+            "id, project_id, task_name, phase_name, responsible_id, status, planned_date, note, approved_progress_pct, created_at, assigned_by, assigned_at",
           )
           .order("planned_date", { ascending: true, nullsFirst: false }),
         supabase
           .from("work_orders")
           .select(
-            "id, work_order_no, title, description, project_id, customer_id, status, scheduled_at, progress_pct",
+            "id, work_order_no, title, description, project_id, customer_id, status, scheduled_at, progress_pct, created_by, created_at",
           )
           .order("scheduled_at", { ascending: true, nullsFirst: false }),
         supabase
           .from("work_order_assignments")
-          .select("work_order_id, contractor_id"),
+          .select("work_order_id, contractor_id, assigned_by, created_at"),
         supabase
           .from("projects")
-          .select("id, name, project_no")
+          .select("id, name, project_no, created_by")
           .order("created_at", { ascending: false }),
         supabase.from("customers").select("id, name").order("name"),
         supabase.rpc("list_task_assignees"),
@@ -686,6 +700,14 @@ function TasksPage() {
   ) : null;
 
   const contractorsByWorkOrder = new Map<string, Assignee>();
+  const assignmentByWorkOrder = new Map(
+    data.assignments.map((assignment) => [
+      assignment.work_order_id,
+      assignment,
+    ]),
+  );
+  const personName = (id: string | null | undefined) =>
+    id ? assigneeById.get(id)?.full_name || "Kullanıcı" : undefined;
   for (const assignment of data.assignments) {
     const contractor = assigneeById.get(assignment.contractor_id);
     if (contractor)
@@ -810,6 +832,12 @@ function TasksPage() {
       status: task.status,
       plannedDate: task.scheduled_at,
       assignee: contractorsByWorkOrder.get(task.id),
+      audit: {
+        createdBy: personName(task.created_by),
+        createdAt: task.created_at,
+        assignedBy: personName(assignmentByWorkOrder.get(task.id)?.assigned_by),
+        assignedAt: assignmentByWorkOrder.get(task.id)?.created_at ?? null,
+      },
       relation: task.project_id
         ? `Bağlı proje: ${projectById.get(task.project_id)?.name || "Proje"}`
         : "Saha görevi",
@@ -860,6 +888,12 @@ function TasksPage() {
       assignee: task.assigned_to
         ? assigneeById.get(task.assigned_to)
         : undefined,
+      audit: {
+        createdBy: personName(task.created_by),
+        createdAt: task.created_at,
+        assignedBy: personName(task.assigned_by),
+        assignedAt: task.assigned_at,
+      },
       relation: task.project_id
         ? `Proje: ${projectById.get(task.project_id)?.name || "Proje"}`
         : "Bağımsız görev",
@@ -913,6 +947,14 @@ function TasksPage() {
       assignee: task.responsible_id
         ? assigneeById.get(task.responsible_id)
         : undefined,
+      audit: {
+        createdBy: projectById.get(task.project_id)?.created_by
+          ? personName(projectById.get(task.project_id)?.created_by)
+          : undefined,
+        createdAt: task.created_at,
+        assignedBy: personName(task.assigned_by),
+        assignedAt: task.assigned_at,
+      },
       relation: `Proje: ${projectById.get(task.project_id)?.name || "Proje"}`,
       subtitle: `${task.phase_name} · Onaylı ilerleme %${task.approved_progress_pct}`,
       onOpen: () => startEditingProjectTask(task),
@@ -1082,6 +1124,7 @@ function TasksPage() {
                     status={task.status}
                     plannedDate={task.plannedDate}
                     assignee={task.assignee}
+                    audit={task.audit}
                     relation={task.relation}
                     subtitle={task.subtitle}
                     onOpen={task.onOpen}
@@ -1118,6 +1161,7 @@ function TasksPage() {
                       status={task.status}
                       plannedDate={task.plannedDate}
                       assignee={task.assignee}
+                      audit={task.audit}
                       relation={task.relation}
                       subtitle={task.subtitle}
                       onOpen={task.onOpen}
@@ -1535,6 +1579,42 @@ function TasksPage() {
   );
 }
 
+type TaskAudit = {
+  createdBy?: string;
+  createdAt: string | null;
+  assignedBy?: string;
+  assignedAt: string | null;
+};
+
+/** Açan / atayan / atanan bilgisi: kim, ne zaman. */
+function AuditLine({
+  audit,
+  assignee,
+}: {
+  audit?: TaskAudit;
+  assignee?: Assignee;
+}) {
+  if (!audit) return null;
+  const parts: string[] = [];
+  if (audit.createdBy || audit.createdAt) {
+    parts.push(
+      `Açan: ${audit.createdBy ?? "—"}${audit.createdAt ? ` · ${formatDate(audit.createdAt)}` : ""}`,
+    );
+  }
+  if (assignee) {
+    parts.push(
+      `Atayan: ${audit.assignedBy ?? "—"}${audit.assignedAt ? ` · ${formatDate(audit.assignedAt)}` : ""}`,
+    );
+    parts.push(`Atanan: ${assignee.full_name || "Kullanıcı"}`);
+  }
+  if (parts.length === 0) return null;
+  return (
+    <p className="mt-1.5 text-xs text-muted-foreground">
+      {parts.join("  ·  ")}
+    </p>
+  );
+}
+
 function TaskCard({
   id,
   category,
@@ -1542,6 +1622,7 @@ function TaskCard({
   status,
   plannedDate,
   assignee,
+  audit,
   relation,
   subtitle,
   onOpen,
@@ -1553,6 +1634,7 @@ function TaskCard({
   status: string;
   plannedDate: string | null;
   assignee?: Assignee;
+  audit?: TaskAudit;
   relation: string;
   subtitle: string;
   onOpen?: () => void;
@@ -1583,6 +1665,7 @@ function TaskCard({
             <span className="font-semibold text-foreground/90">{relation}</span>
             <span className="text-muted-foreground">• {subtitle}</span>
           </div>
+          <AuditLine audit={audit} assignee={assignee} />
         </button>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <Badge variant="outline">{statusLabel[status] || status}</Badge>

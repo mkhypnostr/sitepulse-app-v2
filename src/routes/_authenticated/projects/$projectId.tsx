@@ -320,6 +320,11 @@ function ProjectDetailPage() {
               label="Son Durum Değişikliği"
               value={formatProjectDateTime(project.status_changed_at)}
             />
+            <InfoItem
+              icon={UserRound}
+              label="Projeyi Açan"
+              value={`${managerById.get(project.created_by) || "—"} · ${formatProjectDateTime(project.created_at)}`}
+            />
           </div>
 
           {project.status_note ? (

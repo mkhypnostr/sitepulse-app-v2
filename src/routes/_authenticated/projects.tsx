@@ -23,6 +23,7 @@ import { errorMessage } from "@/lib/domain";
 import { createProjectDriveWorkspace } from "@/lib/google-workspace";
 import {
   formatProjectDate,
+  formatProjectDateTime,
   projectOverdueDays,
   projectApprovedProgress,
   projectStatusLabel,
@@ -804,6 +805,10 @@ function ProjectsPage() {
                     <div className="truncate text-xs">
                       Sorumlu:{" "}
                       {managerById.get(project.manager_id ?? "") || "Atanmadı"}
+                    </div>
+                    <div className="truncate text-xs sm:col-span-2">
+                      Açan: {managerById.get(project.created_by) || "—"} ·{" "}
+                      {formatProjectDateTime(project.created_at)}
                     </div>
                   </div>
 
