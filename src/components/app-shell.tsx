@@ -13,6 +13,7 @@ import {
   FolderOpen,
   FileText,
   Calculator,
+  Camera,
   Landmark,
   LayoutDashboard,
   Map as MapIcon,
@@ -262,6 +263,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: "/map", label: "Harita", icon: MapIcon },
           { section: "Saha ve proje" },
           { to: "/projects", label: "Projeler", icon: FolderKanban },
+          { to: "/kesif", label: "Keşif", icon: Camera },
           {
             to: "/service-requests",
             label: "Servis Talepleri",
@@ -323,6 +325,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             { to: "/map", label: "Harita", icon: MapIcon },
             { section: "Saha ve proje" },
             { to: "/projects", label: "Projeler", icon: FolderKanban },
+            { to: "/kesif", label: "Keşif", icon: Camera },
             {
               to: "/service-requests",
               label: "Servis Talepleri",
@@ -828,6 +831,7 @@ const NAV_TILE_COLORS: Record<string, string> = {
   "/calendar": "bg-red-500",
   "/map": "bg-lime-600",
   "/projects": "bg-indigo-500",
+  "/kesif": "bg-orange-600",
   "/service-requests": "bg-zinc-500",
   "/stock": "bg-amber-600",
   "/shared-files": "bg-sky-500",

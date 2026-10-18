@@ -22,6 +22,36 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 
+// Çevrimdışı (sahada keşif) için: rol ve oturum cihazda saklanır. İnternet
+// yokken oturum yenilenemezse son bilinen oturumla devam edilir; bağlantı
+// gelince Supabase oturumu kendiliğinden yeniler.
+const ROLE_KEY = "nes-role-cache";
+const AUTH_STORAGE_KEY = "sb-nyfocdnlbknxpxbeeapj-auth-token";
+
+function cachedRole(userId: string): AppRole | null {
+  try {
+    const raw = localStorage.getItem(ROLE_KEY);
+    const parsed = raw
+      ? (JSON.parse(raw) as { userId: string; role: AppRole })
+      : null;
+    return parsed?.userId === userId ? parsed.role : null;
+  } catch {
+    return null;
+  }
+}
+
+function storedSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Session) : null;
+    return parsed?.user ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+const isOffline = () => typeof navigator !== "undefined" && !navigator.onLine;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
@@ -37,22 +67,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // downgrade a technical-office user to the customer interface.
     const { data, error } = await supabase.rpc("get_my_app_role");
     if (error) {
-      console.error("Kullanıcı rolü alınamadı", error);
-      setRole(null);
+      const fallback = isOffline() ? cachedRole(userId) : null;
+      if (!fallback) console.error("Kullanıcı rolü alınamadı", error);
+      setRole(fallback);
       return;
     }
-    setRole((data ?? "customer") as AppRole);
+    const next = (data ?? "customer") as AppRole;
+    try {
+      localStorage.setItem(ROLE_KEY, JSON.stringify({ userId, role: next }));
+    } catch {
+      // Saklanamazsa yalnız çevrimdışı açılış etkilenir.
+    }
+    setRole(next);
   }
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      // İnternet yokken yenileme başarısızlığı oturumu düşürmesin.
+      if (!s && isOffline() && storedSession()) return;
       setSession(s);
       loadRole(s?.user?.id);
       router.invalidate();
     });
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      loadRole(data.session?.user?.id).finally(() => setLoading(false));
+    // Çevrimdışıyken Supabase oturum yenilemeyi uzun süre dener; ekran
+    // beklemesin diye 4 sn sonra cihazdaki oturumla açılır.
+    const sessionPromise = isOffline()
+      ? Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: Session | null } }>((resolve) =>
+            setTimeout(() => resolve({ data: { session: null } }), 4000),
+          ),
+        ])
+      : supabase.auth.getSession();
+    sessionPromise.then(({ data }) => {
+      const session = data.session ?? (isOffline() ? storedSession() : null);
+      setSession(session);
+      loadRole(session?.user?.id).finally(() => setLoading(false));
     });
     return () => sub.subscription.unsubscribe();
   }, [router]);

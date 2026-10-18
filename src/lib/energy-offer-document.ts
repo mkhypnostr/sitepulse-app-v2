@@ -34,6 +34,16 @@ import {
 // Şirket bilgileri ve antet tek kaynaktan gelir (src/lib/nes-company.ts).
 export { NES_COMPANY };
 
+/** Keşiften gelen tekliflerde "Saha keşfi" sayfası. Fotoğraflar belgeye
+ * gömülür (data URL), belge saklandığında bağlantı süresi dolmaz. */
+export type SiteSurveySection = {
+  surveyNo: string;
+  date: string;
+  workType: string;
+  location: string;
+  photos: { url: string; caption: string | null }[];
+};
+
 export type OfferDocumentInput = {
   offerNo: string;
   issueDate: Date;
@@ -89,6 +99,8 @@ export type OfferDocumentInput = {
   tcmbDate?: string;
   /** Uygulamanın kök adresi (logo ve görseller için), ör. https://app.nesgrup.com */
   origin: string;
+  /** Keşiften gelen teklifte saha fotoğrafları sayfası. */
+  siteSurvey?: SiteSurveySection | null;
 };
 
 const esc = (value: string) =>
@@ -338,6 +350,21 @@ const formCss = `
 .form .items tbody tr:first-child td{padding-top:5mm}
 .form .line{border-top:1px solid #999;margin-top:6mm}
 .form .totals{width:64mm;margin-left:auto;margin-top:4mm}
+.form table.items tr.grp td{background:#eef3f5;font-weight:700;font-size:7pt;text-transform:uppercase;letter-spacing:.04em;color:#0b4ea2;padding-top:2mm}
+.form table.icmal{width:100%;margin-top:6mm;border-collapse:collapse;font-size:7.5pt}
+.form table.icmal th{text-align:left;border-bottom:1px solid #222;padding:1.2mm 0;font-weight:700}
+.form table.icmal td{padding:1.2mm 0;border-bottom:1px solid #e4e7ea}
+.form table.icmal .r{text-align:right;font-family:"Roboto Mono",monospace}
+.form .approve{width:100%;margin-top:8mm;border:1px solid #bbb;border-radius:2mm;padding:3mm;font-size:7.5pt;line-height:1.9}
+.form .approve p{margin:0}
+.form .survey{padding-top:6mm}
+.form .survey h3{font-size:9pt;margin:0 0 1mm}
+.form .survey .sv-meta{font-size:7.5pt;color:#555;margin:0 0 4mm}
+.form .survey .sv-grid{display:grid;grid-template-columns:1fr 1fr;gap:4mm}
+.form .survey figure{margin:0}
+.form .survey img{width:100%;height:62mm;object-fit:cover;border-radius:1.5mm;border:1px solid #ddd}
+.form .survey figcaption{font-size:6.8pt;color:#555;margin-top:1mm}
+.form .survey .sv-note{font-size:6.8pt;color:#777;margin-top:4mm}
 .form .totals div{display:flex;justify-content:space-between;padding:1.6mm 0;font-size:7.5pt}
 .form .totals b{color:#222}
 .form .totals span{font-family:"Roboto Mono",monospace}
@@ -1004,7 +1031,27 @@ type FormRow = {
   unit: string;
   unitPrice: number;
   total: number;
+  /** İcmal ve tablo başlığı için iş grubu. */
+  group: string;
 };
+
+const GROUP_ORDER = [
+  "GES sistemi",
+  "Şarj istasyonu",
+  "Malzeme",
+  "İşçilik ve montaj",
+  "Nakliye ve sarf",
+  "Diğer",
+];
+
+function lineGroup(line: PricedLine) {
+  if (line.module === "ges") return "GES sistemi";
+  if (line.module === "sarj") return "Şarj istasyonu";
+  if (line.category === "malzeme") return "Malzeme";
+  if (line.category === "iscilik") return "İşçilik ve montaj";
+  if (line.category === "nakliye_sarf") return "Nakliye ve sarf";
+  return "Diğer";
+}
 
 /** NES formunda olduğu gibi kalemleri sadeleştirir: şarjda istasyon(lar) ayrı,
  * diğer şarj kalemleri "montaj, devreye alma ve sarf malzeme dahil" tek satır;
@@ -1017,6 +1064,7 @@ function formRows(ctx: Ctx, detailed: boolean): FormRow[] {
     unit: unitLabel(line.unit),
     unitPrice: line.quantity > 0 ? line.saleAmount / line.quantity : 0,
     total: line.saleAmount,
+    group: lineGroup(line),
   });
   for (const module of ["ges", "sarj", "taahhut", "genel"] as OfferModule[]) {
     const lines = ctx.visible.filter((line) => line.module === module);
@@ -1036,6 +1084,7 @@ function formRows(ctx: Ctx, detailed: boolean): FormRow[] {
       const restTotal = rest.reduce((sum, line) => sum + line.saleAmount, 0);
       if (restTotal > 0) {
         rows.push({
+          group: "Şarj istasyonu",
           name: "Montaj, devreye alma ve sarf malzeme dahil",
           quantity: 1,
           unit: "Adet",
@@ -1054,7 +1103,13 @@ function formPages(
 ): string[] {
   const { input } = ctx;
   const cur = input.currency;
-  const rows = formRows(ctx, options.annex);
+  const rows = formRows(ctx, options.annex).sort(
+    (a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group),
+  );
+  const groups = [...new Set(rows.map((r) => r.group))];
+  const multiGroup = groups.length > 1;
+  const survey = options.withSpec ? input.siteSurvey : null;
+  const surveyPhotos = survey?.photos ?? [];
   // Antet alt bilgisine taşmasın diye sayfa başına satır sınırlı.
   const perPage = 16;
   const chunks: FormRow[][] = [];
@@ -1065,7 +1120,8 @@ function formPages(
   const last = chunks[chunks.length - 1];
   if (last.length > 12) chunks.push(last.splice(12));
   const specLines = termLines(input);
-  const pageCount = chunks.length + (options.withSpec ? 1 : 0);
+  const pageCount =
+    chunks.length + (options.withSpec ? 1 : 0) + (surveyPhotos.length ? 1 : 0);
   const sale = rows.reduce((sum, row) => sum + row.total, 0);
   const vat = sale * input.vatRate;
   const totalsHtml = `<div class="totals">
@@ -1095,7 +1151,7 @@ function formPages(
     const last = index === chunks.length - 1;
     return `<section class="page form lh${index === 0 ? "" : " cont"}">${index === 0 ? head : ""}
 <table class="items"${index === 0 ? "" : ' style="margin-top:0"'}><thead><tr><th>Hizmet / Ürün</th><th class="r">Miktar</th><th class="r">Br. Fiyat</th><th class="r">KDV</th><th class="r">Toplam</th></tr></thead><tbody>
-${chunk.map((row) => `<tr><td style="width:46%">${esc(row.name)}</td><td class="r">${num(row.quantity)} ${esc(row.unit)}</td><td class="r">${money(row.unitPrice, cur)}</td><td class="r">%${num(input.vatRate * 100)}</td><td class="r">${money(row.total, cur)}</td></tr>`).join("")}
+${chunk.map((row, i) => `${multiGroup && (i === 0 || chunk[i - 1].group !== row.group) ? `<tr class="grp"><td colspan="5">${esc(row.group)}</td></tr>` : ""}<tr><td style="width:46%">${esc(row.name)}</td><td class="r">${num(row.quantity)} ${esc(row.unit)}</td><td class="r">${money(row.unitPrice, cur)}</td><td class="r">%${num(input.vatRate * 100)}</td><td class="r">${money(row.total, cur)}</td></tr>`).join("")}
 </tbody></table>${last ? `<div class="line"></div>${totalsHtml}` : ""}${foot(index + 1, index > 0)}</section>`;
   });
 
@@ -1110,7 +1166,36 @@ ${payment.length ? `<h3>2. Ödeme şekli</h3>${payment.map((row) => `<p>• ${es
 <p>• İşbu teklif ${esc(dateLong(input.validUntil))} tarihine kadar geçerlidir.</p>
 ${input.rates.USD > 0 || input.rates.EUR > 0 ? `<p>• Hesaplamada kullanılan kurlar: ${[input.rates.USD > 0 ? `1 USD = ${num(input.rates.USD, 4)} TL` : "", input.rates.EUR > 0 ? `1 EUR = ${num(input.rates.EUR, 4)} TL` : ""].filter(Boolean).join(", ")}.</p>` : ""}
 <h3>Banka bilgileri</h3><p>${esc(NES_COMPANY.bankAccountName)} · ${esc(NES_COMPANY.bank)}<br>TL IBAN: ${esc(NES_COMPANY.iban)}</p>
-</div>${totalsHtml}</div>${foot(pageCount, true)}</section>`);
+</div><div>${
+      multiGroup
+        ? `<table class="icmal"><thead><tr><th>İcmal</th><th class="r">Tutar</th></tr></thead><tbody>${groups
+            .map(
+              (g) =>
+                `<tr><td>${esc(g)}</td><td class="r">${money(
+                  rows
+                    .filter((r) => r.group === g)
+                    .reduce((a, r) => a + r.total, 0),
+                  cur,
+                )}</td></tr>`,
+            )
+            .join("")}</tbody></table>`
+        : ""
+    }${totalsHtml}<div class="approve"><b>MÜŞTERİ ONAYI</b><p>Teklifi kabul ediyorum.</p><p>Tarih: ____ / ____ / ________</p><p>Ad Soyad / Unvan:</p><p>Kaşe / İmza:</p></div></div></div>${foot(pageCount - (surveyPhotos.length ? 1 : 0), true)}</section>`);
+    if (survey && surveyPhotos.length) {
+      pages.push(
+        `<section class="page form lh cont"><div class="survey"><h3>SAHA KEŞFİ</h3><p class="sv-meta">${[
+          survey.surveyNo,
+          survey.workType,
+          survey.location,
+          survey.date ? dateLong(survey.date) : "",
+        ]
+          .filter(Boolean)
+          .map((v) => esc(String(v)))
+          .join(
+            " · ",
+          )}</p><div class="sv-grid">${surveyPhotos.map((p, i) => `<figure><img src="${esc(p.url)}" alt="Saha fotoğrafı ${i + 1}"><figcaption>${esc(p.caption ?? "")}</figcaption></figure>`).join("")}</div><p class="sv-note">Fotoğraflar keşif sırasında çekilmiştir; teklif kapsamı yukarıdaki kalem listesidir.</p></div>${foot(pageCount, true)}</section>`,
+      );
+    }
   }
   return pages;
 }

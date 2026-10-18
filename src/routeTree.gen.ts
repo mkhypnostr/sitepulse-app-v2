@@ -20,6 +20,7 @@ import { Route as AuthenticatedCustomersRouteImport } from './routes/_authentica
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEnergyOfferRouteImport } from './routes/_authenticated/energy-offer'
 import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticated/invoices'
+import { Route as AuthenticatedKesifRouteImport } from './routes/_authenticated/kesif'
 import { Route as AuthenticatedMapRouteImport } from './routes/_authenticated/map'
 import { Route as AuthenticatedMeasurementTrackingRouteImport } from './routes/_authenticated/measurement-tracking'
 import { Route as AuthenticatedMyJobsRouteImport } from './routes/_authenticated/my-jobs'
@@ -104,6 +105,11 @@ const AuthenticatedEnergyOfferRoute =
 const AuthenticatedInvoicesRoute = AuthenticatedInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedKesifRoute = AuthenticatedKesifRouteImport.update({
+  id: '/kesif',
+  path: '/kesif',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedMapRoute = AuthenticatedMapRouteImport.update({
@@ -274,6 +280,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/invoices': typeof AuthenticatedInvoicesRoute
+  '/kesif': typeof AuthenticatedKesifRoute
   '/map': typeof AuthenticatedMapRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/my-jobs': typeof AuthenticatedMyJobsRoute
@@ -315,6 +322,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/invoices': typeof AuthenticatedInvoicesRoute
+  '/kesif': typeof AuthenticatedKesifRoute
   '/map': typeof AuthenticatedMapRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/my-jobs': typeof AuthenticatedMyJobsRoute
@@ -358,6 +366,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/_authenticated/invoices': typeof AuthenticatedInvoicesRoute
+  '/_authenticated/kesif': typeof AuthenticatedKesifRoute
   '/_authenticated/map': typeof AuthenticatedMapRoute
   '/_authenticated/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/_authenticated/my-jobs': typeof AuthenticatedMyJobsRoute
@@ -401,6 +410,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/energy-offer'
     | '/invoices'
+    | '/kesif'
     | '/map'
     | '/measurement-tracking'
     | '/my-jobs'
@@ -442,6 +452,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/energy-offer'
     | '/invoices'
+    | '/kesif'
     | '/map'
     | '/measurement-tracking'
     | '/my-jobs'
@@ -484,6 +495,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/energy-offer'
     | '/_authenticated/invoices'
+    | '/_authenticated/kesif'
     | '/_authenticated/map'
     | '/_authenticated/measurement-tracking'
     | '/_authenticated/my-jobs'
@@ -603,6 +615,13 @@ declare module '@tanstack/react-router' {
       path: '/invoices'
       fullPath: '/invoices'
       preLoaderRoute: typeof AuthenticatedInvoicesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/kesif': {
+      id: '/_authenticated/kesif'
+      path: '/kesif'
+      fullPath: '/kesif'
+      preLoaderRoute: typeof AuthenticatedKesifRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/map': {
@@ -833,6 +852,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEnergyOfferRoute: typeof AuthenticatedEnergyOfferRoute
   AuthenticatedInvoicesRoute: typeof AuthenticatedInvoicesRoute
+  AuthenticatedKesifRoute: typeof AuthenticatedKesifRoute
   AuthenticatedMapRoute: typeof AuthenticatedMapRoute
   AuthenticatedMeasurementTrackingRoute: typeof AuthenticatedMeasurementTrackingRoute
   AuthenticatedMyJobsRoute: typeof AuthenticatedMyJobsRoute
@@ -867,6 +887,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEnergyOfferRoute: AuthenticatedEnergyOfferRoute,
   AuthenticatedInvoicesRoute: AuthenticatedInvoicesRoute,
+  AuthenticatedKesifRoute: AuthenticatedKesifRoute,
   AuthenticatedMapRoute: AuthenticatedMapRoute,
   AuthenticatedMeasurementTrackingRoute: AuthenticatedMeasurementTrackingRoute,
   AuthenticatedMyJobsRoute: AuthenticatedMyJobsRoute,

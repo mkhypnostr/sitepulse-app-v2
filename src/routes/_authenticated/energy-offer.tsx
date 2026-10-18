@@ -101,6 +101,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Field, NumField } from "@/components/energy-offer/fields";
 import { fmtNum } from "@/components/energy-offer/format";
 import {
+  photoDataUrl,
+  workTypeLabels,
+  type SurveyPhotoMeta,
+  type WorkType,
+} from "@/lib/site-survey";
+import type { SiteSurveySection } from "@/lib/energy-offer-document";
+import {
   FinancePanel,
   PackagePicker,
 } from "@/components/energy-offer/ges-finance-panel";
@@ -151,6 +158,7 @@ export const Route = createFileRoute("/_authenticated/energy-offer")({
     return {
       ...text("offerId"),
       ...text("leadId"),
+      ...text("kesif"),
       // Asistanın "GES teklifi hazırla" bağlantısı (yeni teklifte ön doldurma).
       ...number("kwp"),
       ...(search.sistem === "hibrit" || search.sistem === "ongrid"
@@ -183,6 +191,8 @@ const categoryLabels: Record<LineCategory, string> = {
 type OfferSearch = {
   offerId?: string;
   leadId?: string;
+  /** Keşiften teklif: keşif kaydının kimliği. */
+  kesif?: string;
   kwp?: number;
   sistem?: "ongrid" | "hibrit";
   batarya?: number;
@@ -766,6 +776,142 @@ function EnergyOfferPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillRegenerate, ges]);
 
+  // Keşiften teklif: keşfin başlığı, müşterisi, yeri ve kalemleri aktarılır.
+  // Katalogla eşleşen kalemler kütüphane fiyatıyla, eşleşmeyenler fiyatı
+  // girilecek serbest kalem olarak gelir. Keşif fotoğrafları teklif
+  // dosyasında "Saha keşfi" sayfası olur.
+  const [surveyDoc, setSurveyDoc] = useState<SiteSurveySection | null>(null);
+  const [surveyId, setSurveyId] = useState<string | null>(null);
+  const [kesifDone, setKesifDone] = useState(false);
+
+  async function loadSurveySection(row: {
+    survey_no: string | null;
+    title: string;
+    work_type: string;
+    surveyed_at: string;
+    location_text: string | null;
+    notes: string | null;
+    site_survey_photos?: {
+      id: string;
+      storage_path: string;
+      caption: string | null;
+      taken_at: string;
+      include_in_offer: boolean;
+    }[];
+  }) {
+    const photos: { url: string; caption: string | null }[] = [];
+    const list = [...(row.site_survey_photos ?? [])]
+      .filter((p) => p.include_in_offer)
+      .sort((a, b) => a.taken_at.localeCompare(b.taken_at))
+      .slice(0, 6);
+    for (const p of list) {
+      const meta: SurveyPhotoMeta = {
+        id: p.id,
+        caption: p.caption,
+        taken_at: p.taken_at,
+        include_in_offer: true,
+        storage_path: p.storage_path,
+      };
+      const url = await photoDataUrl(meta, 900).catch(() => null);
+      if (url) photos.push({ url, caption: p.caption });
+    }
+    setSurveyDoc({
+      surveyNo: row.survey_no ?? "",
+      date: row.surveyed_at,
+      workType: workTypeLabels[row.work_type as WorkType] ?? "",
+      location: row.location_text ?? "",
+      photos,
+    });
+  }
+
+  const SURVEY_SELECT =
+    "id, survey_no, title, work_type, customer_id, customer_name, contact_phone, location_text, notes, surveyed_at, site_survey_items(position, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer)";
+
+  useEffect(() => {
+    if (offerId || kesifDone || !search.kesif || catalog.length === 0) return;
+    setKesifDone(true);
+    void (async () => {
+      const { data: row, error } = await supabase
+        .from("site_surveys")
+        .select(SURVEY_SELECT)
+        .eq("id", search.kesif as string)
+        .maybeSingle();
+      if (error || !row) {
+        toast.error("Keşif kaydı bulunamadı (gönderildiğinden emin olun).");
+        return;
+      }
+      setSurveyId(row.id);
+      setTitle(row.title);
+      if (row.location_text) setProjectLocation(row.location_text);
+      if (row.customer_id) {
+        setRecipient((r) => ({ ...r, mode: "kayitli" }));
+        setCustomerId(row.customer_id);
+      } else if (row.customer_name) {
+        setRecipient((r) => ({
+          ...r,
+          mode: "aday",
+          name: row.customer_name ?? "",
+          phone: row.contact_phone ?? "",
+        }));
+      }
+      if (row.work_type !== "ges") {
+        setGes((g) => ({ ...g, enabled: false }));
+        setSarj((v) => ({ ...v, enabled: false }));
+      }
+      const items = [...(row.site_survey_items ?? [])].sort(
+        (a, b) => a.position - b.position,
+      );
+      let unpriced = 0;
+      const next: DraftLine[] = items.map((item) => {
+        const cat = item.catalog_item_id
+          ? catalog.find((c) => c.id === item.catalog_item_id)
+          : undefined;
+        if (cat)
+          return lineFromCatalog(cat, Number(item.quantity), { auto: false });
+        unpriced += 1;
+        return {
+          key: newLineKey(),
+          catalogItemId: null,
+          module: "taahhut",
+          category: "malzeme",
+          description: item.description,
+          brand: null,
+          unit: item.unit,
+          quantity: Number(item.quantity),
+          sourceUnitCost: 0,
+          sourceCurrency: currency,
+          markupRate,
+          auto: false,
+          visibleToCustomer: true,
+        };
+      });
+      setLines((current) => [...current.filter((l) => l.auto), ...next]);
+      toast.success(
+        `Keşiften ${next.length} kalem aktarıldı.${unpriced ? ` ${unpriced} kalemin alış fiyatı yok; girin.` : ""}`,
+      );
+      await loadSurveySection(row);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offerId, kesifDone, search.kesif, catalog]);
+
+  // Var olan teklif bir keşiften geldiyse "Saha keşfi" sayfası korunur.
+  useEffect(() => {
+    if (!offerId) return;
+    void (async () => {
+      const { data: row } = await supabase
+        .from("site_surveys")
+        .select(SURVEY_SELECT)
+        .eq("offer_id", offerId)
+        .order("surveyed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (row) {
+        setSurveyId(row.id);
+        await loadSurveySection(row);
+      }
+    })();
+  }, [offerId]);
+
   function applyGlobalMarkup() {
     // Taahhüt kalemleri kütüphanedeki kategori kâr oranlarıyla gelir
     // (şantiye %40, topraklama %45, sıva altı %30, işçilik %20); genel oran
@@ -1000,6 +1146,12 @@ function EnergyOfferPage() {
       } catch (documentError) {
         console.error("Teklif dosyası saklanamadı", documentError);
       }
+      if (surveyId && !asRevision) {
+        await supabase
+          .from("site_surveys")
+          .update({ offer_id: id as string, status: "teklif" })
+          .eq("id", surveyId);
+      }
       // Fırsat henüz teklif aşamasına gelmediyse ilerlet ve geçmişe yaz.
       const lead = dataQuery.data?.lead;
       if (lead && !offerId && !asRevision) {
@@ -1074,6 +1226,7 @@ function EnergyOfferPage() {
               ?.billing_address ?? "")
           : "",
       origin: window.location.origin,
+      siteSurvey: surveyDoc,
       production:
         kwp > 0 ? productionEstimate(kwp, specificYield, monthlyPerKwp) : null,
       finance: financeResult,

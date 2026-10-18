@@ -2555,6 +2555,193 @@ export type Database = {
           },
         ];
       };
+      site_survey_items: {
+        Row: {
+          catalog_item_id: string | null;
+          created_at: string;
+          description: string;
+          id: string;
+          note: string | null;
+          position: number;
+          quantity: number;
+          survey_id: string;
+          unit: string;
+        };
+        Insert: {
+          catalog_item_id?: string | null;
+          created_at?: string;
+          description: string;
+          id: string;
+          note?: string | null;
+          position?: number;
+          quantity?: number;
+          survey_id: string;
+          unit?: string;
+        };
+        Update: {
+          catalog_item_id?: string | null;
+          created_at?: string;
+          description?: string;
+          id?: string;
+          note?: string | null;
+          position?: number;
+          quantity?: number;
+          survey_id?: string;
+          unit?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "site_survey_items_catalog_item_id_fkey";
+            columns: ["catalog_item_id"];
+            isOneToOne: false;
+            referencedRelation: "offer_catalog_items";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "site_survey_items_survey_id_fkey";
+            columns: ["survey_id"];
+            isOneToOne: false;
+            referencedRelation: "site_surveys";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      site_survey_photos: {
+        Row: {
+          caption: string | null;
+          created_at: string;
+          id: string;
+          include_in_offer: boolean;
+          storage_path: string;
+          survey_id: string;
+          taken_at: string;
+        };
+        Insert: {
+          caption?: string | null;
+          created_at?: string;
+          id: string;
+          include_in_offer?: boolean;
+          storage_path: string;
+          survey_id: string;
+          taken_at?: string;
+        };
+        Update: {
+          caption?: string | null;
+          created_at?: string;
+          id?: string;
+          include_in_offer?: boolean;
+          storage_path?: string;
+          survey_id?: string;
+          taken_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "site_survey_photos_survey_id_fkey";
+            columns: ["survey_id"];
+            isOneToOne: false;
+            referencedRelation: "site_surveys";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      site_surveys: {
+        Row: {
+          contact_phone: string | null;
+          created_at: string;
+          created_by: string | null;
+          customer_id: string | null;
+          customer_name: string | null;
+          id: string;
+          latitude: number | null;
+          lead_id: string | null;
+          location_accuracy_m: number | null;
+          location_text: string | null;
+          longitude: number | null;
+          notes: string | null;
+          offer_id: string | null;
+          project_id: string | null;
+          status: string;
+          survey_no: string | null;
+          surveyed_at: string;
+          title: string;
+          updated_at: string;
+          work_type: string;
+        };
+        Insert: {
+          contact_phone?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          customer_id?: string | null;
+          customer_name?: string | null;
+          id: string;
+          latitude?: number | null;
+          lead_id?: string | null;
+          location_accuracy_m?: number | null;
+          location_text?: string | null;
+          longitude?: number | null;
+          notes?: string | null;
+          offer_id?: string | null;
+          project_id?: string | null;
+          status?: string;
+          survey_no?: string | null;
+          surveyed_at?: string;
+          title: string;
+          updated_at?: string;
+          work_type?: string;
+        };
+        Update: {
+          contact_phone?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          customer_id?: string | null;
+          customer_name?: string | null;
+          id?: string;
+          latitude?: number | null;
+          lead_id?: string | null;
+          location_accuracy_m?: number | null;
+          location_text?: string | null;
+          longitude?: number | null;
+          notes?: string | null;
+          offer_id?: string | null;
+          project_id?: string | null;
+          status?: string;
+          survey_no?: string | null;
+          surveyed_at?: string;
+          title?: string;
+          updated_at?: string;
+          work_type?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "site_surveys_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "site_surveys_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "site_surveys_offer_id_fkey";
+            columns: ["offer_id"];
+            isOneToOne: false;
+            referencedRelation: "offers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "site_surveys_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       stock_item_costs: {
         Row: {
           stock_item_id: string;
