@@ -49,21 +49,45 @@ type Ctx = {
 type ToolOutput = { result: unknown; link?: { label: string; href: string } };
 
 const str = (description: string) => ({ type: "string", description });
-const nullableStr = (description: string) => ({
-  type: ["string", "null"],
-  description: `${description} Bilinmiyorsa null.`,
-});
-const nullableNum = (description: string) => ({
-  type: ["number", "null"],
-  description: `${description} Bilinmiyorsa null.`,
-});
-function schema(properties: Record<string, unknown>) {
+// İsteğe bağlı alanlar "required" listesine girmez (bilinmiyorsa hiç
+// gönderilmez). Eskiden ["string","null"] kullanılıyordu; API, birleşik
+// tipli (union) parametreyi en fazla 16 ile sınırlıyor, bizde 28 vardı.
+const OPTIONAL = new WeakSet<object>();
+const optional = <T extends object>(field: T) => {
+  OPTIONAL.add(field);
+  return field;
+};
+const nullableStr = (description: string) =>
+  optional({
+    type: "string",
+    description: `${description} Bilinmiyorsa bu alanı gönderme.`,
+  });
+const nullableNum = (description: string) =>
+  optional({
+    type: "number",
+    description: `${description} Bilinmiyorsa bu alanı gönderme.`,
+  });
+function schema(properties: Record<string, object>) {
   return {
     type: "object" as const,
     properties,
-    required: Object.keys(properties),
+    required: Object.keys(properties).filter(
+      (key) => !OPTIONAL.has(properties[key]),
+    ),
     additionalProperties: false,
   };
+}
+
+/** Boş metinleri "yok" say: araç kodu eksik alanı null olarak işler. */
+function cleanInput(input: unknown) {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(
+    (input ?? {}) as Record<string, unknown>,
+  )) {
+    if (v === "" || v === null) continue;
+    out[k] = v;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- araçlar
@@ -111,7 +135,6 @@ const TOOLS: Record<string, ToolDef> = {
       description:
         "Uygulamadaki kişileri (yönetici, teknik ofis, taşeron, müşteri) ve kimliklerini listeler. Görev atamadan önce kişinin kimliğini bulmak için kullan.",
       input_schema: schema({}),
-      strict: true,
     },
     run: async (_input, ctx) => ({
       result: check(await ctx.db.rpc("list_task_assignees")),
@@ -123,7 +146,6 @@ const TOOLS: Record<string, ToolDef> = {
       name: "musteri_ara",
       description: "Müşteri adına göre arar; kimlik ve ad döner.",
       input_schema: schema({ sorgu: str("Müşteri adının bir kısmı.") }),
-      strict: true,
     },
     run: async (input, ctx) => ({
       result: check(
@@ -143,7 +165,6 @@ const TOOLS: Record<string, ToolDef> = {
       input_schema: schema({
         sorgu: str("Proje adının ya da numarasının bir kısmı."),
       }),
-      strict: true,
     },
     run: async (input, ctx) => {
       const q = String(input.sorgu);
@@ -169,7 +190,6 @@ const TOOLS: Record<string, ToolDef> = {
       input_schema: schema({
         sorgu: str("Teklif başlığının ya da numarasının bir kısmı."),
       }),
-      strict: true,
     },
     run: async (input, ctx) => {
       const q = String(input.sorgu);
@@ -200,7 +220,6 @@ const TOOLS: Record<string, ToolDef> = {
           description: "Hangi görevler.",
         },
       }),
-      strict: true,
     },
     run: async (input, ctx) => {
       const today = new Date().toISOString().slice(0, 10);
@@ -275,7 +294,6 @@ const TOOLS: Record<string, ToolDef> = {
         konum: nullableStr("Proje yeri, ör. 'Akyaka / Muğla'."),
         baslik: nullableStr("Teklif başlığı."),
       }),
-      strict: true,
     },
     run: async (input) => {
       const params = new URLSearchParams();
@@ -307,7 +325,6 @@ const TOOLS: Record<string, ToolDef> = {
         proje_id: nullableStr("Bağlı proje kimliği."),
         musteri_id: nullableStr("Bağlı müşteri kimliği."),
       }),
-      strict: true,
     },
     summary: async (i, ctx) =>
       `Görev aç: "${i.baslik}" · Atanan: ${await personName(ctx, i.atanan_id)} · ${dateTr(i.tarih)}`,
@@ -339,7 +356,6 @@ const TOOLS: Record<string, ToolDef> = {
         atanan_id: str("Atanacak kişinin kimliği."),
         tarih: nullableStr("Yeni planlanan gün, YYYY-AA-GG."),
       }),
-      strict: true,
     },
     summary: async (i, ctx) =>
       `Görevi ata: "${(await rowName(ctx, "operational_tasks", "title", i.gorev_id)) ?? "görev"}" → ${await personName(ctx, i.atanan_id)}${i.tarih ? ` · ${dateTr(i.tarih)}` : ""}`,
@@ -388,7 +404,6 @@ const TOOLS: Record<string, ToolDef> = {
         taseron_id: nullableStr("Atanacak taşeronun kimliği."),
         proje_id: nullableStr("Bağlı proje kimliği."),
       }),
-      strict: true,
     },
     summary: async (i, ctx) =>
       `İş emri aç: "${i.baslik}" · Müşteri: ${(await rowName(ctx, "customers", "name", i.musteri_id)) ?? "?"} · Taşeron: ${i.taseron_id ? await personName(ctx, i.taseron_id) : "yok (taslak)"}`,
@@ -449,7 +464,6 @@ const TOOLS: Record<string, ToolDef> = {
         il: nullableStr("İl."),
         ilce: nullableStr("İlçe."),
       }),
-      strict: true,
     },
     summary: async (i, ctx) =>
       `Proje aç: "${i.ad}" · ${({ electric_permit: "Elektrik Ruhsat", site_project: "Şantiye", connection_line: "Bağlantı Hattı" } as Record<string, string>)[String(i.tip)]} · Müşteri: ${(await rowName(ctx, "customers", "name", i.musteri_id)) ?? "yok"} · Hedef: ${dateTr(i.hedef_bitis)}`,
@@ -503,7 +517,6 @@ const TOOLS: Record<string, ToolDef> = {
         sonraki_adim_tarihi: nullableStr("Sonraki adım günü, YYYY-AA-GG."),
         konum: nullableStr("Yer."),
       }),
-      strict: true,
     },
     summary: async (i) =>
       `Satış fırsatı ekle: "${i.baslik}"${i.firma ? ` · ${i.firma}` : ""}${i.sonraki_adim ? ` · Sonraki: ${i.sonraki_adim} (${dateTr(i.sonraki_adim_tarihi)})` : ""}`,
@@ -543,7 +556,6 @@ const TOOLS: Record<string, ToolDef> = {
       description:
         "Kaydedilmiş bir enerji/GES teklifi için müşteriye gönderilecek giriş gerektirmeyen bir bağlantı oluşturur ve teklifi 'Müşteriye Gönderildi' yapar. E-posta göndermez; bağlantıyı kullanıcı müşteriye iletir. Teklif kimliğini teklif_ara ile bul.",
       input_schema: schema({ teklif_id: str("Teklifin kimliği.") }),
-      strict: true,
     },
     summary: async (i, ctx) =>
       `Teklifi gönder: ${(await rowName(ctx, "offers", "offer_no", i.teklif_id)) ?? "teklif"} için müşteri bağlantısı oluştur ve durumu "Müşteriye Gönderildi" yap`,
@@ -603,7 +615,7 @@ function systemPrompt(ctx: Ctx) {
 Kullanıcı: ${ctx.userName} (${ctx.role === "admin" ? "yönetici" : "teknik ofis"}). Bugün ${today} (${iso}).
 
 Nasıl çalışırsın:
-- Türkçe, kısa ve sade yaz. Kullanıcı kodlama bilmez.
+- Türkçe, kısa ve sade yaz. Kullanıcı kodlama bilmez. Yanıt telefonda dar bir pencerede okunur: tablo kullanma; liste için "- " ile kısa maddeler yaz, gerekirse **kalın** kullan.
 - İstenen işi araçlarla yap. Kimlikleri (kişi, müşteri, proje, teklif) asla uydurma; önce arama araçlarıyla bul. Birden fazla eşleşme varsa ya da emin değilsen kısaca hangisi olduğunu sor.
 - "Yarın", "cuma", "haftaya" gibi tarihleri bugüne göre YYYY-AA-GG'ye çevir.
 - Kayıt açan araçları (görev, iş emri, proje, satış fırsatı, teklif gönderme) doğrudan çağır; uygulama kullanıcıya ayrıca bir onay kartı gösterir, sen ayrıca "emin misin" diye sorma.
@@ -705,7 +717,7 @@ Deno.serve(async (req: Request) => {
         continue;
       }
       try {
-        const out = await def.run(block.input as Record<string, unknown>, ctx);
+        const out = await def.run(cleanInput(block.input), ctx);
         if (out.link) links.push(out.link);
         results.push({
           type: "tool_result",
@@ -816,7 +828,7 @@ Deno.serve(async (req: Request) => {
           pending.push({
             name: u.name,
             summary: def.summary
-              ? await def.summary(u.input as Record<string, unknown>, ctx)
+              ? await def.summary(cleanInput(u.input), ctx)
               : u.name,
           });
         }
