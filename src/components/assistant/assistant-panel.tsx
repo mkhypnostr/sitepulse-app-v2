@@ -2,11 +2,15 @@
 // kayıtları arar, görev / iş emri / proje / satış fırsatı açar, GES teklifini
 // hazırlar. Kayıt açan her işlem için önce onay kartı gösterilir.
 // Sunucu tarafı: supabase/functions/nes-assistant.
+// Sohbetler assistant_conversations tablosunda kalıcı saklanır (yalnız
+// sahibi görür); "Geçmiş" listesinden eski sohbetler açılır, silinmez.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import {
   Check,
+  ChevronLeft,
   ExternalLink,
+  History,
   LoaderCircle,
   Mic,
   MicOff,
@@ -33,6 +37,8 @@ type Pending = { name: string; summary: string };
 type Entry = {
   role: "user" | "assistant" | "error";
   text: string;
+  /** Mesajın zamanı (ISO). */
+  at?: string;
   links?: AssistantLink[];
   pending?: Pending[];
   resolved?: "approved" | "declined";
@@ -46,7 +52,57 @@ type AssistantResponse = {
   code?: string;
 };
 
-const STORAGE_KEY = "nes-assistant-v1";
+const CURRENT_KEY = "nes-assistant-current";
+/** Modele gönderilen geçmişin üst sınırı (sunucu 80'i reddeder). Ekrandaki
+ * geçmiş tam kalır; yalnız modele giden kısım kırpılır. */
+const MAX_API_MESSAGES = 50;
+
+type ConversationState = {
+  id: string | null;
+  messages: ApiMessage[];
+  entries: Entry[];
+};
+type ConversationSummary = { id: string; title: string; updated_at: string };
+
+/** Uzun sohbette modele yalnız son kısmı gönder. Kesim, düz metinli bir
+ * kullanıcı mesajından başlar (araç çağrısı/yanıtı yarıda kalmaz). */
+function trimForApi(messages: ApiMessage[]) {
+  if (messages.length <= MAX_API_MESSAGES) return messages;
+  for (let i = messages.length - MAX_API_MESSAGES; i < messages.length; i++) {
+    const m = messages[i];
+    if (m.role === "user" && typeof m.content === "string") {
+      return messages.slice(i);
+    }
+  }
+  return messages.slice(-1);
+}
+
+const nowIso = () => new Date().toISOString();
+const timeTr = (iso?: string) =>
+  iso
+    ? new Date(iso).toLocaleTimeString("tr-TR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+const dayTr = (iso: string) => {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 864e5);
+  if (d.toDateString() === today.toDateString()) return `Bugün ${timeTr(iso)}`;
+  if (d.toDateString() === yesterday.toDateString())
+    return `Dün ${timeTr(iso)}`;
+  return d.toLocaleDateString("tr-TR", {
+    day: "numeric",
+    month: "short",
+    year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
+  });
+};
+const emptyState = (): ConversationState => ({
+  id: null,
+  messages: [],
+  entries: [],
+});
 const EXAMPLES = [
   "Bugün geciken işler neler?",
   "Mehmetcan'a yarın için pano kontrol görevi aç",
@@ -81,14 +137,20 @@ function speechRecognitionCtor():
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
-function loadState(): { messages: ApiMessage[]; entries: Entry[] } {
+function readCurrentId() {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    return localStorage.getItem(CURRENT_KEY);
   } catch {
-    // Saklama alanı kapalıysa boş başlar.
+    return null;
   }
-  return { messages: [], entries: [] };
+}
+function writeCurrentId(id: string | null) {
+  try {
+    if (id) localStorage.setItem(CURRENT_KEY, id);
+    else localStorage.removeItem(CURRENT_KEY);
+  } catch {
+    // Saklama alanı kapalıysa en son sohbet açılır.
+  }
 }
 
 async function errorText(error: unknown) {
@@ -108,7 +170,10 @@ async function errorText(error: unknown) {
 
 export function AssistantPanel() {
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState(loadState);
+  const [state, setState] = useState<ConversationState>(emptyState);
+  const [loaded, setLoaded] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<ConversationSummary[] | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
@@ -117,14 +182,74 @@ export function AssistantPanel() {
   const speechSupported = Boolean(speechRecognitionCtor());
   const router = useRouter();
 
+  // Panel ilk açıldığında son sohbet (ya da en son açılan) yüklenir.
   useEffect(() => {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // Saklanamazsa sayfa yenilenince sohbet sıfırlanır.
-    }
+    if (!open || loaded) return;
+    setLoaded(true);
+    void (async () => {
+      const currentId = readCurrentId();
+      let query = supabase
+        .from("assistant_conversations")
+        .select("id, entries, messages")
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      if (currentId) query = query.eq("id", currentId);
+      const { data } = await query;
+      const row = data?.[0];
+      if (row) {
+        setState({
+          id: row.id,
+          entries: (row.entries ?? []) as Entry[],
+          messages: (row.messages ?? []) as ApiMessage[],
+        });
+      }
+    })();
+  }, [open, loaded]);
+
+  // Her değişiklikten sonra sohbeti kaydet (kısa gecikmeyle, tek istek).
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (!state.id || state.entries.length === 0) return;
+    const timer = setTimeout(() => {
+      const firstUser = state.entries.find((e) => e.role === "user");
+      void supabase.from("assistant_conversations").upsert({
+        id: state.id as string,
+        title: (firstUser?.text ?? "Sohbet").slice(0, 120),
+        entries: state.entries as unknown as never,
+        messages: state.messages as unknown as never,
+      });
+      writeCurrentId(state.id);
+    }, 500);
+    return () => clearTimeout(timer);
   }, [state]);
+
+  async function openHistory() {
+    setShowHistory(true);
+    const { data } = await supabase
+      .from("assistant_conversations")
+      .select("id, title, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(100);
+    setHistory((data ?? []) as ConversationSummary[]);
+  }
+
+  async function openConversation(id: string) {
+    const { data } = await supabase
+      .from("assistant_conversations")
+      .select("id, entries, messages")
+      .eq("id", id)
+      .maybeSingle();
+    if (data) {
+      recognitionRef.current?.stop();
+      setState({
+        id: data.id,
+        entries: (data.entries ?? []) as Entry[],
+        messages: (data.messages ?? []) as ApiMessage[],
+      });
+      writeCurrentId(data.id);
+    }
+    setShowHistory(false);
+  }
 
   // Ctrl+J (Mac'te Cmd+J) asistanı açar/kapatır.
   useEffect(() => {
@@ -145,18 +270,24 @@ export function AssistantPanel() {
     }) => {
       setBusy(true);
       try {
+        const sent = trimForApi(body.messages);
         const { data, error } =
           await supabase.functions.invoke<AssistantResponse>("nes-assistant", {
-            body,
+            body: { ...body, messages: sent },
           });
         if (error) throw error;
         const response = data ?? {};
+        const added = response.messages
+          ? response.messages.slice(sent.length)
+          : [];
         setState((current) => ({
-          messages: response.messages ?? body.messages,
+          ...current,
+          messages: [...body.messages, ...added],
           entries: [
             ...current.entries,
             {
               role: "assistant",
+              at: nowIso(),
               text:
                 response.reply ||
                 (response.pending?.length
@@ -171,7 +302,7 @@ export function AssistantPanel() {
         const text = await errorText(error);
         setState((current) => ({
           ...current,
-          entries: [...current.entries, { role: "error", text }],
+          entries: [...current.entries, { role: "error", text, at: nowIso() }],
         }));
       } finally {
         setBusy(false);
@@ -190,6 +321,7 @@ export function AssistantPanel() {
       { role: "user", content: trimmed },
     ];
     setState((current) => ({
+      id: current.id ?? crypto.randomUUID(),
       messages,
       entries: [
         ...current.entries.map((entry) =>
@@ -197,7 +329,7 @@ export function AssistantPanel() {
             ? { ...entry, resolved: "declined" as const }
             : entry,
         ),
-        { role: "user", text: trimmed },
+        { role: "user", text: trimmed, at: nowIso() },
       ],
     }));
     void call({ messages });
@@ -241,9 +373,12 @@ export function AssistantPanel() {
     recognition.start();
   }
 
+  /** Yeni sohbet: eski sohbet silinmez, Geçmiş'te kalır. */
   function reset() {
     recognitionRef.current?.stop();
-    setState({ messages: [], entries: [] });
+    setState(emptyState());
+    writeCurrentId(null);
+    setShowHistory(false);
   }
 
   let lastPendingIndex = -1;
@@ -271,17 +406,35 @@ export function AssistantPanel() {
               <SheetTitle className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" /> Asistan
               </SheetTitle>
-              {state.entries.length > 0 ? (
+              <div className="flex items-center gap-1">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={reset}
+                  onClick={() =>
+                    showHistory ? setShowHistory(false) : void openHistory()
+                  }
                   disabled={busy}
                 >
-                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Yeni sohbet
+                  {showHistory ? (
+                    <ChevronLeft className="mr-1.5 h-3.5 w-3.5" />
+                  ) : (
+                    <History className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  {showHistory ? "Sohbete dön" : "Geçmiş"}
                 </Button>
-              ) : null}
+                {state.entries.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={reset}
+                    disabled={busy}
+                  >
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Yeni
+                  </Button>
+                ) : null}
+              </div>
             </div>
             <SheetDescription>
               Yazın ya da mikrofona konuşun. Kayıt açmadan önce onayınızı
@@ -289,124 +442,169 @@ export function AssistantPanel() {
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-            {state.entries.length === 0 ? (
-              <div className="grid gap-2">
-                <p className="text-xs font-semibold text-muted-foreground">
-                  Örnekler
+          {showHistory ? (
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              {history === null ? (
+                <p className="p-3 text-sm text-muted-foreground">
+                  Yükleniyor...
                 </p>
-                {EXAMPLES.map((example) => (
+              ) : history.length === 0 ? (
+                <p className="p-3 text-sm text-muted-foreground">
+                  Henüz kayıtlı sohbet yok.
+                </p>
+              ) : (
+                history.map((c) => (
                   <button
-                    key={example}
+                    key={c.id}
                     type="button"
-                    onClick={() => send(example)}
-                    className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-left text-sm hover:border-primary/50"
+                    onClick={() => void openConversation(c.id)}
+                    className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted ${c.id === state.id ? "bg-muted" : ""}`}
                   >
-                    {example}
+                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">
+                        {c.title}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {dayTr(c.updated_at)}
+                      </span>
+                    </span>
                   </button>
-                ))}
-              </div>
-            ) : null}
-            {state.entries.map((entry, index) => (
-              <div
-                key={index}
-                className={
-                  entry.role === "user"
-                    ? "ml-8 rounded-2xl rounded-br-md bg-primary px-3 py-2 text-sm text-primary-foreground"
-                    : entry.role === "error"
-                      ? "mr-8 rounded-2xl rounded-bl-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-                      : "mr-8 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-sm"
-                }
-              >
-                {entry.text ? (
-                  entry.role === "assistant" ? (
-                    <AssistantText text={entry.text} />
-                  ) : (
-                    <p className="whitespace-pre-wrap">{entry.text}</p>
-                  )
-                ) : null}
-                {entry.pending?.length ? (
-                  <div className="mt-2 grid gap-2 rounded-xl border border-primary/30 bg-background p-2.5">
-                    {entry.pending.map((item, i) => (
-                      <p key={i} className="text-sm font-semibold">
-                        {item.summary}
-                      </p>
-                    ))}
-                    {entry.resolved ? (
-                      <p
-                        className={`text-xs font-bold ${entry.resolved === "approved" ? "text-emerald-600" : "text-muted-foreground"}`}
-                      >
-                        {entry.resolved === "approved"
-                          ? "Onaylandı"
-                          : "Yapılmadı"}
-                      </p>
-                    ) : index === lastPendingIndex ? (
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="font-bold"
-                          disabled={busy}
-                          onClick={() => resolve(index, true)}
+                ))
+              )}
+            </div>
+          ) : (
+            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+              {state.entries.length === 0 ? (
+                <div className="grid gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    Örnekler
+                  </p>
+                  {EXAMPLES.map((example) => (
+                    <button
+                      key={example}
+                      type="button"
+                      onClick={() => send(example)}
+                      className="rounded-xl border border-border bg-muted/40 px-3 py-2 text-left text-sm hover:border-primary/50"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {state.entries.map((entry, index) => (
+                <div
+                  key={index}
+                  className={
+                    entry.role === "user"
+                      ? "ml-8 rounded-2xl rounded-br-md bg-primary px-3 py-2 text-sm text-primary-foreground"
+                      : entry.role === "error"
+                        ? "mr-8 rounded-2xl rounded-bl-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+                        : "mr-8 rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-sm"
+                  }
+                >
+                  {entry.text ? (
+                    entry.role === "assistant" ? (
+                      <AssistantText text={entry.text} />
+                    ) : (
+                      <p className="whitespace-pre-wrap">{entry.text}</p>
+                    )
+                  ) : null}
+                  {entry.pending?.length ? (
+                    <div className="mt-2 grid gap-2 rounded-xl border border-primary/30 bg-background p-2.5">
+                      {entry.pending.map((item, i) => (
+                        <p key={i} className="text-sm font-semibold">
+                          {item.summary}
+                        </p>
+                      ))}
+                      {entry.resolved ? (
+                        <p
+                          className={`text-xs font-bold ${entry.resolved === "approved" ? "text-emerald-600" : "text-muted-foreground"}`}
                         >
-                          <Check className="mr-1.5 h-3.5 w-3.5" /> Onayla
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => resolve(index, false)}
-                        >
-                          <X className="mr-1.5 h-3.5 w-3.5" /> Vazgeç
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                {entry.links?.length ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {entry.links.map((link, i) =>
-                      link.href.startsWith("/") ? (
-                        <Button
-                          key={i}
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-8 bg-background"
-                          onClick={() => {
-                            setOpen(false);
-                            router.history.push(link.href);
-                          }}
-                        >
-                          {link.label}
-                        </Button>
-                      ) : (
-                        <Button
-                          key={i}
-                          asChild
-                          size="sm"
-                          variant="outline"
-                          className="h-8 bg-background"
-                        >
-                          <a href={link.href} target="_blank" rel="noreferrer">
+                          {entry.resolved === "approved"
+                            ? "Onaylandı"
+                            : "Yapılmadı"}
+                        </p>
+                      ) : index === lastPendingIndex ? (
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="font-bold"
+                            disabled={busy}
+                            onClick={() => resolve(index, true)}
+                          >
+                            <Check className="mr-1.5 h-3.5 w-3.5" /> Onayla
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => resolve(index, false)}
+                          >
+                            <X className="mr-1.5 h-3.5 w-3.5" /> Vazgeç
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {entry.at ? (
+                    <p
+                      className={`mt-1 text-right text-[10px] ${entry.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                    >
+                      {timeTr(entry.at)}
+                    </p>
+                  ) : null}
+                  {entry.links?.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {entry.links.map((link, i) =>
+                        link.href.startsWith("/") ? (
+                          <Button
+                            key={i}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 bg-background"
+                            onClick={() => {
+                              setOpen(false);
+                              router.history.push(link.href);
+                            }}
+                          >
                             {link.label}
-                            <ExternalLink className="ml-1.5 h-3 w-3" />
-                          </a>
-                        </Button>
-                      ),
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-            {busy ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <LoaderCircle className="h-4 w-4 animate-spin" /> Çalışıyorum...
-              </div>
-            ) : null}
-            <div ref={bottomRef} />
-          </div>
+                          </Button>
+                        ) : (
+                          <Button
+                            key={i}
+                            asChild
+                            size="sm"
+                            variant="outline"
+                            className="h-8 bg-background"
+                          >
+                            <a
+                              href={link.href}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {link.label}
+                              <ExternalLink className="ml-1.5 h-3 w-3" />
+                            </a>
+                          </Button>
+                        ),
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+              {busy ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <LoaderCircle className="h-4 w-4 animate-spin" />{" "}
+                  Çalışıyorum...
+                </div>
+              ) : null}
+              <div ref={bottomRef} />
+            </div>
+          )}
 
           <form
             className="flex items-end gap-2 border-t p-3"
