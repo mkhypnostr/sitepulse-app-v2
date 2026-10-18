@@ -263,8 +263,209 @@ export type Database = {
           },
         ];
       };
+      cash_accounts: {
+        Row: {
+          bank_name: string | null;
+          created_at: string;
+          created_by: string | null;
+          currency: string;
+          iban: string | null;
+          id: string;
+          is_active: boolean;
+          kind: string;
+          name: string;
+          opening_balance: number;
+          opening_date: string;
+          show_on_invoice: boolean;
+          sort_order: number;
+          updated_at: string;
+        };
+        Insert: {
+          bank_name?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          iban?: string | null;
+          id?: string;
+          is_active?: boolean;
+          kind?: string;
+          name: string;
+          opening_balance?: number;
+          opening_date?: string;
+          show_on_invoice?: boolean;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Update: {
+          bank_name?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          iban?: string | null;
+          id?: string;
+          is_active?: boolean;
+          kind?: string;
+          name?: string;
+          opening_balance?: number;
+          opening_date?: string;
+          show_on_invoice?: boolean;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      cash_transactions: {
+        Row: {
+          account_id: string;
+          amount: number;
+          category: string | null;
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          direction: string;
+          id: string;
+          kind: string;
+          project_id: string | null;
+          purchase_bill_id: string | null;
+          supplier_id: string | null;
+          transfer_group: string | null;
+          txn_date: string;
+          updated_at: string;
+        };
+        Insert: {
+          account_id: string;
+          amount: number;
+          category?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          direction: string;
+          id?: string;
+          kind?: string;
+          project_id?: string | null;
+          purchase_bill_id?: string | null;
+          supplier_id?: string | null;
+          transfer_group?: string | null;
+          txn_date?: string;
+          updated_at?: string;
+        };
+        Update: {
+          account_id?: string;
+          amount?: number;
+          category?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          direction?: string;
+          id?: string;
+          kind?: string;
+          project_id?: string | null;
+          purchase_bill_id?: string | null;
+          supplier_id?: string | null;
+          transfer_group?: string | null;
+          txn_date?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cash_transactions_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "cash_accounts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cash_transactions_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cash_transactions_purchase_bill_id_fkey";
+            columns: ["purchase_bill_id"];
+            isOneToOne: false;
+            referencedRelation: "purchase_bills";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cash_transactions_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      company_profile: {
+        Row: {
+          address: string;
+          brand: string;
+          city: string;
+          district: string;
+          einvoice_activation_date: string | null;
+          einvoice_provider: string;
+          email: string;
+          id: number;
+          invoice_footer_note: string;
+          legal_name: string;
+          logo_url: string;
+          mersis_no: string;
+          phone: string;
+          tax_no: string;
+          tax_office: string;
+          trade_registry_no: string;
+          updated_at: string;
+          updated_by: string | null;
+          web: string;
+        };
+        Insert: {
+          address?: string;
+          brand?: string;
+          city?: string;
+          district?: string;
+          einvoice_activation_date?: string | null;
+          einvoice_provider?: string;
+          email?: string;
+          id?: number;
+          invoice_footer_note?: string;
+          legal_name?: string;
+          logo_url?: string;
+          mersis_no?: string;
+          phone?: string;
+          tax_no?: string;
+          tax_office?: string;
+          trade_registry_no?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          web?: string;
+        };
+        Update: {
+          address?: string;
+          brand?: string;
+          city?: string;
+          district?: string;
+          einvoice_activation_date?: string | null;
+          einvoice_provider?: string;
+          email?: string;
+          id?: number;
+          invoice_footer_note?: string;
+          legal_name?: string;
+          logo_url?: string;
+          mersis_no?: string;
+          phone?: string;
+          tax_no?: string;
+          tax_office?: string;
+          trade_registry_no?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          web?: string;
+        };
+        Relationships: [];
+      };
       customer_ledger_entries: {
         Row: {
+          account_id: string | null;
           amount: number;
           created_at: string;
           created_by: string | null;
@@ -282,6 +483,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          account_id?: string | null;
           amount: number;
           created_at?: string;
           created_by?: string | null;
@@ -299,6 +501,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          account_id?: string | null;
           amount?: number;
           created_at?: string;
           created_by?: string | null;
@@ -316,6 +519,13 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: "customer_ledger_entries_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "cash_accounts";
+            referencedColumns: ["id"];
+          },
           {
             foreignKeyName: "customer_ledger_entries_customer_id_fkey";
             columns: ["customer_id"];
@@ -620,8 +830,13 @@ export type Database = {
           notes: string | null;
           offer_id: string | null;
           payable_total: number;
+          pdf_path: string | null;
           profile: string;
           project_id: string | null;
+          provider: string;
+          provider_error: string | null;
+          provider_ref: string | null;
+          provider_status: string | null;
           source_id: string | null;
           source_kind: string | null;
           status: string;
@@ -661,8 +876,13 @@ export type Database = {
           notes?: string | null;
           offer_id?: string | null;
           payable_total?: number;
+          pdf_path?: string | null;
           profile?: string;
           project_id?: string | null;
+          provider?: string;
+          provider_error?: string | null;
+          provider_ref?: string | null;
+          provider_status?: string | null;
           source_id?: string | null;
           source_kind?: string | null;
           status?: string;
@@ -702,8 +922,13 @@ export type Database = {
           notes?: string | null;
           offer_id?: string | null;
           payable_total?: number;
+          pdf_path?: string | null;
           profile?: string;
           project_id?: string | null;
+          provider?: string;
+          provider_error?: string | null;
+          provider_ref?: string | null;
+          provider_status?: string | null;
           source_id?: string | null;
           source_kind?: string | null;
           status?: string;
@@ -2018,6 +2243,99 @@ export type Database = {
           },
         ];
       };
+      purchase_bills: {
+        Row: {
+          attachment_path: string | null;
+          category: string;
+          created_at: string;
+          created_by: string | null;
+          currency: string;
+          description: string | null;
+          document_no: string | null;
+          document_type: string;
+          due_date: string | null;
+          ettn: string | null;
+          exchange_rate: number;
+          id: string;
+          issue_date: string;
+          net_amount: number;
+          notes: string | null;
+          project_id: string | null;
+          provider_ref: string | null;
+          source: string;
+          supplier_id: string | null;
+          total_amount: number | null;
+          updated_at: string;
+          vat_amount: number;
+          withholding_amount: number;
+        };
+        Insert: {
+          attachment_path?: string | null;
+          category?: string;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          description?: string | null;
+          document_no?: string | null;
+          document_type?: string;
+          due_date?: string | null;
+          ettn?: string | null;
+          exchange_rate?: number;
+          id?: string;
+          issue_date?: string;
+          net_amount: number;
+          notes?: string | null;
+          project_id?: string | null;
+          provider_ref?: string | null;
+          source?: string;
+          supplier_id?: string | null;
+          total_amount?: number | null;
+          updated_at?: string;
+          vat_amount?: number;
+          withholding_amount?: number;
+        };
+        Update: {
+          attachment_path?: string | null;
+          category?: string;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          description?: string | null;
+          document_no?: string | null;
+          document_type?: string;
+          due_date?: string | null;
+          ettn?: string | null;
+          exchange_rate?: number;
+          id?: string;
+          issue_date?: string;
+          net_amount?: number;
+          notes?: string | null;
+          project_id?: string | null;
+          provider_ref?: string | null;
+          source?: string;
+          supplier_id?: string | null;
+          total_amount?: number | null;
+          updated_at?: string;
+          vat_amount?: number;
+          withholding_amount?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "purchase_bills_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "purchase_bills_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       push_subscriptions: {
         Row: {
           auth: string;
@@ -2319,6 +2637,54 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      suppliers: {
+        Row: {
+          address: string | null;
+          created_at: string;
+          created_by: string | null;
+          email: string | null;
+          iban: string | null;
+          id: string;
+          is_active: boolean;
+          name: string;
+          notes: string | null;
+          phone: string | null;
+          tax_no: string | null;
+          tax_office: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          address?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          email?: string | null;
+          iban?: string | null;
+          id?: string;
+          is_active?: boolean;
+          name: string;
+          notes?: string | null;
+          phone?: string | null;
+          tax_no?: string | null;
+          tax_office?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          address?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          email?: string | null;
+          iban?: string | null;
+          id?: string;
+          is_active?: boolean;
+          name?: string;
+          notes?: string | null;
+          phone?: string | null;
+          tax_no?: string | null;
+          tax_office?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       technical_service_request_media: {
         Row: {

@@ -20,6 +20,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { todayIso } from "@/lib/sales";
+import { companyFromProfile, type CompanyInfo } from "@/lib/company";
+import { issueThroughProvider } from "@/lib/einvoice";
 import {
   GIB_PORTALS,
   invoiceHtml,
@@ -200,32 +202,52 @@ function InvoicesPage() {
     queryKey: ["invoices-page"],
     enabled: isAdmin,
     queryFn: async () => {
-      const [invoices, customers, projects, offers] = await Promise.all([
-        supabase
-          .from("invoices")
-          .select(INVOICE_COLUMNS)
-          .order("issue_date", { ascending: false })
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("customers")
-          .select(
-            "id, name, contact, billing_title, tax_office, tax_no, billing_address",
-          )
-          .order("name"),
-        supabase.from("projects").select("id, name, customer_id").order("name"),
-        supabase
-          .from("offers")
-          .select(
-            "id, offer_no, title, status, customer_id, project_id, currency, vat_rate, total_amount, primary_item_description, primary_item_quantity, primary_item_unit, exchange_rates",
-          )
-          .order("created_at", { ascending: false })
-          .limit(200),
-      ]);
+      const [invoices, customers, projects, offers, profile, bank] =
+        await Promise.all([
+          supabase
+            .from("invoices")
+            .select(INVOICE_COLUMNS)
+            .order("issue_date", { ascending: false })
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("customers")
+            .select(
+              "id, name, contact, billing_title, tax_office, tax_no, billing_address",
+            )
+            .order("name"),
+          supabase
+            .from("projects")
+            .select("id, name, customer_id")
+            .order("name"),
+          supabase
+            .from("offers")
+            .select(
+              "id, offer_no, title, status, customer_id, project_id, currency, vat_rate, total_amount, primary_item_description, primary_item_quantity, primary_item_unit, exchange_rates",
+            )
+            .order("created_at", { ascending: false })
+            .limit(200),
+          supabase
+            .from("company_profile")
+            .select("*")
+            .eq("id", 1)
+            .maybeSingle(),
+          supabase
+            .from("cash_accounts")
+            .select("bank_name, iban")
+            .eq("show_on_invoice", true)
+            .eq("is_active", true)
+            .order("sort_order")
+            .limit(1)
+            .maybeSingle(),
+        ]);
       if (invoices.error) throw invoices.error;
       if (customers.error) throw customers.error;
       if (projects.error) throw projects.error;
       if (offers.error) throw offers.error;
       return {
+        company: companyFromProfile(profile.data ?? null, bank.data ?? null),
+        provider: (profile.data?.einvoice_provider ?? "manual") as
+          "manual" | "parasut",
         invoices: (invoices.data ?? []) as unknown as InvoiceRow[],
         customers: (customers.data ?? []) as Customer[],
         projects: projects.data ?? [],
@@ -494,6 +516,8 @@ function InvoicesPage() {
           key={draft.id ?? draft.header.ettn}
           initial={draft}
           customers={customers}
+          company={dataQuery.data?.company}
+          provider={dataQuery.data?.provider ?? "manual"}
           projects={dataQuery.data?.projects ?? []}
           onClose={() => setDraft(null)}
           onSaved={async (id) => {
@@ -641,6 +665,8 @@ const FRAME_SCRIPT =
 function InvoiceEditor({
   initial,
   customers,
+  company,
+  provider,
   projects,
   onClose,
   onSaved,
@@ -648,6 +674,8 @@ function InvoiceEditor({
 }: {
   initial: Draft;
   customers: Customer[];
+  company?: CompanyInfo;
+  provider: "manual" | "parasut";
   projects: { id: string; name: string; customer_id: string | null }[];
   onClose: () => void;
   onSaved: (id: string) => Promise<void>;
@@ -781,6 +809,18 @@ function InvoiceEditor({
     onError: (e) => toast.error(errorMessage(e)),
   });
 
+  const sendProvider = useMutation({
+    mutationFn: async () => {
+      if (!d.id) return;
+      await issueThroughProvider(d.id);
+    },
+    onSuccess: async () => {
+      toast.success("Fatura gönderildi.");
+      if (d.id) await onSaved(d.id);
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+
   const remove = useMutation({
     mutationFn: async () => {
       if (!d.id) return;
@@ -845,6 +885,24 @@ function InvoiceEditor({
               >
                 <CheckCircle2 className="mr-2 h-4 w-4" /> GİB’de kes
               </Button>
+              {provider === "parasut" ? (
+                <Button
+                  variant="outline"
+                  className="h-10"
+                  disabled={
+                    dirty ||
+                    !d.id ||
+                    problems.length > 0 ||
+                    sendProvider.isPending
+                  }
+                  onClick={() => sendProvider.mutate()}
+                >
+                  <Receipt className="mr-2 h-4 w-4" />
+                  {sendProvider.isPending
+                    ? "Gönderiliyor..."
+                    : "Paraşüt ile kes"}
+                </Button>
+              ) : null}
             </>
           ) : null}
           <Button
@@ -860,7 +918,7 @@ function InvoiceEditor({
             onClick={() =>
               downloadText(
                 `${fileBase}.xml`,
-                invoiceUblXml(h, d.lines),
+                invoiceUblXml(h, d.lines, company),
                 "application/xml",
               )
             }
@@ -1409,6 +1467,7 @@ function InvoiceEditor({
           onOpenChange={setPreviewOpen}
           header={h}
           lines={d.lines}
+          company={company}
         />
         {d.id ? (
           <IssueDialog
@@ -1493,15 +1552,17 @@ function InvoicePreview({
   onOpenChange,
   header,
   lines,
+  company,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   header: InvoiceHeader;
   lines: InvoiceLineInput[];
+  company?: CompanyInfo;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const html = open
-    ? invoiceHtml(header, lines, window.location.origin).replace(
+    ? invoiceHtml(header, lines, window.location.origin, company).replace(
         "</body>",
         `${FRAME_SCRIPT}</body>`,
       )

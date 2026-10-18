@@ -67,6 +67,24 @@ export function LedgerPanel({
   const [docNo, setDocNo] = useState("");
   const [desc, setDesc] = useState("");
   const [linkProject, setLinkProject] = useState(projectId ?? "none");
+  const [accountId, setAccountId] = useState("none");
+
+  // Tahsilatın girdiği kasa/banka hesabı (Ön Muhasebe → Kasa ve Banka).
+  const accountsQuery = useQuery({
+    queryKey: ["cash-accounts-active"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("cash_accounts")
+        .select("id, name, currency")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const accountOptions = (accountsQuery.data ?? []).filter(
+    (a) => a.currency === currency,
+  );
 
   const key = ["ledger", customerId, projectId ?? "all"];
   const query = useQuery({
@@ -86,6 +104,7 @@ export function LedgerPanel({
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["ledger"] });
     await queryClient.invalidateQueries({ queryKey: ["receivables-page"] });
+    await queryClient.invalidateQueries({ queryKey: ["accounting"] });
   };
 
   const add = useMutation({
@@ -101,6 +120,8 @@ export function LedgerPanel({
         amount: value,
         currency,
         payment_method: type === "tahsilat" ? method : null,
+        account_id:
+          type === "tahsilat" && accountId !== "none" ? accountId : null,
         document_no: docNo.trim() || null,
         description: desc.trim() || null,
       });
@@ -264,6 +285,24 @@ export function LedgerPanel({
             />
           </label>
         </div>
+        {type === "tahsilat" ? (
+          <label className="grid gap-1 text-xs">
+            Hangi hesaba girdi (kasa / banka)
+            <Select value={accountId} onValueChange={setAccountId}>
+              <SelectTrigger className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Hesap seçilmedi</SelectItem>
+                {accountOptions.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+        ) : null}
         {!projectId && projects && projects.length > 0 ? (
           <Select value={linkProject} onValueChange={setLinkProject}>
             <SelectTrigger className="h-10">
