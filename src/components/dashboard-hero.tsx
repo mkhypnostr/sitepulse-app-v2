@@ -27,7 +27,7 @@ export function DashboardHero({
         <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
       </div>
 
-      <div className="relative flex min-h-[260px] flex-col justify-between gap-6 p-6 sm:min-h-[300px] sm:p-8">
+      <div className="relative flex min-h-[180px] flex-col justify-between gap-5 p-6 sm:min-h-[220px] sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/60 px-3 py-1.5 text-[13px] font-semibold text-neutral-900 backdrop-blur-md dark:bg-white/20 dark:text-white">
             <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
@@ -42,25 +42,27 @@ export function DashboardHero({
             {greeting}
           </h1>
           <p className="mt-2 text-[15px] text-white/85">{subtitle}</p>
-          <div className="mt-5 flex flex-wrap gap-2">
-            {chips.map((chip) => (
-              <span
-                key={chip.label}
-                className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/20 py-1.5 pr-1.5 pl-3.5 text-[13px] font-medium backdrop-blur-md"
-              >
-                {chip.label}
+          {chips.length > 0 ? (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {chips.map((chip) => (
                 <span
-                  className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums ${
-                    chip.tone === "danger" && chip.value > 0
-                      ? "bg-red-500 text-white"
-                      : "bg-white text-neutral-900"
-                  }`}
+                  key={chip.label}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/20 py-1.5 pr-1.5 pl-3.5 text-[13px] font-medium backdrop-blur-md"
                 >
-                  {chip.value}
+                  {chip.label}
+                  <span
+                    className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums ${
+                      chip.tone === "danger" && chip.value > 0
+                        ? "bg-red-500 text-white"
+                        : "bg-white text-neutral-900"
+                    }`}
+                  >
+                    {chip.value}
+                  </span>
                 </span>
-              </span>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

@@ -5,15 +5,18 @@ import {
   AlertTriangle,
   Boxes,
   BriefcaseBusiness,
+  CalendarClock,
   CheckCircle2,
   Clock3,
   FileDown,
   FolderKanban,
+  Landmark,
   ListChecks,
   Package,
   Plus,
   ShieldAlert,
-  Wallet,
+  Target,
+  Zap,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
@@ -29,6 +32,15 @@ import {
   type ProjectStatus,
   type ProjectTaskStatus,
 } from "@/lib/projects";
+import {
+  computeFollowUps,
+  OPEN_STAGES,
+  todayIso,
+  type LeadForFollowUp,
+  type SalesStage,
+} from "@/lib/sales";
+import { money, summarize, type LedgerEntry } from "@/lib/ledger";
+import type { TcmbRates } from "@/lib/tcmb";
 import { PageHeader, LoadingState } from "@/components/page-states";
 import { NewBadge, StatusDot } from "@/components/status-dot";
 import { DashboardHero } from "@/components/dashboard-hero";
@@ -367,6 +379,73 @@ function DashboardPage() {
         independentTasks,
         myOperationalTasks,
       };
+    },
+  });
+
+  // Yöneticiye özel özet: satış takibi, alacaklar ve bu ayın trafo
+  // kontrolleri. Ayrı sorgu; biri hata verirse operasyon paneli yine açılır.
+  const adminQuery = useQuery({
+    queryKey: ["dashboard-admin"],
+    enabled: canFinance,
+    queryFn: async () => {
+      const [leads, activities, ledger, contracts] = await Promise.all([
+        supabase
+          .from("sales_leads")
+          .select(
+            "id, title, stage, estimated_value, currency, next_action, next_action_at, stage_changed_at, created_at, offers(id, offer_no, status, offer_share_links(created_at, view_count, last_viewed_at, revoked_at))",
+          ),
+        supabase
+          .from("sales_activities")
+          .select("lead_id, occurred_at")
+          .not("lead_id", "is", null)
+          .order("occurred_at", { ascending: false })
+          .limit(3000),
+        supabase
+          .from("customer_ledger_feed")
+          .select(
+            "id, source, customer_id, project_id, entry_type, entry_date, due_date, amount, currency, payment_method, document_no, description",
+          ),
+        supabase
+          .from("transformer_responsibility_contracts")
+          .select(
+            "id, contract_start_date, contract_end_date, transformer_monthly_checks(check_month, status)",
+          ),
+      ]);
+      for (const result of [leads, activities, ledger, contracts]) {
+        if (result.error) throw result.error;
+      }
+      const lastActivity = new Map<string, string>();
+      for (const row of activities.data ?? []) {
+        if (row.lead_id && !lastActivity.has(row.lead_id)) {
+          lastActivity.set(row.lead_id, row.occurred_at);
+        }
+      }
+      return {
+        leads: (leads.data ?? []) as unknown as (LeadForFollowUp & {
+          estimated_value: number | null;
+          currency: string;
+        })[],
+        lastActivity,
+        ledger: (ledger.data ?? []) as LedgerEntry[],
+        contracts: (contracts.data ?? []) as unknown as {
+          id: string;
+          contract_start_date: string;
+          contract_end_date: string;
+          transformer_monthly_checks:
+            | { check_month: string; status: string }[]
+            | null;
+        }[],
+      };
+    },
+  });
+  const ratesQuery = useQuery({
+    queryKey: ["tcmb-rates"],
+    enabled: canFinance,
+    staleTime: 60 * 60 * 1000,
+    queryFn: async () => {
+      const response = await fetch("/api/tcmb-rates");
+      if (!response.ok) return null;
+      return (await response.json()) as TcmbRates;
     },
   });
 
@@ -720,40 +799,67 @@ function DashboardPage() {
     (a, b) => new Date(b.time ?? 0).getTime() - new Date(a.time ?? 0).getTime(),
   );
 
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const monthOrders = orders.filter((order) => {
-    if (!order.scheduled_at) return false;
-    const d = new Date(order.scheduled_at);
-    return d >= monthStart && d < monthEnd;
-  });
-  const completedThisMonth = orders.filter((order) => {
-    if (order.status !== "completed") return false;
-    const d = new Date(order.completion_submitted_at ?? order.updated_at);
-    return d >= monthStart && d < monthEnd;
-  }).length;
-  const financeTotals = monthOrders.reduce(
-    (acc, order) => {
-      const f = order.work_order_financials;
-      if (f) {
-        acc.laborSales += f.customer_labor_amount ?? 0;
-        acc.materialSales += f.customer_material_amount ?? 0;
-        acc.contractorCost += f.contractor_labor_amount ?? 0;
-        acc.materialCost += f.estimated_material_cost ?? 0;
-      }
-      return acc;
-    },
-    { laborSales: 0, materialSales: 0, contractorCost: 0, materialCost: 0 },
-  );
-  const netProfit =
-    financeTotals.laborSales +
-    financeTotals.materialSales -
-    financeTotals.contractorCost -
-    financeTotals.materialCost;
+  const monthKey = todayIso(now).slice(0, 7);
   const monthLabel = new Intl.DateTimeFormat("tr-TR", {
     month: "long",
     year: "numeric",
   }).format(now);
+  const dueSoonCount = activeTaskItems.filter((item) => {
+    const bucket = taskDueBucket(item.plannedDate, now);
+    return bucket === "today" || bucket === "tomorrow";
+  }).length;
+
+  // ── Yönetici özeti: satış, alacak, trafo ─────────────────────────────
+  const admin = adminQuery.data;
+  const rates = ratesQuery.data;
+  const toTl = (value: number | null, currency: string) => {
+    if (!value) return 0;
+    if (currency === "USD") return rates ? value * rates.USD.selling : 0;
+    if (currency === "EUR") return rates ? value * rates.EUR.selling : 0;
+    return value;
+  };
+  const followUps = admin
+    ? computeFollowUps(admin.leads, admin.lastActivity, now)
+    : [];
+  const openLeads = (admin?.leads ?? []).filter((lead) =>
+    OPEN_STAGES.includes(lead.stage as SalesStage),
+  );
+  const openLeadValue = openLeads.reduce(
+    (sum, lead) => sum + toTl(lead.estimated_value, lead.currency),
+    0,
+  );
+  const ledgerSummary = summarize(admin?.ledger ?? [], todayIso(now));
+  const receivableTry = ledgerSummary.find((s) => s.currency === "TRY");
+  const receivableOther = ledgerSummary.filter(
+    (s) => s.currency !== "TRY" && (s.balance > 0.005 || s.overdue > 0.005),
+  );
+  const monthLedger = (admin?.ledger ?? []).filter(
+    (entry) => entry.entry_date.slice(0, 7) === monthKey,
+  );
+  const monthInvoiced = monthLedger
+    .filter((entry) => entry.entry_type === "fatura")
+    .reduce(
+      (sum, entry) => sum + toTl(Number(entry.amount), entry.currency),
+      0,
+    );
+  const monthCollected = monthLedger
+    .filter((entry) => entry.entry_type === "tahsilat")
+    .reduce(
+      (sum, entry) => sum + toTl(Number(entry.amount), entry.currency),
+      0,
+    );
+  const monthStartIso = `${monthKey}-01`;
+  const trafoPending = (admin?.contracts ?? []).filter((contract) => {
+    if (
+      contract.contract_start_date.slice(0, 7) > monthKey ||
+      contract.contract_end_date < monthStartIso
+    )
+      return false;
+    const check = contract.transformer_monthly_checks?.find(
+      (item) => item.check_month.slice(0, 7) === monthKey,
+    );
+    return check?.status !== "completed";
+  }).length;
 
   const tasksByProject = new Map<string, VisibleProjectTask[]>();
   for (const task of visibleProjectTasks) {
@@ -762,7 +868,10 @@ function DashboardPage() {
     tasksByProject.set(task.project_id, list);
   }
   const projectRows = allProjects
-    .filter((project) => project.status !== "cancelled")
+    .filter(
+      (project) =>
+        project.status !== "cancelled" && project.status !== "completed",
+    )
     .slice(0, 6)
     .map((project) => {
       const tasks = (tasksByProject.get(project.id) ?? []) as Array<{
@@ -775,63 +884,93 @@ function DashboardPage() {
       };
     });
 
-  const statCards = [
-    {
-      label: "Aktif İş Emirleri",
-      value: active,
-      detail: `${orders.length} toplam iş emri`,
-      icon: ListChecks,
-      href: "/tasks?source=work_order&filter=open",
-      tone: "info" as const,
-    },
-    {
-      label: "Bekleyen Onaylar",
-      value: pendingApprovalCount,
-      detail: pendingApprovalCount
-        ? "Karar bekleyen kayıt var"
-        : "Bekleyen kayıt yok",
-      icon: ShieldAlert,
-      href: "/approvals",
-      tone: "warning" as const,
-      attention: pendingApprovalCount > 0,
-    },
-    {
-      label: "Geciken Görevler",
-      value: overdueTaskCount,
-      detail: overdueTaskCount
-        ? "Planlanan tarihi geçen görev var"
-        : "Geciken görev yok",
-      icon: AlertTriangle,
-      href: "/tasks?filter=overdue",
-      tone: "danger" as const,
-      attention: overdueTaskCount > 0,
-    },
-    {
-      label: "Tamamlanan (Ay)",
-      value: completedThisMonth,
-      detail: monthLabel,
-      icon: CheckCircle2,
-      href: "/tasks?source=work_order&filter=completed",
-      tone: "success" as const,
-    },
-    {
-      label: "Kritik Stok",
-      value: lowStock.length,
-      detail: lowStock.length ? "Minimum seviyenin altında" : "Kritik stok yok",
-      icon: Package,
-      href: "/stock",
-      tone: "warning" as const,
-      attention: lowStock.length > 0,
-    },
-  ] satisfies Array<{
+  // Kartlar yalnız "bugün ne yapmalıyım" sorusunu cevaplar. Kritik stok
+  // yalnız sorun varsa çıkar; finans kartları yalnız yöneticide.
+  const statCards: Array<{
     label: string;
-    value: number;
+    value: string | number;
     detail: string;
     icon: typeof Package;
     href: string;
     tone: StatTone;
     attention?: boolean;
-  }>;
+  }> = [
+    {
+      label: "Geciken görev",
+      value: overdueTaskCount,
+      detail: overdueTaskCount ? "Tarihi geçmiş, kapanmamış" : "Geciken yok",
+      icon: AlertTriangle,
+      href: "/tasks?filter=overdue",
+      tone: "danger",
+      attention: overdueTaskCount > 0,
+    },
+    {
+      label: "Bugün / yarın",
+      value: dueSoonCount,
+      detail: dueSoonCount ? "Yakında yapılacak görev" : "Yakın tarihli yok",
+      icon: CalendarClock,
+      href: "/calendar",
+      tone: "info",
+      attention: dueSoonCount > 0,
+    },
+    {
+      label: "Onay bekleyen",
+      value: pendingApprovalCount,
+      detail: pendingApprovalCount ? "Kararınızı bekliyor" : "Bekleyen yok",
+      icon: ShieldAlert,
+      href: "/approvals",
+      tone: "warning",
+      attention: pendingApprovalCount > 0,
+    },
+    ...(canFinance
+      ? [
+          {
+            label: "Satış takibi",
+            value: followUps.length,
+            detail: followUps.length
+              ? "Aranacak / dönülecek müşteri"
+              : `${openLeads.length} açık fırsat, takip yok`,
+            icon: Target,
+            href: "/sales",
+            tone: "info" as const,
+            attention: followUps.length > 0,
+          },
+          {
+            label: "Vadesi geçen alacak",
+            value: formatTRY(receivableTry?.overdue ?? 0),
+            detail: `Toplam alacak ${formatTRY(receivableTry?.balance ?? 0)}`,
+            icon: Landmark,
+            href: "/receivables",
+            tone: "danger" as const,
+            attention: (receivableTry?.overdue ?? 0) > 0.005,
+          },
+          {
+            label: "Trafo kontrolü",
+            value: trafoPending,
+            detail: trafoPending
+              ? `${monthLabel} kontrolü yapılmadı`
+              : "Bu ayın kontrolleri tamam",
+            icon: Zap,
+            href: "/transformer-responsibility",
+            tone: "warning" as const,
+            attention: trafoPending > 0,
+          },
+        ]
+      : []),
+    ...(lowStock.length > 0
+      ? [
+          {
+            label: "Kritik stok",
+            value: lowStock.length,
+            detail: "Minimum seviyenin altında",
+            icon: Package,
+            href: "/stock",
+            tone: "warning" as const,
+            attention: true,
+          },
+        ]
+      : []),
+  ];
 
   const dateLabel = new Intl.DateTimeFormat("tr-TR", {
     weekday: "long",
@@ -844,24 +983,25 @@ function DashboardPage() {
     minute: "2-digit",
   }).format(now);
 
+  const panelHeader = (title: string, href?: string, extra?: string) => (
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <p className={EYEBROW}>{title}</p>
+      {href ? (
+        <a href={href} className="text-xs font-semibold text-highlight">
+          {extra ?? "Tümünü gör"}
+        </a>
+      ) : extra ? (
+        <span className="text-xs text-muted-foreground">{extra}</span>
+      ) : null}
+    </div>
+  );
+
   return (
     <>
       <DashboardHero
         greeting={`${greetingForHour(now.getHours())}${firstName ? `, ${firstName}` : ""}`}
         subtitle={`${dateLabel} · ${timeLabel}`}
-        chips={[
-          { label: "Aktif iş", value: active },
-          {
-            label: "Geciken",
-            value: overdueTaskCount,
-            tone: "danger",
-          },
-          {
-            label: "Onay bekleyen",
-            value: pendingApprovalCount,
-            tone: "danger",
-          },
-        ]}
+        chips={[]}
         actions={
           <>
             <Link
@@ -885,7 +1025,7 @@ function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {statCards.map((metric) => (
           <a
             key={metric.label}
@@ -893,13 +1033,13 @@ function DashboardPage() {
             className="press block h-full"
           >
             <Card
-              className={`h-full min-h-[132px] ${
+              className={`h-full ${
                 metric.attention
                   ? statToneCard[metric.tone].attention
                   : statToneCard[metric.tone].calm
               }`}
             >
-              <CardContent className="flex h-full flex-col justify-between gap-3 p-4 sm:p-5">
+              <CardContent className="flex h-full flex-col justify-between gap-2 p-3.5 sm:p-4">
                 <div className="flex items-start justify-between gap-2">
                   <p className={`${EYEBROW} flex items-center gap-2`}>
                     {metric.attention ? (
@@ -908,16 +1048,16 @@ function DashboardPage() {
                     {metric.label}
                   </p>
                   <div
-                    className={`shrink-0 rounded-[10px] p-2 shadow-[inset_0_1px_0_oklch(1_0_0/0.25)] ${statToneIcon[metric.tone]}`}
+                    className={`shrink-0 rounded-[10px] p-1.5 shadow-[inset_0_1px_0_oklch(1_0_0/0.25)] ${statToneIcon[metric.tone]}`}
                   >
-                    <metric.icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <metric.icon className="h-4 w-4" />
                   </div>
                 </div>
-                <div>
-                  <p className="text-3xl font-semibold leading-none tracking-tight sm:text-4xl">
+                <div className="min-w-0">
+                  <p className="truncate text-2xl font-semibold leading-none tracking-tight sm:text-3xl">
                     {metric.value}
                   </p>
-                  <p className="mt-2 line-clamp-2 text-xs leading-snug text-muted-foreground">
+                  <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
                     {metric.detail}
                   </p>
                 </div>
@@ -927,21 +1067,267 @@ function DashboardPage() {
         ))}
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[3fr_2fr]">
+        <section className="surface-panel p-4 sm:p-5">
+          {panelHeader("Yapılacaklar", "/tasks")}
+          <div className="space-y-2">
+            {activeTaskItems.slice(0, 8).map((item) => {
+              const bucket = taskDueBucket(item.plannedDate, now);
+              const Icon = item.kind === "project" ? FolderKanban : ListChecks;
+              return (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  className={`flex items-center gap-3 rounded-lg border border-l-4 border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50 ${
+                    bucket === "overdue"
+                      ? "border-l-destructive"
+                      : bucket === "today" || bucket === "tomorrow"
+                        ? "border-l-warning"
+                        : "border-l-transparent"
+                  }`}
+                >
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      bucket === "overdue"
+                        ? "bg-destructive/15 text-destructive"
+                        : bucket === "today" || bucket === "tomorrow"
+                          ? "bg-warning/15 text-warning"
+                          : "bg-primary/15 text-highlight"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {item.title}
+                      </p>
+                      {isRecentlyCreated(item.createdAt, now) ? (
+                        <NewBadge />
+                      ) : null}
+                    </div>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {item.relation}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p
+                      className={`flex items-center justify-end gap-1.5 text-xs font-semibold ${
+                        bucket === "overdue"
+                          ? "text-destructive"
+                          : bucket === "today" || bucket === "tomorrow"
+                            ? "text-warning"
+                            : "text-muted-foreground"
+                      }`}
+                    >
+                      {bucket === "overdue" ? (
+                        <StatusDot tone="danger" pulse />
+                      ) : bucket === "today" ? (
+                        <StatusDot tone="warning" />
+                      ) : null}
+                      {bucket === "overdue"
+                        ? "Gecikti"
+                        : bucket === "today"
+                          ? "Bugün"
+                          : bucket === "tomorrow"
+                            ? "Yarın"
+                            : item.plannedDate
+                              ? formatDate(item.plannedDate)
+                              : "Tarih yok"}
+                    </p>
+                    {(bucket === "overdue" ||
+                      bucket === "today" ||
+                      bucket === "tomorrow") &&
+                    item.plannedDate ? (
+                      <p className="text-[10px] text-muted-foreground">
+                        {formatDate(item.plannedDate)}
+                      </p>
+                    ) : null}
+                  </div>
+                </a>
+              );
+            })}
+            {activeTaskItems.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                Açık görev yok.
+              </p>
+            ) : null}
+          </div>
+        </section>
+
+        <div className="grid content-start gap-4">
+          {pendingApprovalItems.length > 0 ? (
+            <section
+              id="approval-center"
+              className="surface-panel scroll-mt-6 p-4 sm:p-5"
+            >
+              {panelHeader("Onay bekleyenler", "/approvals")}
+              <div className="space-y-2">
+                {pendingApprovalItems.slice(0, 4).map((item) => (
+                  <a
+                    key={item.id}
+                    href={item.href}
+                    className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-destructive/50"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
+                      <item.icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-foreground">
+                        {item.title}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {item.label}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {item.time ? formatProjectDateTime(item.time) : "—"}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {canFinance ? (
+            <section className="surface-panel p-4 sm:p-5">
+              {panelHeader(
+                "Satış takibi",
+                "/sales",
+                followUps.length ? "Satış Takibi'ne git" : undefined,
+              )}
+              {adminQuery.error ? (
+                <p className="text-sm text-destructive">
+                  {errorMessage(adminQuery.error)}
+                </p>
+              ) : followUps.length === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  Bugün aranacak müşteri yok.
+                  {openLeads.length
+                    ? ` ${openLeads.length} açık fırsat${openLeadValue ? ` · ${formatTRY(openLeadValue)}` : ""}.`
+                    : ""}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {followUps.slice(0, 5).map((item) => (
+                    <a
+                      key={`${item.leadId}-${item.kind}`}
+                      href={`/sales?leadId=${item.leadId}`}
+                      className={`block rounded-lg border border-l-4 border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50 ${
+                        item.kind === "gecikmis"
+                          ? "border-l-destructive"
+                          : "border-l-warning"
+                      }`}
+                    >
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {item.leadTitle}
+                      </p>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {item.message}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {canFinance ? (
+            <section
+              id="finance"
+              className="surface-panel scroll-mt-6 p-4 sm:p-5"
+            >
+              {panelHeader("Para durumu", undefined, monthLabel)}
+              <div className="space-y-2.5 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">
+                    Bu ay kesilen fatura
+                  </span>
+                  <span className="font-bold">{formatTRY(monthInvoiced)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Bu ay tahsilat</span>
+                  <span className="font-bold text-success">
+                    {formatTRY(monthCollected)}
+                  </span>
+                </div>
+                <div className="my-1 border-t border-border" />
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Toplam alacak</span>
+                  <span className="font-bold">
+                    {formatTRY(receivableTry?.balance ?? 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Vadesi geçen</span>
+                  <span
+                    className={`font-bold ${(receivableTry?.overdue ?? 0) > 0.005 ? "text-destructive" : ""}`}
+                  >
+                    {formatTRY(receivableTry?.overdue ?? 0)}
+                  </span>
+                </div>
+                {receivableOther.map((s) => (
+                  <div
+                    key={s.currency}
+                    className="flex items-center justify-between gap-3 text-xs"
+                  >
+                    <span className="text-muted-foreground">
+                      {s.currency} alacak (vadesi geçen)
+                    </span>
+                    <span className="font-semibold">
+                      {money(s.balance, s.currency)} (
+                      {money(s.overdue, s.currency)})
+                    </span>
+                  </div>
+                ))}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-2 text-xs font-semibold">
+                  <Link to="/receivables" className="text-highlight">
+                    Cari Hesaplar
+                  </Link>
+                  <Link to="/invoices" className="text-highlight">
+                    Faturalar
+                  </Link>
+                  <Link to="/accounting" className="text-highlight">
+                    Ön Muhasebe
+                  </Link>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {lowStock.length > 0 ? (
+            <section className="surface-panel p-4 sm:p-5">
+              {panelHeader("Kritik stok", "/stock")}
+              <div className="space-y-2">
+                {lowStock.slice(0, 5).map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
+                      <Boxes className="h-4 w-4" />
+                    </span>
+                    <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
+                      {item.name}
+                    </p>
+                    <span className="shrink-0 text-xs font-bold text-warning">
+                      {item.quantity} {item.unit}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </div>
+
+      {projectRows.length > 0 ? (
         <section
           id="project-status"
-          className="surface-panel scroll-mt-6 p-4 sm:p-5"
+          className="surface-panel mt-4 scroll-mt-6 p-4 sm:p-5"
         >
-          <div className="mb-4 flex items-center justify-between">
-            <p className={EYEBROW}>Proje Durumu</p>
-            <Link
-              to="/projects"
-              className="text-xs font-semibold text-highlight"
-            >
-              Tümünü gör
-            </Link>
-          </div>
-          <div className="space-y-3">
+          {panelHeader("Süren projeler", "/projects")}
+          <div className="grid gap-3 md:grid-cols-2">
             {projectRows.map((project) => (
               <Link
                 key={project.id}
@@ -950,18 +1336,13 @@ function DashboardPage() {
                 className="block rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-highlight">
-                      <FolderKanban className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-foreground">
-                        {project.name}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {project.customers?.name ?? "Müşteri atanmadı"}
-                      </p>
-                    </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-foreground">
+                      {project.name}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {project.customers?.name ?? "Müşteri atanmadı"}
+                    </p>
                   </div>
                   <Badge
                     variant={projectStatusVariant[project.status]}
@@ -978,263 +1359,9 @@ function DashboardPage() {
                 </div>
               </Link>
             ))}
-            {projectRows.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                Henüz proje yok.
-              </p>
-            ) : null}
           </div>
         </section>
-
-        <section id="finance" className="surface-panel scroll-mt-6 p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className={EYEBROW}>Aylık Finans</p>
-            <span className="text-xs text-muted-foreground">{monthLabel}</span>
-          </div>
-          {canFinance ? (
-            <div className="space-y-2.5 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Satış İşçilik</span>
-                <span className="font-bold text-foreground">
-                  {formatTRY(financeTotals.laborSales)}
-                </span>
-              </div>
-              <div className="my-3 border-t border-border" />
-              <p className={EYEBROW}>Proje Bedelleri</p>
-              {allProjects
-                .filter(
-                  (project) =>
-                    project.quoted_amount != null ||
-                    project.contract_amount != null,
-                )
-                .slice(0, 5)
-                .map((project) => (
-                  <Link
-                    key={project.id}
-                    to="/projects/$projectId"
-                    params={{ projectId: project.id }}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/30 p-2 hover:border-primary/50"
-                  >
-                    <span className="min-w-0 truncate text-xs font-semibold">
-                      {project.project_no} · {project.name}
-                    </span>
-                    <span className="shrink-0 text-xs font-bold">
-                      {formatTRY(
-                        project.contract_amount ?? project.quoted_amount ?? 0,
-                      )}
-                    </span>
-                  </Link>
-                ))}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Satış Malzeme</span>
-                <span className="font-bold text-foreground">
-                  {formatTRY(financeTotals.materialSales)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Taşeron Maliyeti</span>
-                <span className="font-bold text-destructive">
-                  -{formatTRY(financeTotals.contractorCost)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Malzeme Maliyeti</span>
-                <span className="font-bold text-destructive">
-                  -{formatTRY(financeTotals.materialCost)}
-                </span>
-              </div>
-              <div className="my-1 border-t border-border" />
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-foreground">
-                  Net Kar
-                </span>
-                <span
-                  className={`text-lg font-black ${netProfit >= 0 ? "text-success" : "text-destructive"}`}
-                >
-                  {formatTRY(netProfit)}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-2 text-center">
-              <Wallet className="h-8 w-8 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">
-                Finansal veriler yalnızca yöneticiye görünür.
-              </p>
-            </div>
-          )}
-        </section>
-      </div>
-
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
-        <section
-          id="approval-center"
-          className="surface-panel scroll-mt-6 p-4 sm:p-5"
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <p className={EYEBROW}>Onay Merkezi</p>
-            <Link
-              to="/approvals"
-              className="text-xs font-semibold text-highlight"
-            >
-              Tümünü gör
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {pendingApprovalItems.slice(0, 3).map((item) => (
-              <a
-                key={item.id}
-                href={item.href}
-                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3 transition-colors hover:border-destructive/50"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
-                  <item.icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">
-                    {item.title}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {item.label}
-                  </p>
-                </div>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {item.time ? formatProjectDateTime(item.time) : "—"}
-                </span>
-              </a>
-            ))}
-            {pendingApprovalItems.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                Onay bekleyen kayıt yok.
-              </p>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="surface-panel p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <p className={EYEBROW}>Kritik Stok</p>
-            <Link to="/stock" className="text-xs font-semibold text-highlight">
-              Tümünü gör
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {lowStock.slice(0, 5).map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/30 p-3"
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
-                  <Boxes className="h-4 w-4" />
-                </span>
-                <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
-                  {item.name}
-                </p>
-                <span className="shrink-0 text-xs font-bold text-warning">
-                  {item.quantity} {item.unit}
-                </span>
-              </div>
-            ))}
-            {lowStock.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                Kritik stok yok.
-              </p>
-            ) : null}
-          </div>
-        </section>
-      </div>
-
-      <section className="surface-panel mt-4 p-4 sm:p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <p className={EYEBROW}>Aktif Görevler</p>
-          <a href="/tasks" className="text-xs font-semibold text-highlight">
-            Tümünü gör
-          </a>
-        </div>
-        <div className="space-y-2">
-          {activeTaskItems.slice(0, 8).map((item) => {
-            const bucket = taskDueBucket(item.plannedDate, now);
-            const Icon = item.kind === "project" ? FolderKanban : ListChecks;
-            return (
-              <a
-                key={item.id}
-                href={item.href}
-                className={`flex items-center gap-3 rounded-lg border border-l-4 border-border/60 bg-background/30 p-3 transition-colors hover:border-primary/50 ${
-                  bucket === "overdue"
-                    ? "border-l-destructive"
-                    : bucket === "today" || bucket === "tomorrow"
-                      ? "border-l-warning"
-                      : "border-l-transparent"
-                }`}
-              >
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                    bucket === "overdue"
-                      ? "bg-destructive/15 text-destructive"
-                      : bucket === "today" || bucket === "tomorrow"
-                        ? "bg-warning/15 text-warning"
-                        : "bg-primary/15 text-highlight"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      {item.title}
-                    </p>
-                    {isRecentlyCreated(item.createdAt, now) ? (
-                      <NewBadge />
-                    ) : null}
-                  </div>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {item.relation}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <p
-                    className={`flex items-center justify-end gap-1.5 text-xs font-semibold ${
-                      bucket === "overdue"
-                        ? "text-destructive"
-                        : bucket === "today" || bucket === "tomorrow"
-                          ? "text-warning"
-                          : "text-muted-foreground"
-                    }`}
-                  >
-                    {bucket === "overdue" ? (
-                      <StatusDot tone="danger" pulse />
-                    ) : bucket === "today" ? (
-                      <StatusDot tone="warning" />
-                    ) : null}
-                    {bucket === "overdue"
-                      ? "Gecikti"
-                      : bucket === "today"
-                        ? "Bugün"
-                        : bucket === "tomorrow"
-                          ? "Yarın"
-                          : item.plannedDate
-                            ? formatDate(item.plannedDate)
-                            : "Tarih yok"}
-                  </p>
-                  {(bucket === "overdue" ||
-                    bucket === "today" ||
-                    bucket === "tomorrow") &&
-                  item.plannedDate ? (
-                    <p className="text-[10px] text-muted-foreground">
-                      {formatDate(item.plannedDate)}
-                    </p>
-                  ) : null}
-                </div>
-              </a>
-            );
-          })}
-          {activeTaskItems.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              Aktif görev yok.
-            </p>
-          ) : null}
-        </div>
-      </section>
+      ) : null}
     </>
   );
 }
