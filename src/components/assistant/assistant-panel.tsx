@@ -319,7 +319,11 @@ export function AssistantPanel() {
                 }
               >
                 {entry.text ? (
-                  <p className="whitespace-pre-wrap">{entry.text}</p>
+                  entry.role === "assistant" ? (
+                    <AssistantText text={entry.text} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{entry.text}</p>
+                  )
                 ) : null}
                 {entry.pending?.length ? (
                   <div className="mt-2 grid gap-2 rounded-xl border border-primary/30 bg-background p-2.5">
@@ -456,5 +460,60 @@ export function AssistantPanel() {
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+/** Asistan yanıtındaki basit biçimleri (kalın, madde, tablo) düz ve okunur
+ * hale getirir. HTML üretmez; metin React öğeleriyle basılır. */
+function AssistantText({ text }: { text: string }) {
+  const lines = text.split(/\r?\n/);
+  const out: { kind: "p" | "li" | "row"; text: string }[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (/^\|?\s*:?-{2,}/.test(line)) continue; // tablo ayırıcı satırı
+    if (line.startsWith("|")) {
+      const cells = line
+        .replace(/^\||\|$/g, "")
+        .split("|")
+        .map((c) => c.trim())
+        .filter(Boolean);
+      out.push({ kind: "row", text: cells.join(" · ") });
+    } else if (/^[-*•]\s+/.test(line)) {
+      out.push({ kind: "li", text: line.replace(/^[-*•]\s+/, "") });
+    } else {
+      out.push({ kind: "p", text: line.replace(/^#+\s*/, "") });
+    }
+  }
+  const bold = (t: string) =>
+    t
+      .split(/(\*\*[^*]+\*\*)/g)
+      .map((part, i) =>
+        /^\*\*[^*]+\*\*$/.test(part) ? (
+          <strong key={i}>{part.slice(2, -2)}</strong>
+        ) : (
+          part
+        ),
+      );
+  return (
+    <div className="grid gap-1">
+      {out.map((item, i) =>
+        item.text === "" ? (
+          <div key={i} className="h-1" />
+        ) : item.kind === "li" ? (
+          <p key={i} className="pl-3 -indent-3">
+            • {bold(item.text)}
+          </p>
+        ) : item.kind === "row" ? (
+          <p
+            key={i}
+            className="rounded-md bg-background/60 px-2 py-1 text-[13px]"
+          >
+            {bold(item.text)}
+          </p>
+        ) : (
+          <p key={i}>{bold(item.text)}</p>
+        ),
+      )}
+    </div>
   );
 }
