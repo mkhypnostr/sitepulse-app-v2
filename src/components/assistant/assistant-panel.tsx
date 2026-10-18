@@ -212,12 +212,19 @@ export function AssistantPanel() {
     if (!state.id || state.entries.length === 0) return;
     const timer = setTimeout(() => {
       const firstUser = state.entries.find((e) => e.role === "user");
-      void supabase.from("assistant_conversations").upsert({
-        id: state.id as string,
-        title: (firstUser?.text ?? "Sohbet").slice(0, 120),
-        entries: state.entries as unknown as never,
-        messages: state.messages as unknown as never,
-      });
+      // Sorgu oluşturucusu ancak then() ile çalışır; void ile bırakılırsa
+      // istek hiç gönderilmez.
+      void supabase
+        .from("assistant_conversations")
+        .upsert({
+          id: state.id as string,
+          title: (firstUser?.text ?? "Sohbet").slice(0, 120),
+          entries: state.entries as unknown as never,
+          messages: state.messages as unknown as never,
+        })
+        .then(({ error }) => {
+          if (error) console.error("Sohbet kaydedilemedi", error.message);
+        });
       writeCurrentId(state.id);
     }, 500);
     return () => clearTimeout(timer);
