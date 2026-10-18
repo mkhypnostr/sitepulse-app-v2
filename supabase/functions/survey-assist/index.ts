@@ -72,10 +72,10 @@ const TOOL: Anthropic.Tool = {
               description:
                 "Birim: adet, m, m², kg, set, boy, takım, saat, gün, kWp, iş.",
             },
-            catalog_id: {
-              type: "string",
+            catalog_ref: {
+              type: "integer",
               description:
-                "Katalogda aynı ürün/iş varsa onun kimliği. Emin değilsen gönderme; tahmin etme.",
+                "Katalogda AYNI ürün/iş varsa satır numarası (K12 için 12). Emin değilsen gönderme; tahmin etme.",
             },
             note: {
               type: "string",
@@ -133,10 +133,11 @@ Deno.serve(async (req: Request) => {
     .order("sort_order")
     .limit(600);
   const catalog = catalogRows ?? [];
+  // Kimlik yerine kısa satır numarası: uzun uuid listesinde model karışıyordu.
   const catalogText = catalog
     .map(
-      (c) =>
-        `${c.id} | ${c.code} | ${c.name}${c.brand ? ` · ${c.brand}` : ""}${c.model ? ` · ${c.model}` : ""} | ${c.unit}`,
+      (c, i) =>
+        `K${i + 1} | ${c.code} | ${c.name}${c.brand ? ` · ${c.brand}` : ""}${c.model ? ` · ${c.model}` : ""} | ${c.unit}`,
     )
     .join("\n");
 
@@ -146,7 +147,7 @@ Kurallar:
 - Yalnız notta geçen malzeme ve işleri çıkar; olmayan kalem uydurma. Ölçü/miktar yazılmışsa aynen kullan (35 m, 4 adet). Yazılmamışsa 1.
 - Aynı malzeme birden çok yerde geçiyorsa miktarları topla, notta yerini belirt.
 - İşçilik, montaj, test/devreye alma notta açıkça geçiyorsa ayrı kalem yap.
-- Katalogla eşleştirme: yalnız ürün tipi ve özellik (kesit, akım, güç) uyuşuyorsa catalog_id ver. Benzer ama farklı özellikteyse verme.
+- Katalogla eşleştirme: yalnız AYNI ürün tipi ve özellik (kesit, akım, güç, kutup) uyuşuyorsa catalog_ref ver (satırın K numarası). Benzer ama farklı ürün ya da farklı özellikse VERME; boş bırakmak yanlış eşleştirmekten iyidir.
 - Açıklamalar kısa ve teklif diline uygun olsun; birimler: adet, m, m², kg, set, boy, takım, saat, gün, kWp, iş.
 - Sonucu kalemleri_kaydet aracıyla ver.`;
 
@@ -155,7 +156,7 @@ Kurallar:
 KEŞİF NOTU:
 ${notes}
 
-${catalog.length ? `KATALOG (id | kod | ad | birim):\n${catalogText}` : "Katalog yok: catalog_id gönderme."}`;
+${catalog.length ? `KATALOG (satır | kod | ad | birim):\n${catalogText}` : "Katalog yok: catalog_ref gönderme."}`;
 
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   try {
@@ -171,7 +172,36 @@ ${catalog.length ? `KATALOG (id | kod | ad | birim):\n${catalogText}` : "Katalog
         b.type === "tool_use" && b.name === TOOL.name,
     );
     const raw = (use?.input as { items?: unknown[] } | undefined)?.items ?? [];
-    const ids = new Set(catalog.map((c) => c.id));
+    // Güvenlik ağı: kalem adıyla katalog adının anlamlı ortak kelimesi
+    // yoksa eşleştirme yapılmaz (ör. "otomat" ≠ "spiral boru").
+    const STOP = new Set([
+      "ve",
+      "ile",
+      "için",
+      "adet",
+      "metre",
+      "tipi",
+      "montaj",
+      "malzeme",
+      "sistem",
+      "kablo",
+    ]);
+    const tokens = (t: string) =>
+      new Set(
+        t
+          .toLocaleLowerCase("tr-TR")
+          .replace(/[^a-z0-9çğıöşü²]+/gi, " ")
+          .split(/\s+/)
+          .filter((w) => w.length >= 3 && !STOP.has(w)),
+      );
+    const plausible = (description: string, ref: number) => {
+      const c = catalog[ref - 1];
+      if (!c) return null;
+      const a = tokens(description);
+      const b = tokens(`${c.name} ${c.model ?? ""}`);
+      for (const w of a) if (b.has(w)) return c.id;
+      return null;
+    };
     const items = raw
       .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
       .map((x) => ({
@@ -184,8 +214,8 @@ ${catalog.length ? `KATALOG (id | kod | ad | birim):\n${catalogText}` : "Katalog
             .trim()
             .slice(0, 20) || "adet",
         catalog_item_id:
-          typeof x.catalog_id === "string" && ids.has(x.catalog_id)
-            ? x.catalog_id
+          Number.isInteger(Number(x.catalog_ref)) && Number(x.catalog_ref) > 0
+            ? plausible(String(x.description ?? ""), Number(x.catalog_ref))
             : null,
         note:
           typeof x.note === "string" && x.note.trim()
