@@ -6,7 +6,7 @@
 // eksiksiz ve doğru hesaplanmış halidir; kesildikten sonra GİB numarası ve
 // ETTN ile arşivlenir.
 
-import { NES_COMPANY } from "@/lib/company";
+import { NES_COMPANY, type CompanyInfo } from "@/lib/company";
 
 export type InvoiceStatus = "taslak" | "kesildi" | "iptal";
 export type InvoiceProfile = "TEMELFATURA" | "TICARIFATURA" | "EARSIVFATURA";
@@ -266,13 +266,14 @@ export function invoiceHtml(
   header: InvoiceHeader,
   lines: InvoiceLineInput[],
   origin: string,
+  company: CompanyInfo = NES_COMPANY,
 ) {
   const totals = invoiceTotals(
     lines,
     header.invoice_type,
     header.withholding_rate,
   );
-  const c = NES_COMPANY;
+  const c = company;
   const issued = header.status === "kesildi";
   const cancelled = header.status === "iptal";
   const docLabel =
@@ -311,7 +312,10 @@ export function invoiceHtml(
     header.currency !== "TRY"
       ? `Döviz kuru: 1 ${header.currency} = ${qtyFmt(Number(header.exchange_rate))} TL · TL karşılığı ${invoiceMoney(round2(totals.payable * Number(header.exchange_rate)), "TRY")}`
       : null,
-    `${c.bank} IBAN (${header.currency === "TRY" ? "TRL" : header.currency}): ${c.iban}`,
+    c.iban
+      ? `${c.bank} IBAN (${header.currency === "TRY" ? "TRL" : header.currency}): ${c.iban}`
+      : null,
+    c.footerNote || null,
     `Yazıyla Toplam Tutar: ${amountInWords(totals.payable, header.currency)}`,
   ]
     .filter(Boolean)
@@ -349,7 +353,7 @@ export function invoiceHtml(
 ${issued ? "" : `<div class="wm">${cancelled ? "İPTAL" : "TASLAK"}</div>`}
 <div class="top">
   <div class="seller">
-    <img class="logo" src="${esc(origin)}/nes-enerji-logo.png" alt="NES Enerji">
+    <img class="logo" src="${esc(/^https?:/.test(c.logoUrl) ? c.logoUrl : `${origin}${c.logoUrl}`)}" alt="${esc(c.brand)}">
     <div style="margin-top:10px"><b>${esc(c.legalName)}</b></div>
     <div>${esc(c.address)}</div><div>${esc(c.district)}</div>
     <div class="muted">Telefon</div><div>${esc(c.phone)}</div>
@@ -461,13 +465,14 @@ function partyXml(opts: {
 export function invoiceUblXml(
   header: InvoiceHeader,
   lines: InvoiceLineInput[],
+  company: CompanyInfo = NES_COMPANY,
 ) {
   const totals = invoiceTotals(
     lines,
     header.invoice_type,
     header.withholding_rate,
   );
-  const c = NES_COMPANY;
+  const c = company;
   const cur = header.currency;
   const buyerTax = header.buyer_tax_no ?? "11111111111";
   const lineXml = lines
@@ -526,7 +531,7 @@ export function invoiceUblXml(
   const notes = [
     header.notes,
     `Yazıyla Toplam Tutar: ${amountInWords(totals.payable, cur)}`,
-    `${c.bank} IBAN: ${c.iban}`,
+    c.iban ? `${c.bank} IBAN: ${c.iban}` : null,
   ]
     .filter(Boolean)
     .map((n) => `<cbc:Note>${x(n)}</cbc:Note>`)
@@ -572,7 +577,7 @@ export function invoiceUblXml(
       taxOffice: header.buyer_tax_office ?? "",
     })}
   </cac:AccountingCustomerParty>
-  ${header.due_date ? `<cac:PaymentMeans><cbc:PaymentMeansCode>42</cbc:PaymentMeansCode><cbc:PaymentDueDate>${x(header.due_date)}</cbc:PaymentDueDate><cac:PayeeFinancialAccount><cbc:ID>${x(c.iban.replace(/\s/g, ""))}</cbc:ID></cac:PayeeFinancialAccount></cac:PaymentMeans>` : ""}
+  ${header.due_date && c.iban ? `<cac:PaymentMeans><cbc:PaymentMeansCode>42</cbc:PaymentMeansCode><cbc:PaymentDueDate>${x(header.due_date)}</cbc:PaymentDueDate><cac:PayeeFinancialAccount><cbc:ID>${x(c.iban.replace(/\s/g, ""))}</cbc:ID></cac:PayeeFinancialAccount></cac:PaymentMeans>` : ""}
   ${cur !== "TRY" ? `<cac:PricingExchangeRate><cbc:SourceCurrencyCode>${cur}</cbc:SourceCurrencyCode><cbc:TargetCurrencyCode>TRY</cbc:TargetCurrencyCode><cbc:CalculationRate>${Number(header.exchange_rate)}</cbc:CalculationRate></cac:PricingExchangeRate>` : ""}
   <cac:TaxTotal>
     <cbc:TaxAmount currencyID="${cur}">${amt(totals.vat)}</cbc:TaxAmount>

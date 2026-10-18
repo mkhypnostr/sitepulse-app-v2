@@ -12,6 +12,7 @@ import {
   FolderKanban,
   FolderOpen,
   FileText,
+  Calculator,
   Landmark,
   LayoutDashboard,
   Map as MapIcon,
@@ -286,6 +287,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             hash: "finance",
           },
           { to: "/invoices", label: "Faturalar", icon: FileText },
+          { to: "/accounting", label: "Ön Muhasebe", icon: Calculator },
           { to: "/receivables", label: "Cari Hesaplar", icon: Landmark },
           {
             to: "/measurement-tracking",
@@ -834,6 +836,7 @@ const NAV_TILE_COLORS: Record<string, string> = {
   "/price-catalog": "bg-amber-500",
   "/customers": "bg-violet-500",
   "/invoices": "bg-teal-700",
+  "/accounting": "bg-cyan-700",
   "/receivables": "bg-emerald-700",
   "/measurement-tracking": "bg-teal-500",
   "/transformer-responsibility": "bg-yellow-500",
