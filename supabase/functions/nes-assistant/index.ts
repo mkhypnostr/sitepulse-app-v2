@@ -849,7 +849,17 @@ Deno.serve(async (req: Request) => {
     }
     if (error instanceof Anthropic.APIError) {
       console.error("Anthropic hatası", error.status, error.message);
-      return json({ error: `Asistan yanıt veremedi (${error.status}).` }, 502);
+      const detail = String(error.message ?? "").slice(0, 300);
+      const lowCredit = /credit balance|billing/i.test(detail);
+      return json(
+        {
+          error: lowCredit
+            ? "Anthropic API kredisi yok veya yetersiz. platform.claude.com → Billing bölümünü (Max planının aylık API kredisi bağlandı mı) kontrol edin."
+            : `Asistan yanıt veremedi (${error.status}): ${detail}`,
+          code: lowCredit ? "no_credit" : "api_error",
+        },
+        502,
+      );
     }
     console.error(error);
     return json({ error: "Asistan beklenmedik bir hata verdi." }, 500);
