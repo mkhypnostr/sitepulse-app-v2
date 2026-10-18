@@ -45,8 +45,14 @@ type Ctx = {
   userId: string;
   userName: string;
   role: string;
+  /** Kullanıcının oturum başlığı; Drive araması bununla yetki denetler. */
+  authHeader: string;
 };
-type ToolOutput = { result: unknown; link?: { label: string; href: string } };
+type ToolOutput = {
+  result: unknown;
+  link?: { label: string; href: string };
+  links?: { label: string; href: string }[];
+};
 
 const str = (description: string) => ({ type: "string", description });
 // İsteğe bağlı alanlar "required" listesine girmez (bilinmiyorsa hiç
@@ -204,6 +210,83 @@ const TOOLS: Record<string, ToolDef> = {
             .order("created_at", { ascending: false })
             .limit(10),
         ),
+      };
+    },
+  },
+  drive_ara: {
+    write: false,
+    tool: {
+      name: "drive_ara",
+      description:
+        "NES'in Google Drive'ında (NES Operasyon; yöneticide ayrıca NES Yönetim ve Finans) dosya arar: teklif, çizim (dwg), fatura, keşif fotoğrafı, rapor, şablon. Ad ve içerikte arar; açma bağlantısı döner. Kullanıcı 'şunu göster / aç / bul' dediğinde kullan. Faturalar finans alanındadır.",
+      input_schema: schema({
+        sorgu: str(
+          "Aranacak kelimeler: müşteri, proje, yer veya belge adı (ör. 'Çardak Petek teklif').",
+        ),
+        alan: optional({
+          type: "string",
+          enum: ["operasyon", "finans", "hepsi"],
+          description:
+            "Nerede aransın. Fatura/ödeme için 'finans', emin değilsen 'hepsi'. Bilinmiyorsa gönderme (operasyon).",
+        }),
+        tur: optional({
+          type: "string",
+          enum: ["pdf", "excel", "word", "foto", "cizim", "klasor"],
+          description: "Dosya türü filtresi. Bilinmiyorsa gönderme.",
+        }),
+      }),
+    },
+    run: async (input, ctx) => {
+      const area =
+        ctx.role === "admin" ? (input.alan ?? "operasyon") : "operasyon";
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/nes-workspace-control`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: ctx.authHeader,
+            apikey: SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: {
+              name: "search_nes_drive",
+              arguments: {
+                query: String(input.sorgu),
+                area,
+                ...(input.tur ? { kind: input.tur } : {}),
+                limit: 10,
+              },
+            },
+          }),
+        },
+      );
+      const payload = (await response.json().catch(() => ({}))) as {
+        result?: {
+          structuredContent?: {
+            success?: boolean;
+            error?: string;
+            files?: { name: string; type: string; url: string }[];
+          };
+          isError?: boolean;
+        };
+      };
+      const content = payload.result?.structuredContent;
+      if (!response.ok || payload.result?.isError || !content?.success) {
+        throw new Error(content?.error ?? "Drive araması yapılamadı.");
+      }
+      const files = content.files ?? [];
+      return {
+        result: files.length
+          ? files
+          : "Bu aramayla dosya bulunamadı. Başka kelimelerle dene ya da alanı 'hepsi' yap.",
+        links: files.slice(0, 6).map((file) => ({
+          label: `${file.type}: ${file.name}`.slice(0, 80),
+          href: file.url,
+        })),
       };
     },
   },
@@ -622,6 +705,7 @@ Nasıl çalışırsın:
 - GES teklifinde kayıt açılmaz: ges_teklifi_hazirla ile hazırlayıcıyı dolduran bağlantıyı ver, kullanıcının kontrol edip kaydetmesini söyle.
 - Kullanıcı bir işlemi reddederse yeniden deneme; ne değiştirmek istediğini sor.
 - Bir araç hata verirse hatayı sade dille anlat.
+- Kullanıcı bir belge, çizim, fatura, fotoğraf ya da eski bir teklifi görmek isterse drive_ara ile NES Drive'ında ara; bulduğun dosyaları kısa listele (ad, klasör, tarih). Açma düğmeleri ekranda otomatik çıkar. Bulamazsan farklı kelimelerle bir kez daha dene.
 - Fiyat, maliyet ve kâr bilgisini yalnız yöneticiye söyle.`;
 }
 
@@ -688,6 +772,7 @@ Deno.serve(async (req: Request) => {
     userId: authData.user.id,
     userName: profile?.full_name ?? "Kullanıcı",
     role,
+    authHeader: req.headers.get("Authorization") ?? "",
   };
   const links: { label: string; href: string }[] = [];
 
@@ -719,6 +804,7 @@ Deno.serve(async (req: Request) => {
       try {
         const out = await def.run(cleanInput(block.input), ctx);
         if (out.link) links.push(out.link);
+        if (out.links) links.push(...out.links);
         results.push({
           type: "tool_result",
           tool_use_id: block.id,
