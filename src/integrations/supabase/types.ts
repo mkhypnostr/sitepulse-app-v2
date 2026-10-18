@@ -537,6 +537,207 @@ export type Database = {
         };
         Relationships: [];
       };
+      invoice_lines: {
+        Row: {
+          created_at: string;
+          description: string;
+          discount_rate: number;
+          id: string;
+          invoice_id: string;
+          net_amount: number;
+          position: number;
+          quantity: number;
+          unit: string;
+          unit_price: number;
+          vat_amount: number;
+          vat_rate: number;
+        };
+        Insert: {
+          created_at?: string;
+          description: string;
+          discount_rate?: number;
+          id?: string;
+          invoice_id: string;
+          net_amount?: number;
+          position?: number;
+          quantity: number;
+          unit?: string;
+          unit_price: number;
+          vat_amount?: number;
+          vat_rate?: number;
+        };
+        Update: {
+          created_at?: string;
+          description?: string;
+          discount_rate?: number;
+          id?: string;
+          invoice_id?: string;
+          net_amount?: number;
+          position?: number;
+          quantity?: number;
+          unit?: string;
+          unit_price?: number;
+          vat_amount?: number;
+          vat_rate?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoice_lines_invoice_id_fkey";
+            columns: ["invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      invoices: {
+        Row: {
+          buyer_address: string | null;
+          buyer_email: string | null;
+          buyer_tax_no: string | null;
+          buyer_tax_office: string | null;
+          buyer_title: string;
+          cancel_reason: string | null;
+          cancelled_at: string | null;
+          created_at: string;
+          created_by: string | null;
+          currency: string;
+          customer_id: string;
+          discount_total: number;
+          draft_no: string | null;
+          due_date: string | null;
+          ettn: string;
+          exchange_rate: number;
+          exemption_code: string | null;
+          exemption_reason: string | null;
+          gib_invoice_no: string | null;
+          grand_total: number;
+          id: string;
+          invoice_type: string;
+          issue_date: string;
+          issued_at: string | null;
+          issued_by: string | null;
+          notes: string | null;
+          offer_id: string | null;
+          payable_total: number;
+          profile: string;
+          project_id: string | null;
+          source_id: string | null;
+          source_kind: string | null;
+          status: string;
+          subtotal: number;
+          updated_at: string;
+          vat_total: number;
+          withholding_code: string | null;
+          withholding_rate: number;
+          withholding_total: number;
+        };
+        Insert: {
+          buyer_address?: string | null;
+          buyer_email?: string | null;
+          buyer_tax_no?: string | null;
+          buyer_tax_office?: string | null;
+          buyer_title: string;
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          customer_id: string;
+          discount_total?: number;
+          draft_no?: string | null;
+          due_date?: string | null;
+          ettn?: string;
+          exchange_rate?: number;
+          exemption_code?: string | null;
+          exemption_reason?: string | null;
+          gib_invoice_no?: string | null;
+          grand_total?: number;
+          id?: string;
+          invoice_type?: string;
+          issue_date?: string;
+          issued_at?: string | null;
+          issued_by?: string | null;
+          notes?: string | null;
+          offer_id?: string | null;
+          payable_total?: number;
+          profile?: string;
+          project_id?: string | null;
+          source_id?: string | null;
+          source_kind?: string | null;
+          status?: string;
+          subtotal?: number;
+          updated_at?: string;
+          vat_total?: number;
+          withholding_code?: string | null;
+          withholding_rate?: number;
+          withholding_total?: number;
+        };
+        Update: {
+          buyer_address?: string | null;
+          buyer_email?: string | null;
+          buyer_tax_no?: string | null;
+          buyer_tax_office?: string | null;
+          buyer_title?: string;
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          currency?: string;
+          customer_id?: string;
+          discount_total?: number;
+          draft_no?: string | null;
+          due_date?: string | null;
+          ettn?: string;
+          exchange_rate?: number;
+          exemption_code?: string | null;
+          exemption_reason?: string | null;
+          gib_invoice_no?: string | null;
+          grand_total?: number;
+          id?: string;
+          invoice_type?: string;
+          issue_date?: string;
+          issued_at?: string | null;
+          issued_by?: string | null;
+          notes?: string | null;
+          offer_id?: string | null;
+          payable_total?: number;
+          profile?: string;
+          project_id?: string | null;
+          source_id?: string | null;
+          source_kind?: string | null;
+          status?: string;
+          subtotal?: number;
+          updated_at?: string;
+          vat_total?: number;
+          withholding_code?: string | null;
+          withholding_rate?: number;
+          withholding_total?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoices_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "invoices_offer_id_fkey";
+            columns: ["offer_id"];
+            isOneToOne: false;
+            referencedRelation: "offers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "invoices_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       measurement_service_records: {
         Row: {
           agreed_amount: number;
@@ -986,8 +1187,6 @@ export type Database = {
           lead_id?: string | null;
           module_config?: Json;
           notes?: string | null;
-          // offers_assign_number tetikleyicisi doldurur; elle düzeltildi
-          // (üretici NOT NULL olduğu için zorunlu sanıyor).
           offer_no?: string;
           offer_type?: string;
           payment_plan?: Json;
@@ -3237,6 +3436,10 @@ export type Database = {
         Returns: Json;
       };
       notify_overdue_tasks: { Args: never; Returns: undefined };
+      recalculate_invoice_totals: {
+        Args: { target_invoice_id: string };
+        Returns: undefined;
+      };
       remove_project_task_from_task_center: {
         Args: { target_task_id: string };
         Returns: undefined;

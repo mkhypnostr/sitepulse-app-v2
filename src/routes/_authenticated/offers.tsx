@@ -7,6 +7,7 @@ import {
   FileText,
   FolderOpen,
   Pencil,
+  Receipt,
   Plus,
   Sun,
 } from "lucide-react";
@@ -721,6 +722,22 @@ function OffersPage() {
                             Düzenle
                           </Button>
                         )}
+                        {offer.status === "approved" && offer.customer_id ? (
+                          <Button
+                            asChild
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                          >
+                            <Link
+                              to="/invoices"
+                              search={{ fromOffer: offer.id }}
+                            >
+                              <Receipt className="mr-1.5 h-3.5 w-3.5" />
+                              Fatura Hazırla
+                            </Link>
+                          </Button>
+                        ) : null}
                       </div>
                     </TableCell>
                   </TableRow>

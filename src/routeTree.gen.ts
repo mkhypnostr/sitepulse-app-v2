@@ -18,6 +18,7 @@ import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedCustomersRouteImport } from './routes/_authenticated/customers'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEnergyOfferRouteImport } from './routes/_authenticated/energy-offer'
+import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticated/invoices'
 import { Route as AuthenticatedMapRouteImport } from './routes/_authenticated/map'
 import { Route as AuthenticatedMeasurementTrackingRouteImport } from './routes/_authenticated/measurement-tracking'
 import { Route as AuthenticatedMyJobsRouteImport } from './routes/_authenticated/my-jobs'
@@ -94,6 +95,11 @@ const AuthenticatedEnergyOfferRoute =
     path: '/energy-offer',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedInvoicesRoute = AuthenticatedInvoicesRouteImport.update({
+  id: '/invoices',
+  path: '/invoices',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMapRoute = AuthenticatedMapRouteImport.update({
   id: '/map',
   path: '/map',
@@ -260,6 +266,7 @@ export interface FileRoutesByFullPath {
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/energy-offer': typeof AuthenticatedEnergyOfferRoute
+  '/invoices': typeof AuthenticatedInvoicesRoute
   '/map': typeof AuthenticatedMapRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/my-jobs': typeof AuthenticatedMyJobsRoute
@@ -299,6 +306,7 @@ export interface FileRoutesByTo {
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/energy-offer': typeof AuthenticatedEnergyOfferRoute
+  '/invoices': typeof AuthenticatedInvoicesRoute
   '/map': typeof AuthenticatedMapRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/my-jobs': typeof AuthenticatedMyJobsRoute
@@ -340,6 +348,7 @@ export interface FileRoutesById {
   '/_authenticated/customers': typeof AuthenticatedCustomersRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/energy-offer': typeof AuthenticatedEnergyOfferRoute
+  '/_authenticated/invoices': typeof AuthenticatedInvoicesRoute
   '/_authenticated/map': typeof AuthenticatedMapRoute
   '/_authenticated/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/_authenticated/my-jobs': typeof AuthenticatedMyJobsRoute
@@ -381,6 +390,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/dashboard'
     | '/energy-offer'
+    | '/invoices'
     | '/map'
     | '/measurement-tracking'
     | '/my-jobs'
@@ -420,6 +430,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/dashboard'
     | '/energy-offer'
+    | '/invoices'
     | '/map'
     | '/measurement-tracking'
     | '/my-jobs'
@@ -460,6 +471,7 @@ export interface FileRouteTypes {
     | '/_authenticated/customers'
     | '/_authenticated/dashboard'
     | '/_authenticated/energy-offer'
+    | '/_authenticated/invoices'
     | '/_authenticated/map'
     | '/_authenticated/measurement-tracking'
     | '/_authenticated/my-jobs'
@@ -565,6 +577,13 @@ declare module '@tanstack/react-router' {
       path: '/energy-offer'
       fullPath: '/energy-offer'
       preLoaderRoute: typeof AuthenticatedEnergyOfferRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/invoices': {
+      id: '/_authenticated/invoices'
+      path: '/invoices'
+      fullPath: '/invoices'
+      preLoaderRoute: typeof AuthenticatedInvoicesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/map': {
@@ -793,6 +812,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCustomersRoute: typeof AuthenticatedCustomersRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEnergyOfferRoute: typeof AuthenticatedEnergyOfferRoute
+  AuthenticatedInvoicesRoute: typeof AuthenticatedInvoicesRoute
   AuthenticatedMapRoute: typeof AuthenticatedMapRoute
   AuthenticatedMeasurementTrackingRoute: typeof AuthenticatedMeasurementTrackingRoute
   AuthenticatedMyJobsRoute: typeof AuthenticatedMyJobsRoute
@@ -825,6 +845,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCustomersRoute: AuthenticatedCustomersRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEnergyOfferRoute: AuthenticatedEnergyOfferRoute,
+  AuthenticatedInvoicesRoute: AuthenticatedInvoicesRoute,
   AuthenticatedMapRoute: AuthenticatedMapRoute,
   AuthenticatedMeasurementTrackingRoute: AuthenticatedMeasurementTrackingRoute,
   AuthenticatedMyJobsRoute: AuthenticatedMyJobsRoute,
