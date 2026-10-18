@@ -136,6 +136,7 @@ import {
   validityRule,
 } from "@/lib/offer-rules";
 import { ShareLinkPanel } from "@/components/energy-offer/share-link-panel";
+import { extractContact } from "@/lib/send-channels";
 
 export const Route = createFileRoute("/_authenticated/energy-offer")({
   validateSearch: (search: Record<string, unknown>): OfferSearch => {
@@ -420,7 +421,7 @@ function EnergyOfferPage() {
           .order("sort_order"),
         supabase
           .from("customers")
-          .select("id, name, billing_title, billing_address")
+          .select("id, name, billing_title, billing_address, contact")
           .order("name"),
       ]);
       if (catalogResult.error) throw catalogResult.error;
@@ -2735,7 +2736,25 @@ function EnergyOfferPage() {
             ) : null}
           </section>
 
-          <ShareLinkPanel offerId={offerId} prepare={prepareShare} />
+          <ShareLinkPanel
+            offerId={offerId}
+            prepare={prepareShare}
+            contact={(() => {
+              const c = dataQuery.data?.customers.find(
+                (x) => x.id === customerId,
+              ) as { contact?: string | null } | undefined;
+              const parsed = extractContact(c?.contact);
+              return {
+                name: recipientName(),
+                phone:
+                  recipient.mode === "aday" ? recipient.phone : parsed.phone,
+                email:
+                  recipient.mode === "aday" ? recipient.email : parsed.email,
+                offerNo: dataQuery.data?.offer?.offer_no ?? "",
+                title,
+              };
+            })()}
+          />
 
           <section className="surface-panel grid gap-2 p-5 text-sm">
             <h2 className="mb-1 font-black">Kontroller</h2>

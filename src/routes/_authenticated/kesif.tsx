@@ -17,6 +17,7 @@ import {
   Plus,
   Printer,
   Search,
+  Send,
   Sparkles,
   Trash2,
   Wifi,
@@ -59,6 +60,8 @@ import {
   type WorkType,
 } from "@/lib/site-survey";
 import { surveySheetHtml } from "@/lib/site-survey-document";
+import { htmlToPdf } from "@/lib/html-to-pdf";
+import { SendDialog, type SendTarget } from "@/components/send/send-dialog";
 import { AccessDenied, EmptyState, PageHeader } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -325,6 +328,7 @@ function SurveyEditor({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [sheetHtml, setSheetHtml] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
+  const [sendTarget, setSendTarget] = useState<SendTarget | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -469,6 +473,49 @@ function SurveyEditor({
     }
   }
 
+  async function buildSheetHtml() {
+    const photos: { url: string; caption: string | null }[] = [];
+    for (const p of s.photos) {
+      const url = await photoDataUrl(p, 1000).catch(() => null);
+      if (url) photos.push({ url, caption: p.caption });
+    }
+    const customer =
+      s.customer_name ||
+      customers.find((c) => c.id === s.customer_id)?.name ||
+      "";
+    return surveySheetHtml(
+      { ...s, customer_name: customer },
+      photos,
+      catalog,
+      window.location.origin,
+    );
+  }
+
+  function openSend() {
+    const maps =
+      s.latitude != null && s.longitude != null
+        ? `https://www.google.com/maps?q=${s.latitude},${s.longitude}`
+        : "";
+    const name = (s.title || "Keşif").trim();
+    const fileName = `${s.survey_no ?? "Kesif"}_${name
+      .replace(/[^\wçğıöşüÇĞİÖŞÜ]+/g, "_")
+      .slice(0, 50)}.pdf`;
+    setSendTarget({
+      kind: "survey",
+      title: s.survey_no ? `${s.survey_no} keşif föyü` : "Keşif föyü",
+      subject: `Keşif föyü: ${name}`,
+      message: [
+        `Merhaba, ${name} keşif föyü ektedir.`,
+        s.location_text ? `Yer: ${s.location_text}` : "",
+        maps ? `Konum: ${maps}` : "",
+        `${s.items.length} kalem, ${s.photos.length} fotoğraf.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      makeFile: async () => htmlToPdf(await buildSheetHtml(), fileName),
+    });
+  }
+
   async function openSheet() {
     const photos: { url: string; caption: string | null }[] = [];
     for (const p of s.photos) {
@@ -526,6 +573,9 @@ function SurveyEditor({
             onClick={() => void openSheet()}
           >
             <Printer className="mr-2 h-4 w-4" /> Keşif föyü
+          </Button>
+          <Button variant="outline" className="h-11" onClick={openSend}>
+            <Send className="mr-2 h-4 w-4" /> Gönder
           </Button>
           {isAdmin ? (
             <Button
@@ -1018,6 +1068,7 @@ function SurveyEditor({
         }}
       />
       <SheetPreview html={sheetHtml} onClose={() => setSheetHtml(null)} />
+      <SendDialog target={sendTarget} onClose={() => setSendTarget(null)} />
     </div>
   );
 }
