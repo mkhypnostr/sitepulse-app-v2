@@ -10,6 +10,10 @@ import {
   LoaderCircle,
   LocateFixed,
   MapPin,
+  Mic,
+  MicOff,
+  Circle,
+  Square,
   Plus,
   Printer,
   Search,
@@ -25,7 +29,11 @@ import { useAuth } from "@/lib/auth-context";
 import { requestPersistentStorage } from "@/lib/offline-db";
 import { registerServiceWorker } from "@/lib/push";
 import {
+  addAudio,
   addPhoto,
+  audioUrl,
+  removeAudio,
+  type SurveyAudioMeta,
   cachedCatalog,
   cachedCustomers,
   deleteLocal,
@@ -331,10 +339,13 @@ function SurveyEditor({
 
   // Her değişiklik cihaza hemen, sunucuya birkaç saniye sonra yazılır.
   const update = useCallback(
-    (patch: Partial<Survey>) => {
+    (patch: Partial<Survey> | ((current: Survey) => Partial<Survey>)) => {
       setSurvey((current) => {
         if (!current) return current;
-        const next = { ...current, ...patch };
+        const next = {
+          ...current,
+          ...(typeof patch === "function" ? patch(current) : patch),
+        };
         if (saveTimer.current) clearTimeout(saveTimer.current);
         saveTimer.current = setTimeout(async () => {
           await saveLocal(next);
@@ -698,10 +709,26 @@ function SurveyEditor({
               onChange={(e) => update({ notes: e.target.value })}
               className="text-base"
             />
+            <VoiceTools
+              survey={s}
+              onAppend={(text) =>
+                update((current) => ({
+                  notes: current.notes.trim()
+                    ? `${current.notes.replace(/\s+$/, "")}\n${text}`
+                    : text,
+                }))
+              }
+              onSurvey={(next) => {
+                setSurvey(next);
+                onChanged();
+                if (navigator.onLine) void onSync();
+              }}
+            />
             <p className="text-xs text-muted-foreground">
-              İnternetsiz yerde klavyedeki mikrofonla yazdırabilirsiniz.
-              &quot;Notlardan kalem çıkar&quot; internet gelince notları malzeme
-              listesine çevirir.
+              <b>Dikte</b> konuştukça notlara yazar (internet ister).{" "}
+              <b>Ses kaydı</b> internetsiz de çalışır; kayıt keşifle saklanır,
+              internet gelince gönderilir. &quot;Notlardan kalem çıkar&quot;
+              notları malzeme listesine çevirir.
             </p>
           </section>
 
@@ -1183,5 +1210,300 @@ function SheetPreview({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------- ses
+// Dikte: konuşma anında yazıya döner (tarayıcının konuşma tanıma özelliği;
+// Chrome'da genelde internet ister). Ses kaydı: internetsiz de çalışır,
+// kayıt keşifle birlikte saklanıp internet gelince gönderilir.
+
+type RecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
+  onresult:
+    | ((event: {
+        resultIndex: number;
+        results: ArrayLike<
+          ArrayLike<{ transcript: string }> & { isFinal: boolean }
+        >;
+      }) => void)
+    | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+};
+
+function recognitionCtor(): (new () => RecognitionLike) | undefined {
+  if (typeof window === "undefined") return undefined;
+  const w = window as unknown as {
+    SpeechRecognition?: new () => RecognitionLike;
+    webkitSpeechRecognition?: new () => RecognitionLike;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
+}
+
+function pickAudioMime() {
+  if (typeof MediaRecorder === "undefined") return "";
+  for (const m of [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ]) {
+    if (MediaRecorder.isTypeSupported?.(m)) return m;
+  }
+  return "";
+}
+
+const mmss = (sec: number) =>
+  `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+
+function VoiceTools({
+  survey,
+  onAppend,
+  onSurvey,
+}: {
+  survey: Survey;
+  onAppend: (text: string) => void;
+  onSurvey: (next: Survey) => void;
+}) {
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const recognitionRef = useRef<RecognitionLike | null>(null);
+  const wantListen = useRef(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startedRef = useRef(0);
+  const surveyRef = useRef(survey);
+  surveyRef.current = survey;
+  const dictationSupported = Boolean(recognitionCtor());
+  const recordSupported =
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    typeof MediaRecorder !== "undefined";
+
+  useEffect(
+    () => () => {
+      wantListen.current = false;
+      recognitionRef.current?.stop();
+      if (timerRef.current) clearInterval(timerRef.current);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
+
+  function startDictation() {
+    const Ctor = recognitionCtor();
+    if (!Ctor) return;
+    const rec = new Ctor();
+    rec.lang = "tr-TR";
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.onresult = (event) => {
+      let finalText = "";
+      let interimText = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const r = event.results[i];
+        if (r.isFinal) finalText += r[0].transcript;
+        else interimText += r[0].transcript;
+      }
+      if (finalText.trim()) onAppend(finalText.trim());
+      setInterim(interimText);
+    };
+    rec.onerror = (event) => {
+      if (event.error === "network") {
+        wantListen.current = false;
+        toast.error(
+          "Dikte için internet gerekiyor. İnternetsiz yerde 'Ses kaydı'nı ya da klavyedeki mikrofonu kullanın.",
+        );
+      } else if (event.error === "not-allowed") {
+        wantListen.current = false;
+        toast.error("Mikrofon izni verilmedi.");
+      }
+    };
+    // Tarayıcı sessizlikte durur; kullanıcı durdurmadıysa yeniden başlat.
+    rec.onend = () => {
+      setInterim("");
+      if (wantListen.current) {
+        try {
+          rec.start();
+          return;
+        } catch {
+          // yeniden başlatılamadı
+        }
+      }
+      setListening(false);
+    };
+    recognitionRef.current = rec;
+    wantListen.current = true;
+    setListening(true);
+    rec.start();
+  }
+
+  function stopDictation() {
+    wantListen.current = false;
+    recognitionRef.current?.stop();
+    setListening(false);
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mime = pickAudioMime();
+      const recorder = new MediaRecorder(
+        stream,
+        mime ? { mimeType: mime } : undefined,
+      );
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const duration = (Date.now() - startedRef.current) / 1000;
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType || mime || "audio/webm",
+        });
+        if (blob.size > 0) {
+          onSurvey(await addAudio(surveyRef.current, blob, duration));
+          toast.success(`Ses kaydı eklendi (${mmss(duration)}).`);
+        }
+      };
+      recorderRef.current = recorder;
+      startedRef.current = Date.now();
+      setSeconds(0);
+      timerRef.current = setInterval(
+        () => setSeconds((Date.now() - startedRef.current) / 1000),
+        500,
+      );
+      recorder.start(1000);
+      setRecording(true);
+    } catch {
+      toast.error("Mikrofon açılamadı. Tarayıcıda mikrofon izni verin.");
+    }
+  }
+
+  function stopRecording() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    recorderRef.current?.stop();
+    setRecording(false);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {dictationSupported ? (
+          <Button
+            type="button"
+            variant={listening ? "destructive" : "outline"}
+            className="h-11"
+            onClick={() => (listening ? stopDictation() : startDictation())}
+          >
+            {listening ? (
+              <MicOff className="mr-2 h-4 w-4" />
+            ) : (
+              <Mic className="mr-2 h-4 w-4" />
+            )}
+            {listening ? "Dikteyi durdur" : "Dikte et (sesten yazıya)"}
+          </Button>
+        ) : null}
+        {recordSupported ? (
+          <Button
+            type="button"
+            variant={recording ? "destructive" : "outline"}
+            className="h-11"
+            onClick={() =>
+              recording ? stopRecording() : void startRecording()
+            }
+          >
+            {recording ? (
+              <Square className="mr-2 h-4 w-4" />
+            ) : (
+              <Circle className="mr-2 h-4 w-4 fill-red-500 text-red-500" />
+            )}
+            {recording ? `Kaydı bitir (${mmss(seconds)})` : "Ses kaydı"}
+          </Button>
+        ) : null}
+      </div>
+      {listening ? (
+        <p className="flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-2 text-sm">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+          Dinliyorum… konuştukça notlara yazılıyor.
+          {interim ? (
+            <span className="italic text-muted-foreground">{interim}</span>
+          ) : null}
+        </p>
+      ) : null}
+      {survey.audios.length > 0 ? (
+        <div className="space-y-2">
+          {survey.audios.map((a, i) => (
+            <AudioRow
+              key={a.id}
+              audio={a}
+              index={i + 1}
+              onDelete={async () => {
+                if (!window.confirm("Ses kaydı silinsin mi?")) return;
+                onSurvey(await removeAudio(surveyRef.current, a.id));
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AudioRow({
+  audio,
+  index,
+  onDelete,
+}: {
+  audio: SurveyAudioMeta;
+  index: number;
+  onDelete: () => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let revoke: string | null = null;
+    void audioUrl(audio).then((u) => {
+      if (u?.startsWith("blob:")) revoke = u;
+      setUrl(u);
+    });
+    return () => {
+      if (revoke) URL.revokeObjectURL(revoke);
+    };
+  }, [audio]);
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-2">
+      <span className="text-xs font-semibold">
+        Ses {index} · {mmss(audio.duration_s)}
+      </span>
+      {url ? (
+        <audio controls src={url} className="h-9 min-w-0 flex-1" />
+      ) : (
+        <span className="flex-1 text-xs text-muted-foreground">
+          Bu cihazda değil; internet gelince dinlenebilir.
+        </span>
+      )}
+      {audio.storage_path ? null : (
+        <span className="text-[11px] text-amber-600">gönderilmedi</span>
+      )}
+      <button
+        type="button"
+        className="text-destructive"
+        aria-label="Ses kaydını sil"
+        onClick={onDelete}
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
   );
 }

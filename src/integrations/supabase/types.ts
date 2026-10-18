@@ -2610,29 +2610,38 @@ export type Database = {
         Row: {
           caption: string | null;
           created_at: string;
+          duration_s: number | null;
           id: string;
           include_in_offer: boolean;
+          kind: string;
           storage_path: string;
           survey_id: string;
           taken_at: string;
+          transcript: string | null;
         };
         Insert: {
           caption?: string | null;
           created_at?: string;
+          duration_s?: number | null;
           id: string;
           include_in_offer?: boolean;
+          kind?: string;
           storage_path: string;
           survey_id: string;
           taken_at?: string;
+          transcript?: string | null;
         };
         Update: {
           caption?: string | null;
           created_at?: string;
+          duration_s?: number | null;
           id?: string;
           include_in_offer?: boolean;
+          kind?: string;
           storage_path?: string;
           survey_id?: string;
           taken_at?: string;
+          transcript?: string | null;
         };
         Relationships: [
           {
