@@ -49,6 +49,17 @@ export type SurveyPhotoMeta = {
   storage_path: string | null;
 };
 
+/** Ses notu: internetsiz kaydedilir, internet gelince gönderilir. */
+export type SurveyAudioMeta = {
+  id: string;
+  taken_at: string;
+  duration_s: number;
+  mime: string;
+  storage_path: string | null;
+  /** Yazıya dökülmüş hali (varsa). */
+  transcript: string | null;
+};
+
 export type Survey = {
   id: string;
   survey_no: string | null;
@@ -67,6 +78,7 @@ export type Survey = {
   surveyed_at: string;
   items: SurveyItem[];
   photos: SurveyPhotoMeta[];
+  audios: SurveyAudioMeta[];
   /** Cihazdaki son değişiklik. */
   local_updated_at: string;
   /** Sunucuya en son başarıyla gönderilen sürüm. */
@@ -101,6 +113,7 @@ export function newSurvey(): Survey {
     surveyed_at: nowIso(),
     items: [],
     photos: [],
+    audios: [],
     local_updated_at: nowIso(),
     synced_at: null,
   };
@@ -117,11 +130,17 @@ export async function saveLocal(survey: Survey) {
   return next;
 }
 
-export const getLocal = (id: string) => idbGet<Survey>("surveys", id);
-export const listLocal = () => idbAll<Survey>("surveys");
+/** Eski sürümde kaydedilmiş keşiflerde ses alanı yoktu. */
+const normalize = (s: Survey | undefined) =>
+  s ? { ...s, audios: s.audios ?? [] } : s;
+export const getLocal = async (id: string) =>
+  normalize(await idbGet<Survey>("surveys", id));
+export const listLocal = async () =>
+  (await idbAll<Survey>("surveys")).map((s) => normalize(s) as Survey);
 
 export async function deleteLocal(survey: Survey) {
   for (const p of survey.photos) await idbDelete("photos", p.id);
+  for (const a of survey.audios ?? []) await idbDelete("photos", a.id);
   await idbDelete("surveys", survey.id);
 }
 
@@ -178,6 +197,62 @@ export async function removePhoto(survey: Survey, photoId: string) {
     photos: survey.photos.filter((p) => p.id !== photoId),
   });
 }
+
+export async function addAudio(survey: Survey, blob: Blob, durationS: number) {
+  const id = crypto.randomUUID();
+  await idbSet("photos", id, {
+    id,
+    survey_id: survey.id,
+    blob,
+    synced: false,
+  } satisfies LocalPhoto);
+  const meta: SurveyAudioMeta = {
+    id,
+    taken_at: nowIso(),
+    duration_s: Math.max(0, Math.round(durationS)),
+    mime: blob.type || "audio/webm",
+    storage_path: null,
+    transcript: null,
+  };
+  return saveLocal({ ...survey, audios: [...(survey.audios ?? []), meta] });
+}
+
+export async function removeAudio(survey: Survey, audioId: string) {
+  await idbDelete("photos", audioId);
+  const audio = survey.audios.find((a) => a.id === audioId);
+  if (audio?.storage_path && navigator.onLine) {
+    await supabase.storage.from("site-surveys").remove([audio.storage_path]);
+    await supabase.from("site_survey_photos").delete().eq("id", audioId);
+  }
+  return saveLocal({
+    ...survey,
+    audios: survey.audios.filter((a) => a.id !== audioId),
+  });
+}
+
+/** Ses kaydının çalınacak adresi (cihazdaysa yerel). */
+export async function audioUrl(audio: SurveyAudioMeta) {
+  const local = await idbGet<LocalPhoto>("photos", audio.id);
+  if (local?.blob) return URL.createObjectURL(local.blob);
+  if (audio.storage_path && navigator.onLine) {
+    const { data } = await supabase.storage
+      .from("site-surveys")
+      .createSignedUrl(audio.storage_path, 3600);
+    return data?.signedUrl ?? null;
+  }
+  return null;
+}
+
+const audioExt = (mime: string) =>
+  mime.includes("mp4") || mime.includes("m4a")
+    ? "m4a"
+    : mime.includes("ogg")
+      ? "ogg"
+      : mime.includes("mpeg")
+        ? "mp3"
+        : mime.includes("wav")
+          ? "wav"
+          : "webm";
 
 /** Fotoğrafın gösterilecek adresi: cihazdaysa yerel, değilse imzalı bağlantı. */
 export async function photoUrl(photo: SurveyPhotoMeta) {
@@ -287,10 +362,39 @@ export async function pushSurvey(survey: Survey): Promise<Survey> {
     photos.push({ ...photo, storage_path: path });
   }
 
+  const audios: SurveyAudioMeta[] = [];
+  for (const audio of survey.audios ?? []) {
+    let path = audio.storage_path;
+    const local = await idbGet<LocalPhoto>("photos", audio.id);
+    if (!path && local?.blob) {
+      const mime = (audio.mime || "audio/webm").split(";")[0];
+      path = `${survey.id}/${audio.id}.${audioExt(mime)}`;
+      const up = await supabase.storage
+        .from("site-surveys")
+        .upload(path, local.blob, { contentType: mime, upsert: true });
+      if (up.error) throw up.error;
+    }
+    if (path) {
+      const row = await supabase.from("site_survey_photos").upsert({
+        id: audio.id,
+        survey_id: survey.id,
+        storage_path: path,
+        kind: "audio",
+        duration_s: audio.duration_s,
+        transcript: audio.transcript,
+        taken_at: audio.taken_at,
+        include_in_offer: false,
+      });
+      if (row.error) throw row.error;
+    }
+    audios.push({ ...audio, storage_path: path });
+  }
+
   const synced: Survey = {
     ...survey,
     survey_no: header?.survey_no ?? survey.survey_no,
     photos,
+    audios,
     synced_at: nowIso(),
   };
   // Gönderim sırasında kullanıcı yeni değişiklik yaptıysa onu ezme.
@@ -300,6 +404,9 @@ export async function pushSurvey(survey: Survey): Promise<Survey> {
       ...latest,
       survey_no: synced.survey_no,
       photos: latest.photos.map((p) => photos.find((x) => x.id === p.id) ?? p),
+      audios: (latest.audios ?? []).map(
+        (a) => audios.find((x) => x.id === a.id) ?? a,
+      ),
     });
     return latest;
   }
@@ -337,7 +444,7 @@ export async function pullSurveys(limit = 60) {
   const { data, error } = await supabase
     .from("site_surveys")
     .select(
-      "id, survey_no, title, work_type, customer_id, customer_name, contact_phone, location_text, latitude, longitude, location_accuracy_m, notes, status, offer_id, surveyed_at, updated_at, site_survey_items(id, position, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer)",
+      "id, survey_no, title, work_type, customer_id, customer_name, contact_phone, location_text, latitude, longitude, location_accuracy_m, notes, status, offer_id, surveyed_at, updated_at, site_survey_items(id, position, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer, kind, duration_s, transcript)",
     )
     .order("surveyed_at", { ascending: false })
     .limit(limit);
@@ -371,7 +478,19 @@ export async function pullSurveys(limit = 60) {
           catalog_item_id: i.catalog_item_id,
           note: i.note,
         })),
+      audios: [...(row.site_survey_photos ?? [])]
+        .filter((p) => p.kind === "audio")
+        .sort((a, b) => a.taken_at.localeCompare(b.taken_at))
+        .map((p) => ({
+          id: p.id,
+          taken_at: p.taken_at,
+          duration_s: p.duration_s ?? 0,
+          mime: p.storage_path.endsWith(".m4a") ? "audio/mp4" : "audio/webm",
+          storage_path: p.storage_path,
+          transcript: p.transcript,
+        })),
       photos: [...(row.site_survey_photos ?? [])]
+        .filter((p) => p.kind !== "audio")
         .sort((a, b) => a.taken_at.localeCompare(b.taken_at))
         .map((p) => ({
           id: p.id,

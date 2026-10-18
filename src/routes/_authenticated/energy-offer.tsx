@@ -789,11 +789,12 @@ function EnergyOfferPage() {
       caption: string | null;
       taken_at: string;
       include_in_offer: boolean;
+      kind?: string;
     }[];
   }) {
     const photos: { url: string; caption: string | null }[] = [];
     const list = [...(row.site_survey_photos ?? [])]
-      .filter((p) => p.include_in_offer)
+      .filter((p) => p.include_in_offer && p.kind !== "audio")
       .sort((a, b) => a.taken_at.localeCompare(b.taken_at))
       .slice(0, 6);
     for (const p of list) {
@@ -817,7 +818,7 @@ function EnergyOfferPage() {
   }
 
   const SURVEY_SELECT =
-    "id, survey_no, title, work_type, customer_id, customer_name, contact_phone, location_text, notes, surveyed_at, site_survey_items(position, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer)";
+    "id, survey_no, title, work_type, customer_id, customer_name, contact_phone, location_text, notes, surveyed_at, site_survey_items(position, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer, kind)";
 
   useEffect(() => {
     if (offerId || kesifDone || !search.kesif || catalog.length === 0) return;
