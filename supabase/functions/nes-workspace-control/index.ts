@@ -138,10 +138,7 @@ const PROJECT_FINANCE_FOLDERS = ["01 Bütçe", "02 Maliyet", "03 Hakediş"];
 const TEMPLATES_FOLDER_NAME = "03 Ortak Teknik Kütüphane ve Şablonlar";
 const QUOTE_ROOT_FOLDER_NAME = "05 Teklifler";
 type QuoteTemplateKey =
-  | "hizli_teklif"
-  | "siva_alti"
-  | "montaj"
-  | "tkf_proje_taahhut";
+  "hizli_teklif" | "siva_alti" | "montaj" | "tkf_proje_taahhut";
 const QUOTE_TEMPLATE_FILE_NAMES: Record<QuoteTemplateKey, string> = {
   hizli_teklif: "NES Hızlı Teklif Şablonu.xlsx",
   siva_alti: "NES Sıva Altı Teklif Şablonu.xlsx",
@@ -1460,7 +1457,8 @@ async function createOfferWorkspace(rawArguments: unknown) {
 
   const driveFolderUrl = `https://drive.google.com/drive/folders/${offerFolder.id}`;
   const driveExcelUrl =
-    excelFile.webViewLink ?? `https://drive.google.com/file/d/${excelFile.id}/view`;
+    excelFile.webViewLink ??
+    `https://drive.google.com/file/d/${excelFile.id}/view`;
 
   const { error: updateError } = await admin
     .from("offers")
@@ -1479,6 +1477,140 @@ async function createOfferWorkspace(rawArguments: unknown) {
     excel_file_id: excelFile.id,
     drive_excel_url: driveExcelUrl,
     drive_folder_url: driveFolderUrl,
+  };
+}
+
+// ---------------------------------------------------------------- Drive arama
+// Salt okunur: NES Operasyon (ve yöneticiye NES Yönetim ve Finans) ortak
+// drive'larında ad ve içerik araması. Dosya değiştirmez, kopyalamaz.
+
+type DriveSearchFile = {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+  parents?: string[];
+  size?: string;
+};
+
+const DRIVE_KIND_FILTERS: Record<string, string> = {
+  pdf: "mimeType = 'application/pdf'",
+  excel:
+    "(mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType = 'application/vnd.ms-excel' or mimeType = 'application/vnd.google-apps.spreadsheet')",
+  word: "(mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' or mimeType = 'application/msword' or mimeType = 'application/vnd.google-apps.document')",
+  foto: "mimeType contains 'image/'",
+  cizim: "(name contains '.dwg' or name contains '.dxf')",
+  klasor: "mimeType = 'application/vnd.google-apps.folder'",
+};
+
+function driveKindLabel(mimeType: string, name: string) {
+  if (mimeType === "application/vnd.google-apps.folder") return "Klasör";
+  if (mimeType === "application/pdf") return "PDF";
+  if (/spreadsheet|ms-excel/.test(mimeType)) return "Excel";
+  if (/wordprocessing|msword|google-apps.document/.test(mimeType))
+    return "Word";
+  if (mimeType.startsWith("image/")) return "Fotoğraf";
+  if (/\.(dwg|dxf)$/i.test(name)) return "Çizim";
+  return "Dosya";
+}
+
+async function searchNesDrive(actor: Actor, rawArguments: unknown) {
+  const args = (rawArguments ?? {}) as Record<string, unknown>;
+  const query = requireText(args.query, "Arama", 120);
+  const area =
+    args.area === "finans" || args.area === "hepsi" ? args.area : "operasyon";
+  const kind = typeof args.kind === "string" ? args.kind : "";
+  const limit = Math.min(Math.max(Number(args.limit) || 10, 1), 25);
+  if (area !== "operasyon" && !actor.isAdmin) {
+    throw new Error("NES Yönetim ve Finans yalnız yöneticiye açıktır.");
+  }
+
+  const ownerUserId = await getWorkspaceOwnerUserId();
+  const drives: Array<{ id: string; label: string }> = [];
+  if (area !== "finans") {
+    drives.push({ id: OPERATIONS_DRIVE_ID, label: "NES Operasyon" });
+  }
+  if (area !== "operasyon") {
+    const finance = await rememberedResource(ownerUserId, "finance_drive");
+    const financeId =
+      finance?.resource_id ??
+      (await findDrive(ownerUserId, "NES Yönetim ve Finans"))?.id;
+    if (financeId)
+      drives.push({ id: financeId, label: "NES Yönetim ve Finans" });
+  }
+
+  const words = query
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 2)
+    .slice(0, 5);
+  if (words.length === 0) throw new Error("Aranacak bir kelime yazın.");
+  const esc = (w: string) => w.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const textClause = words
+    .map((w) => `(name contains '${esc(w)}' or fullText contains '${esc(w)}')`)
+    .join(" and ");
+  const kindClause = DRIVE_KIND_FILTERS[kind]
+    ? ` and ${DRIVE_KIND_FILTERS[kind]}`
+    : "";
+  const q = `${textClause}${kindClause} and trashed = false`;
+
+  const found: Array<DriveSearchFile & { drive: string }> = [];
+  for (const drive of drives) {
+    const result = await googleFetch<{ files?: DriveSearchFile[] }>(
+      ownerUserId,
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&corpora=drive&driveId=${encodeURIComponent(drive.id)}&includeItemsFromAllDrives=true&supportsAllDrives=true&pageSize=${limit}&fields=files(id,name,mimeType,modifiedTime,webViewLink,parents,size)`,
+    );
+    for (const file of result.files ?? [])
+      found.push({ ...file, drive: drive.label });
+  }
+
+  // Ada tam uyanlar öne, sonra en yeni değiştirilen.
+  const lowerWords = words.map((w) => w.toLocaleLowerCase("tr-TR"));
+  const score = (f: DriveSearchFile) =>
+    lowerWords.filter((w) => f.name.toLocaleLowerCase("tr-TR").includes(w))
+      .length;
+  found.sort(
+    (a, b) =>
+      score(b) - score(a) ||
+      (b.modifiedTime ?? "").localeCompare(a.modifiedTime ?? ""),
+  );
+  const top = found.slice(0, limit);
+
+  // Bulunduğu klasörün adı (en fazla 10 ayrı klasör sorulur).
+  const parentNames = new Map<string, string>();
+  for (const parentId of [
+    ...new Set(top.map((f) => f.parents?.[0]).filter(Boolean)),
+  ].slice(0, 10)) {
+    try {
+      const parent = await googleFetch<{ name?: string }>(
+        ownerUserId,
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(parentId as string)}?supportsAllDrives=true&fields=name`,
+      );
+      if (parent.name) parentNames.set(parentId as string, parent.name);
+    } catch {
+      // Klasör adı alınamazsa boş geçilir.
+    }
+  }
+
+  return {
+    success: true,
+    query,
+    area,
+    files: top.map((f) => ({
+      id: f.id,
+      name: f.name,
+      type: driveKindLabel(f.mimeType, f.name),
+      drive: f.drive,
+      folder: f.parents?.[0] ? (parentNames.get(f.parents[0]) ?? null) : null,
+      modified: f.modifiedTime ?? null,
+      size_kb: f.size ? Math.round(Number(f.size) / 1024) : null,
+      url:
+        f.webViewLink ??
+        (f.mimeType === "application/vnd.google-apps.folder"
+          ? `https://drive.google.com/drive/folders/${f.id}`
+          : `https://drive.google.com/file/d/${f.id}/view`),
+    })),
   };
 }
 
@@ -1563,6 +1695,35 @@ const OAUTH_SECURITY_SCHEMES = [
 ];
 
 const tools = [
+  {
+    name: "search_nes_drive",
+    title: "NES Drive'da dosya ara",
+    description:
+      "NES Operasyon ortak drive'ında (yöneticiye ayrıca NES Yönetim ve Finans) dosya adı ve içeriğinde arama yapar; teklif, çizim, fatura, fotoğraf bulur ve açma bağlantısını döner. Salt okunur.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["query"],
+      properties: {
+        query: {
+          type: "string",
+          description: "Aranacak kelimeler (müşteri, proje, belge adı).",
+        },
+        area: { type: "string", enum: ["operasyon", "finans", "hepsi"] },
+        kind: {
+          type: "string",
+          enum: ["pdf", "excel", "word", "foto", "cizim", "klasor", "hepsi"],
+        },
+        limit: { type: "number" },
+      },
+    },
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   {
     name: "get_google_workspace_status",
     title: "Google Workspace bağlantı durumunu göster",
@@ -1848,7 +2009,8 @@ Deno.serve(async (req: Request) => {
   const canCallTool =
     actor.isAdmin ||
     ((toolName === "create_project_workspace" ||
-      toolName === "get_google_workspace_status") &&
+      toolName === "get_google_workspace_status" ||
+      toolName === "search_nes_drive") &&
       actor.canManageProjects);
   if (!canCallTool) {
     return rpcResult(request.id, {
@@ -1882,26 +2044,29 @@ Deno.serve(async (req: Request) => {
         : {};
   try {
     const result =
-      toolName === "get_google_workspace_status"
-        ? await workspaceStatus(actor)
-        : toolName === "start_google_workspace_connection"
-          ? await startGoogleConnection(actor)
-          : toolName === "list_nes_workspace_candidates"
-            ? await listWorkspaceCandidates()
-            : toolName === "initialize_nes_workspace"
-              ? await initializeNesWorkspace(actor, params.arguments)
-              : toolName === "ensure_nes_workspace_member"
-                ? await ensureWorkspaceMember(actor, params.arguments)
-                : toolName === "create_project_workspace"
-                  ? await createProjectWorkspace(params.arguments)
-                  : toolName === "create_offer_workspace"
-                    ? await createOfferWorkspace(params.arguments)
-                    : toolName === "migrate_legacy_nes_drive"
-                      ? await migrateLegacyNesDrive(params.arguments)
-                      : await createCalendarEvent(actor, params.arguments);
+      toolName === "search_nes_drive"
+        ? await searchNesDrive(actor, params.arguments)
+        : toolName === "get_google_workspace_status"
+          ? await workspaceStatus(actor)
+          : toolName === "start_google_workspace_connection"
+            ? await startGoogleConnection(actor)
+            : toolName === "list_nes_workspace_candidates"
+              ? await listWorkspaceCandidates()
+              : toolName === "initialize_nes_workspace"
+                ? await initializeNesWorkspace(actor, params.arguments)
+                : toolName === "ensure_nes_workspace_member"
+                  ? await ensureWorkspaceMember(actor, params.arguments)
+                  : toolName === "create_project_workspace"
+                    ? await createProjectWorkspace(params.arguments)
+                    : toolName === "create_offer_workspace"
+                      ? await createOfferWorkspace(params.arguments)
+                      : toolName === "migrate_legacy_nes_drive"
+                        ? await migrateLegacyNesDrive(params.arguments)
+                        : await createCalendarEvent(actor, params.arguments);
     if (!(
       toolName === "get_google_workspace_status" ||
-      toolName === "list_nes_workspace_candidates"
+      toolName === "list_nes_workspace_candidates" ||
+      toolName === "search_nes_drive"
     )) {
       await writeAudit(
         actor.user.id,
@@ -1920,7 +2085,8 @@ Deno.serve(async (req: Request) => {
     const message = safeError(error);
     if (!(
       toolName === "get_google_workspace_status" ||
-      toolName === "list_nes_workspace_candidates"
+      toolName === "list_nes_workspace_candidates" ||
+      toolName === "search_nes_drive"
     )) {
       await writeAudit(
         actor.user.id,
