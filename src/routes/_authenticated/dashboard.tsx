@@ -217,7 +217,8 @@ function DashboardPage() {
 
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    // Karşılamadaki saat dakikası gecikmesin diye 15 sn'de bir.
+    const timer = window.setInterval(() => setNow(new Date()), 15_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -972,17 +973,6 @@ function DashboardPage() {
       : []),
   ];
 
-  const dateLabel = new Intl.DateTimeFormat("tr-TR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(now);
-  const timeLabel = new Intl.DateTimeFormat("tr-TR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(now);
-
   const panelHeader = (title: string, href?: string, extra?: string) => (
     <div className="mb-4 flex items-center justify-between gap-3">
       <p className={EYEBROW}>{title}</p>
@@ -1000,8 +990,7 @@ function DashboardPage() {
     <>
       <DashboardHero
         greeting={`${greetingForHour(now.getHours())}${firstName ? `, ${firstName}` : ""}`}
-        subtitle={`${dateLabel} · ${timeLabel}`}
-        chips={[]}
+        now={now}
         actions={
           <>
             <Link
