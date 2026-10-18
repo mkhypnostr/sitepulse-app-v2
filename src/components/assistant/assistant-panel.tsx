@@ -17,9 +17,11 @@ import {
   RotateCcw,
   Send,
   Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -128,7 +130,8 @@ type SpeechRecognitionLike = {
 };
 
 function speechRecognitionCtor():
-  (new () => SpeechRecognitionLike) | undefined {
+  | (new () => SpeechRecognitionLike)
+  | undefined {
   if (typeof window === "undefined") return undefined;
   const w = window as unknown as {
     SpeechRecognition?: new () => SpeechRecognitionLike;
@@ -238,6 +241,27 @@ export function AssistantPanel() {
       .order("updated_at", { ascending: false })
       .limit(100);
     setHistory((data ?? []) as ConversationSummary[]);
+  }
+
+  async function deleteConversation(id: string, title: string) {
+    if (!window.confirm(`"${title}" sohbeti silinsin mi? Geri alınamaz.`))
+      return;
+    const { error } = await supabase
+      .from("assistant_conversations")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      toast.error("Sohbet silinemedi.");
+      return;
+    }
+    setHistory((list) => (list ?? []).filter((c) => c.id !== id));
+    // Açık sohbet silindiyse temiz sohbete geç (geçmiş listesi açık kalır).
+    if (state.id === id) {
+      recognitionRef.current?.stop();
+      setState(emptyState());
+      writeCurrentId(null);
+    }
+    toast.success("Sohbet silindi.");
   }
 
   async function openConversation(id: string) {
@@ -461,22 +485,35 @@ export function AssistantPanel() {
                 </p>
               ) : (
                 history.map((c) => (
-                  <button
+                  <div
                     key={c.id}
-                    type="button"
-                    onClick={() => void openConversation(c.id)}
-                    className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-muted ${c.id === state.id ? "bg-muted" : ""}`}
+                    className={`flex items-start gap-1 rounded-xl hover:bg-muted ${c.id === state.id ? "bg-muted" : ""}`}
                   >
-                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold">
-                        {c.title}
+                    <button
+                      type="button"
+                      onClick={() => void openConversation(c.id)}
+                      className="flex min-w-0 flex-1 items-start gap-3 px-3 py-2.5 text-left"
+                    >
+                      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold">
+                          {c.title}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {dayTr(c.updated_at)}
+                        </span>
                       </span>
-                      <span className="block text-xs text-muted-foreground">
-                        {dayTr(c.updated_at)}
-                      </span>
-                    </span>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Sohbeti sil"
+                      title="Sohbeti sil"
+                      className="mr-1 mt-1.5 shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => void deleteConversation(c.id, c.title)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 ))
               )}
             </div>
