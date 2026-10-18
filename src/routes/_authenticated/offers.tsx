@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FilePlus2,
@@ -10,6 +10,7 @@ import {
   Receipt,
   Plus,
   Sun,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -171,6 +172,7 @@ function OffersPage() {
   const { role, user } = useAuth();
   const canManageOffers = role === "admin";
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
   const [form, setForm] = useState(initialForm);
@@ -295,6 +297,50 @@ function OffersPage() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
+
+  const deleteOffer = useMutation({
+    mutationFn: async (offer: OfferRow) => {
+      const { data, error } = await supabase
+        .from("offers")
+        .delete()
+        .eq("id", offer.id)
+        .select("id");
+      if (error) throw error;
+      if (!data?.length) throw new Error("Teklif silinemedi.");
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["offers-page"] });
+      toast.success("Teklif silindi.");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  function confirmDelete(offer: OfferRow) {
+    if (offer.status === "approved") {
+      toast.error(
+        "Onaylanmış teklif silinemez. Gerekirse durumunu İptal yapın.",
+      );
+      return;
+    }
+    const drive = offer.drive_folder_url
+      ? "\nDrive klasörü silinmez, gerekirse elle kaldırın."
+      : "";
+    if (
+      !window.confirm(
+        `${offer.offer_no} · ${offer.title}\n\nBu teklif, kalemleri ve müşteri linki silinsin mi? Geri alınamaz.${drive}`,
+      )
+    )
+      return;
+    deleteOffer.mutate(offer);
+  }
+
+  function openOffer(offer: OfferRow) {
+    if (isEnergyOfferConfig(offer.module_config)) {
+      void navigate({ to: "/energy-offer", search: { offerId: offer.id } });
+    } else {
+      startEdit(offer);
+    }
+  }
 
   const offers = useMemo(() => {
     const all = pageQuery.data?.offers ?? [];
@@ -555,7 +601,16 @@ function OffersPage() {
                   provisionWorkspace.variables === offer.id;
                 const isEnergy = isEnergyOfferConfig(offer.module_config);
                 return (
-                  <TableRow key={offer.id}>
+                  <TableRow
+                    key={offer.id}
+                    className="cursor-pointer hover:bg-muted/60"
+                    title="Açmak için tıklayın"
+                    onClick={(event) => {
+                      const target = event.target as HTMLElement;
+                      if (target.closest("a, button, [role=dialog]")) return;
+                      openOffer(offer);
+                    }}
+                  >
                     <TableCell className="font-mono text-xs font-bold">
                       {offer.offer_no}
                     </TableCell>
@@ -738,6 +793,23 @@ function OffersPage() {
                             </Link>
                           </Button>
                         ) : null}
+                        {offer.status === "approved" ? null : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            disabled={
+                              deleteOffer.isPending &&
+                              deleteOffer.variables?.id === offer.id
+                            }
+                            onClick={() => confirmDelete(offer)}
+                            aria-label="Teklifi sil"
+                          >
+                            <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                            Sil
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
