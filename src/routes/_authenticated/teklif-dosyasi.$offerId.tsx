@@ -1,7 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Pencil, Printer } from "lucide-react";
-import { useRef } from "react";
+import { ArrowLeft, LoaderCircle, Pencil, Printer, Send } from "lucide-react";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { ensureOfferShareLink, extractContact } from "@/lib/send-channels";
+import { SendDialog, type SendTarget } from "@/components/send/send-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
@@ -32,6 +35,8 @@ function OfferDocumentPage() {
   const { role } = useAuth();
   const isAdmin = role === "admin";
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const [sendTarget, setSendTarget] = useState<SendTarget | null>(null);
+  const [preparing, setPreparing] = useState(false);
 
   const query = useQuery({
     queryKey: ["offer-document", offerId],
@@ -40,7 +45,9 @@ function OfferDocumentPage() {
       const [offerResult, documentResult] = await Promise.all([
         supabase
           .from("offers")
-          .select("id, offer_no, title, drive_excel_url")
+          .select(
+            "id, offer_no, title, drive_excel_url, module_config, customers(name, contact)",
+          )
           .eq("id", offerId)
           .maybeSingle(),
         supabase
@@ -77,6 +84,37 @@ function OfferDocumentPage() {
 
   const html = document?.html.replace("</body>", `${FRAME_SCRIPT}</body>`);
 
+  async function openSend() {
+    if (!offer) return;
+    setPreparing(true);
+    try {
+      const url = await ensureOfferShareLink(offer.id);
+      const customer = offer as unknown as {
+        customers: { name: string; contact: string | null } | null;
+        module_config: {
+          recipient?: { name?: string; phone?: string; email?: string };
+        } | null;
+      };
+      const recipient = customer.module_config?.recipient ?? {};
+      const contact = extractContact(customer.customers?.contact);
+      const name = customer.customers?.name ?? recipient.name ?? "";
+      setSendTarget({
+        kind: "offer",
+        offerId: offer.id,
+        title: offer.offer_no,
+        phone: recipient.phone || contact.phone,
+        email: recipient.email || contact.email,
+        subject: `${offer.offer_no} · ${offer.title} — NES Enerji teklifi`,
+        message: `Merhaba${name ? ` ${name}` : ""},\n\n${offer.title} için hazırladığımız teklifi (${offer.offer_no}) aşağıdaki bağlantıdan inceleyebilirsiniz. Sorularınız için bize her zaman yazabilirsiniz.`,
+        link: { url, label: "Teklifi görüntüle" },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -108,6 +146,21 @@ function OfferDocumentPage() {
                 </Button>
               </>
             ) : null}
+            {document ? (
+              <Button
+                variant="outline"
+                className="h-11"
+                disabled={preparing}
+                onClick={() => void openSend()}
+              >
+                {preparing ? (
+                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                WhatsApp / E-posta
+              </Button>
+            ) : null}
             <Button asChild variant="outline" className="h-11">
               <Link to="/energy-offer" search={{ offerId: offer.id }}>
                 <Pencil className="mr-2 h-4 w-4" /> Hazırlayıcıda düzenle
@@ -116,6 +169,7 @@ function OfferDocumentPage() {
           </div>
         }
       />
+      <SendDialog target={sendTarget} onClose={() => setSendTarget(null)} />
       {html ? (
         <iframe
           ref={frameRef}

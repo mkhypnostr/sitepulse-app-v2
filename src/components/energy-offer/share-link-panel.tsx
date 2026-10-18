@@ -1,7 +1,9 @@
 // Teklif paylaşım linki: oluştur / güncelle / kopyala / iptal et ve
 // müşterinin açılış kayıtları.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Eye, Link2, RefreshCw, XCircle } from "lucide-react";
+import { useState } from "react";
+import { Copy, Eye, Link2, RefreshCw, Send, XCircle } from "lucide-react";
+import { SendDialog, type SendTarget } from "@/components/send/send-dialog";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { errorMessage } from "@/lib/domain";
@@ -46,13 +48,23 @@ function shareUrl(token: string) {
 export function ShareLinkPanel({
   offerId,
   prepare,
+  contact,
 }: {
   offerId: string | undefined;
+  /** WhatsApp / e-posta için alıcı ve teklif bilgisi. */
+  contact?: {
+    name: string;
+    phone: string;
+    email: string;
+    offerNo: string;
+    title: string;
+  };
   /** Teklifi kaydeder ve müşteri dosyasının HTML'ini döndürür; kontrol
    * hatası varsa null döner (mesajı kendisi gösterir). */
   prepare: () => Promise<string | null>;
 }) {
   const queryClient = useQueryClient();
+  const [sendTarget, setSendTarget] = useState<SendTarget | null>(null);
   const key = ["offer-share-links", offerId];
   const linksQuery = useQuery({
     queryKey: key,
@@ -136,6 +148,7 @@ export function ShareLinkPanel({
 
   return (
     <section className="surface-panel grid gap-2 p-5 text-sm">
+      <SendDialog target={sendTarget} onClose={() => setSendTarget(null)} />
       <h2 className="mb-1 flex items-center gap-2 font-black">
         <Link2 className="h-4 w-4" /> Müşteri linki
       </h2>
@@ -201,6 +214,27 @@ export function ShareLinkPanel({
                   }}
                 >
                   <Copy className="mr-1.5 h-3.5 w-3.5" /> Kopyala
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    setSendTarget({
+                      kind: "offer",
+                      offerId,
+                      title: contact?.offerNo ?? "Teklif",
+                      phone: contact?.phone,
+                      email: contact?.email,
+                      subject: `${contact?.offerNo ?? ""} · ${contact?.title ?? ""} — NES Enerji teklifi`,
+                      message: `Merhaba${contact?.name ? ` ${contact.name}` : ""},\n\n${contact?.title ?? "Projeniz"} için hazırladığımız teklifi${contact?.offerNo ? ` (${contact.offerNo})` : ""} aşağıdaki bağlantıdan inceleyebilirsiniz. Sorularınız için bize her zaman yazabilirsiniz.`,
+                      link: {
+                        url: shareUrl(active.token),
+                        label: "Teklifi görüntüle",
+                      },
+                    })
+                  }
+                >
+                  <Send className="mr-1.5 h-3.5 w-3.5" /> WhatsApp / E-posta
                 </Button>
                 <Button asChild type="button" size="sm" variant="outline">
                   <a

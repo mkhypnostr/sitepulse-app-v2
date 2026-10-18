@@ -637,47 +637,180 @@ const TOOLS: Record<string, ToolDef> = {
     tool: {
       name: "teklifi_gonder",
       description:
-        "Kaydedilmiş bir enerji/GES teklifi için müşteriye gönderilecek giriş gerektirmeyen bir bağlantı oluşturur ve teklifi 'Müşteriye Gönderildi' yapar. E-posta göndermez; bağlantıyı kullanıcı müşteriye iletir. Teklif kimliğini teklif_ara ile bul.",
-      input_schema: schema({ teklif_id: str("Teklifin kimliği.") }),
+        "Kaydedilmiş bir teklifi müşteriye gönderir: giriş gerektirmeyen müşteri bağlantısını oluşturur (varsa aynısını kullanır), teklifi 'Müşteriye Gönderildi' yapar. Kanal 'whatsapp' ise hazır mesajlı WhatsApp düğmesi verir (son Gönder'e kullanıcı basar); 'eposta' ise e-postayı NES adına gönderir; 'baglanti' yalnız bağlantı verir. Teklif kimliğini teklif_ara ile bul. Telefon/e-posta verilmezse müşteri kaydındakiler kullanılır.",
+      input_schema: schema({
+        teklif_id: str("Teklifin kimliği."),
+        kanal: {
+          type: "string",
+          enum: ["whatsapp", "eposta", "baglanti"],
+          description: "Nasıl gönderilecek.",
+        },
+        telefon: nullableStr("WhatsApp numarası (kullanıcı söylediyse)."),
+        eposta: nullableStr("Alıcı e-postası (kullanıcı söylediyse)."),
+        mesaj: nullableStr(
+          "Müşteriye kısa, kibar mesaj (NES adına). Bilinmiyorsa gönderme; standart mesaj kullanılır.",
+        ),
+      }),
     },
-    summary: async (i, ctx) =>
-      `Teklifi gönder: ${(await rowName(ctx, "offers", "offer_no", i.teklif_id)) ?? "teklif"} için müşteri bağlantısı oluştur ve durumu "Müşteriye Gönderildi" yap`,
+    summary: async (i, ctx) => {
+      const no =
+        (await rowName(ctx, "offers", "offer_no", i.teklif_id)) ?? "teklif";
+      const kanal = String(i.kanal);
+      return kanal === "eposta"
+        ? `Teklif ${no} müşteriye E-POSTAYLA gönderilsin${i.eposta ? ` (${i.eposta})` : " (müşteri kaydındaki adrese)"}; durum "Müşteriye Gönderildi" olur`
+        : kanal === "whatsapp"
+          ? `Teklif ${no} için müşteri bağlantısı ve hazır WhatsApp mesajı oluşturulsun; durum "Müşteriye Gönderildi" olur (son Gönder'e siz basarsınız)`
+          : `Teklif ${no} için müşteri bağlantısı oluşturulsun; durum "Müşteriye Gönderildi" olur`;
+    },
     run: async (i, ctx) => {
       const offerId = String(i.teklif_id);
-      const doc = check(
+      const kanal = String(i.kanal ?? "baglanti");
+      const offer = check(
         await ctx.db
-          .from("offer_documents")
-          .select("html")
-          .eq("offer_id", offerId)
+          .from("offers")
+          .select("offer_no, title, module_config, customers(name, contact)")
+          .eq("id", offerId)
           .maybeSingle(),
-      ) as { html: string } | null;
-      if (!doc) {
-        throw new Error(
-          "Bu teklifin dosyası henüz yok. Teklifi hazırlayıcıda bir kez açıp Kaydet'e basın, sonra tekrar deneyin.",
+      ) as {
+        offer_no: string;
+        title: string;
+        module_config: {
+          recipient?: { name?: string; phone?: string; email?: string };
+        } | null;
+        customers: { name: string; contact: string | null } | null;
+      } | null;
+      if (!offer) throw new Error("Teklif bulunamadı.");
+
+      // Bağlantı: geçerli olan varsa onu kullan.
+      const existing = check(
+        await ctx.db
+          .from("offer_share_links")
+          .select("token")
+          .eq("offer_id", offerId)
+          .is("revoked_at", null)
+          .order("created_at", { ascending: false })
+          .limit(1),
+      ) as { token: string }[];
+      let token = existing[0]?.token;
+      if (!token) {
+        const doc = check(
+          await ctx.db
+            .from("offer_documents")
+            .select("html")
+            .eq("offer_id", offerId)
+            .maybeSingle(),
+        ) as { html: string } | null;
+        if (!doc) {
+          throw new Error(
+            "Bu teklifin dosyası henüz yok. Teklifi hazırlayıcıda bir kez açıp Kaydet'e basın, sonra tekrar deneyin.",
+          );
+        }
+        const bytes = crypto.getRandomValues(new Uint8Array(32));
+        token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+          "",
+        );
+        check(
+          await ctx.db.from("offer_share_links").insert({
+            offer_id: offerId,
+            token,
+            html: doc.html,
+            created_by: ctx.userId,
+          }),
         );
       }
-      const bytes = crypto.getRandomValues(new Uint8Array(32));
-      const token = Array.from(bytes, (b) =>
-        b.toString(16).padStart(2, "0"),
-      ).join("");
-      check(
-        await ctx.db.from("offer_share_links").insert({
-          offer_id: offerId,
-          token,
-          html: doc.html,
-          created_by: ctx.userId,
-        }),
-      );
+      const url = `${APP_ORIGIN}/teklif/${token}`;
+
+      const contactText = offer.customers?.contact ?? "";
+      const recipient = offer.module_config?.recipient ?? {};
+      const name = offer.customers?.name ?? recipient.name ?? "";
+      const phone =
+        (i.telefon as string | undefined) ??
+        recipient.phone ??
+        contactText.match(
+          /(?:\+?90[\s-]?)?0?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}/,
+        )?.[0] ??
+        "";
+      const email =
+        (i.eposta as string | undefined) ??
+        recipient.email ??
+        contactText.match(
+          /[^\s@<>"',;]+@[^\s@<>"',;]+\.[^\s@<>"',;]{2,}/,
+        )?.[0] ??
+        "";
+      const message =
+        (i.mesaj as string | undefined) ??
+        `Merhaba${name ? ` ${name}` : ""},\n\n${offer.title} için hazırladığımız teklifi (${offer.offer_no}) aşağıdaki bağlantıdan inceleyebilirsiniz. Sorularınız için bize her zaman yazabilirsiniz.`;
+
+      const links: { label: string; href: string }[] = [
+        { label: "Müşteri bağlantısı", href: url },
+      ];
+      let emailSent = false;
+      if (kanal === "whatsapp") {
+        const digits = String(phone).replace(/\D/g, "");
+        const p =
+          digits.startsWith("90") && digits.length === 12
+            ? digits
+            : digits.startsWith("0") && digits.length === 11
+              ? `9${digits}`
+              : digits.length === 10 && digits.startsWith("5")
+                ? `90${digits}`
+                : digits;
+        const text = encodeURIComponent(`${message}\n\n${url}`);
+        links.unshift({
+          label: p
+            ? `WhatsApp'ta gönder (${phone})`
+            : "WhatsApp'ta gönder (kişi seçin)",
+          href: p
+            ? `https://wa.me/${p}?text=${text}`
+            : `https://wa.me/?text=${text}`,
+        });
+      } else if (kanal === "eposta") {
+        if (!email) {
+          throw new Error(
+            "Müşterinin e-posta adresi kayıtlı değil. Adresi söyleyin ya da müşteri kartına ekleyin.",
+          );
+        }
+        const response = await fetch(
+          `${SUPABASE_URL}/functions/v1/send-document-email`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: ctx.authHeader,
+              apikey: SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({
+              kind: "offer",
+              offer_id: offerId,
+              to: [email],
+              subject: `${offer.offer_no} · ${offer.title} — NES Enerji teklifi`,
+              message,
+              link: { url, label: "Teklifi görüntüle" },
+            }),
+          },
+        );
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (!response.ok)
+          throw new Error(body.error ?? "E-posta gönderilemedi.");
+        emailSent = true;
+      }
       check(
         await ctx.db
           .from("offers")
           .update({ status: "sent" })
           .eq("id", offerId),
       );
-      const url = `${APP_ORIGIN}/teklif/${token}`;
       return {
-        result: { gonderildi: true, musteri_baglantisi: url },
-        link: { label: "Müşteri bağlantısı", href: url },
+        result: {
+          gonderildi: true,
+          kanal,
+          eposta_gonderildi: emailSent ? email : null,
+          whatsapp_hazir: kanal === "whatsapp",
+          telefon: phone || null,
+        },
+        links,
       };
     },
   },
@@ -703,6 +836,7 @@ Nasıl çalışırsın:
 - "Yarın", "cuma", "haftaya" gibi tarihleri bugüne göre YYYY-AA-GG'ye çevir.
 - Kayıt açan araçları (görev, iş emri, proje, satış fırsatı, teklif gönderme) doğrudan çağır; uygulama kullanıcıya ayrıca bir onay kartı gösterir, sen ayrıca "emin misin" diye sorma.
 - GES teklifinde kayıt açılmaz: ges_teklifi_hazirla ile hazırlayıcıyı dolduran bağlantıyı ver, kullanıcının kontrol edip kaydetmesini söyle.
+- Teklif gönderirken kullanıcı WhatsApp ya da e-posta dediyse teklifi_gonder'i o kanalla çağır. WhatsApp'ta mesaj hazır açılır, son Gönder'e kullanıcı basar; bunu söyle.
 - Bağlantı adreslerini (https://...) metne yazma; araçların verdiği bağlantılar ekranda düğme olarak çıkar, "aşağıdaki düğmeden açın" de.
 - Kullanıcı bir işlemi reddederse yeniden deneme; ne değiştirmek istediğini sor.
 - Bir araç hata verirse hatayı sade dille anlat.
