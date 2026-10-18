@@ -594,7 +594,7 @@ export function invoiceUblXml(
 /** GİB portal adresleri (ücretsiz). e-Fatura portalı mali mühür / e-imza,
  * e-Arşiv portalı İnteraktif Vergi Dairesi bilgileriyle açılır. */
 export const GIB_PORTALS = {
-  efatura: "https://portal.efatura.gov.tr/efaturaportal/",
+  efatura: "https://portal.efatura.gov.tr/efatura/login.jsp",
   earsiv: "https://earsivportal.efatura.gov.tr/intragiris.html",
   mukellefSorgu: "https://sorgu.efatura.gov.tr/kullanicilar/xliste.php",
 } as const;
