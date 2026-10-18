@@ -97,7 +97,7 @@ function SharedFilesPage() {
         {role === "admin" ? (
           <DriveCard
             title="NES Yönetim ve Finans"
-            description="Fatura, ödeme, tahsilat, bütçe, maliyet, hakediş ve teklif dosyaları."
+            description="Fatura, ödeme, tahsilat, bütçe, maliyet ve hakediş dosyaları."
             icon={Landmark}
             href={financeUrl}
             unavailableText="Yönetim ve Finans Drive kaydı henüz bulunamadı."
@@ -109,10 +109,10 @@ function SharedFilesPage() {
         <CardContent className="flex gap-3 p-5 text-sm text-muted-foreground">
           <FolderOpen className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <p>
-            Teklif PDF ve Excel dosyalarını şimdilik{" "}
-            <strong>NES Yönetim ve Finans</strong> Drive'ında tutacağız.
-            Teklifin durum, revizyon ve müşteri onayı gibi kayıtlarını
-            uygulamada açmak gerektiğinde ayrıca görünür hâle getireceğiz.
+            Teklif klasörleri ve Excel dosyaları{" "}
+            <strong>NES Operasyon → 05 Teklifler</strong> altında, her teklif
+            için ayrı klasörde tutulur. Teklifin kendisini Teklifler sayfasından
+            açın.
           </p>
         </CardContent>
       </Card>
