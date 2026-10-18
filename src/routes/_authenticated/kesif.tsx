@@ -138,7 +138,10 @@ function KesifPage() {
   }, []);
 
   const sync = useCallback(
-    async (manual = false) => {
+    // auto: her değişiklikten sonra sessiz gönderim (durum kartta görünür);
+    // manual: "Gönder / yenile" düğmesi; reconnect: internet geri geldi.
+    async (mode: "auto" | "manual" | "reconnect" = "auto") => {
+      const manual = mode === "manual";
       if (!navigator.onLine) {
         if (manual) toast.message("İnternet yok; kayıtlar cihazda bekliyor.");
         return;
@@ -148,13 +151,15 @@ function KesifPage() {
         const { sent, failed } = await syncAll();
         await pullSurveys().catch(() => undefined);
         await refreshReferenceCache().catch(() => undefined);
-        if (manual || sent > 0)
+        if (manual)
           toast.success(
             sent > 0
               ? `${sent} keşif gönderildi.`
               : "Her şey gönderilmiş durumda.",
           );
-        if (failed > 0)
+        else if (mode === "reconnect" && sent > 0)
+          toast.success(`İnternet geldi: ${sent} keşif gönderildi.`);
+        if (failed > 0 && mode !== "auto")
           toast.error(`${failed} keşif gönderilemedi; tekrar denenecek.`);
       } finally {
         setSyncState("idle");
@@ -173,8 +178,11 @@ function KesifPage() {
   }, [allowed, reload, sync]);
 
   // İnternet geri gelince bekleyenleri gönder.
+  const wasOffline = useRef(false);
   useEffect(() => {
-    if (online && allowed) void sync();
+    // Yalnız çevrimdışından çevrimiçine geçişte (ilk açılışta değil).
+    if (online && allowed && wasOffline.current) void sync("reconnect");
+    wasOffline.current = !online;
   }, [online, allowed, sync]);
 
   if (!allowed) return <AccessDenied />;
@@ -212,7 +220,7 @@ function KesifPage() {
               variant="outline"
               className="h-11"
               disabled={syncState === "sending"}
-              onClick={() => sync(true)}
+              onClick={() => sync("manual")}
             >
               {syncState === "sending" ? (
                 <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
