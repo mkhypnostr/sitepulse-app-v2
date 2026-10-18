@@ -89,14 +89,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, NumField } from "@/components/energy-offer/fields";
 import { fmtNum } from "@/components/energy-offer/format";
@@ -2301,138 +2293,121 @@ function EnergyOfferPage() {
                 Henüz kalem yok. Modülleri ayarlayıp "Kalemleri oluştur"a basın.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {/* Sayı kutuları sabit genişlikte: tablo dar ekranda
-                          sütunları sıkıştırıp kutuları 25-40 px'e
-                          düşürüyor, değer (ör. kâr %30) görünmüyordu. */}
-                      <TableHead className="min-w-[240px]">Açıklama</TableHead>
-                      <TableHead>Modül</TableHead>
-                      <TableHead className="min-w-[96px]">Miktar</TableHead>
-                      <TableHead className="min-w-[150px]">
-                        Alış (birim)
-                      </TableHead>
-                      <TableHead className="min-w-[96px]">Kâr %</TableHead>
-                      <TableHead className="text-right">Maliyet</TableHead>
-                      <TableHead className="text-right">Satış</TableHead>
-                      <TableHead className="w-16">Müşteri</TableHead>
-                      <TableHead className="w-10" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {priced.map((line) => (
-                      <TableRow
-                        key={line.key}
-                        className={`${line.visibleToCustomer ? "" : "opacity-50"} ${line.sourceUnitCost > 0 ? "" : "bg-red-50 dark:bg-red-950/40"}`}
-                      >
-                        <TableCell>
-                          <Input
-                            value={line.description}
-                            onChange={(e) =>
-                              updateLine(line.key, {
-                                description: e.target.value,
-                              })
-                            }
-                            className="h-9"
-                          />
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {categoryLabels[line.category]} · {line.unit}
-                            {line.brand ? ` · ${line.brand}` : ""}
-                            {line.auto ? " · otomatik" : ""}
+              // Kalemler kart düzeninde: yatay kaydırma olmadan her genişlikte
+              // sığar (eski tablo dar ekranda sağa taşıyordu).
+              <div className="divide-y divide-border">
+                {priced.map((line) => (
+                  <div
+                    key={line.key}
+                    className={`grid gap-2 px-4 py-3 ${line.visibleToCustomer ? "" : "opacity-50"} ${line.sourceUnitCost > 0 ? "" : "bg-red-50 dark:bg-red-950/40"}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <Input
+                          value={line.description}
+                          onChange={(e) =>
+                            updateLine(line.key, {
+                              description: e.target.value,
+                            })
+                          }
+                          className="h-10"
+                        />
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {categoryLabels[line.category]} · {line.unit}
+                          {line.brand ? ` · ${line.brand}` : ""}
+                          {line.auto ? " · otomatik" : ""}
+                        </p>
+                        {line.sourceUnitCost > 0 ? null : (
+                          <p className="mt-1 text-[11px] font-bold text-red-600">
+                            Alış fiyatı 0 — maliyet yazın ya da bilerek 0 ise
+                            (NES kendi yapıyor vb.) bırakın.
                           </p>
-                          {line.sourceUnitCost > 0 ? null : (
-                            <p className="mt-1 text-[11px] font-bold text-red-600">
-                              Alış fiyatı 0 — neden 0? Maliyet yazın ya da
-                              bilerek 0 ise (NES kendi yapıyor vb.) bırakın.
-                            </p>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={line.module}
-                            onValueChange={(v) =>
-                              updateLine(line.key, { module: v as OfferModule })
-                            }
-                          >
-                            <SelectTrigger className="h-9 w-28">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="ges">GES</SelectItem>
-                              <SelectItem value="sarj">Şarj</SelectItem>
-                              <SelectItem value="taahhut">Taahhüt</SelectItem>
-                              <SelectItem value="genel">Genel</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          <NumField
-                            className="h-9 w-20 text-right"
-                            value={line.quantity}
-                            onChange={(quantity) =>
-                              updateLine(line.key, { quantity })
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <NumField
-                              className="h-9 w-28 text-right"
-                              value={line.sourceUnitCost}
-                              onChange={(sourceUnitCost) =>
-                                updateLine(line.key, { sourceUnitCost })
-                              }
-                            />
-                            <span className="text-xs text-muted-foreground">
-                              {line.sourceCurrency}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <NumField
-                            className="h-9 w-20 text-right"
-                            value={round2(line.markupRate * 100)}
-                            onChange={(v) =>
-                              updateLine(line.key, {
-                                markupRate: Math.max(0, v) / 100,
-                              })
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right text-xs">
-                          {formatMoney(line.totalCost, currency)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right font-bold">
-                          {formatMoney(line.saleAmount, currency)}
-                        </TableCell>
-                        <TableCell>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                           <Switch
                             checked={line.visibleToCustomer}
                             onCheckedChange={(visibleToCustomer) =>
                               updateLine(line.key, { visibleToCustomer })
                             }
+                            aria-label="Müşteri dosyasında göster"
                           />
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              setLines((c) =>
-                                c.filter((l) => l.key !== line.key),
-                              )
-                            }
-                            aria-label="Kalemi sil"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          <span className="hidden sm:inline">Müşteride</span>
+                        </label>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setLines((c) => c.filter((l) => l.key !== line.key))
+                          }
+                          aria-label="Kalemi sil"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                      <LineField label="Modül">
+                        <Select
+                          value={line.module}
+                          onValueChange={(v) =>
+                            updateLine(line.key, { module: v as OfferModule })
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ges">GES</SelectItem>
+                            <SelectItem value="sarj">Şarj</SelectItem>
+                            <SelectItem value="taahhut">Taahhüt</SelectItem>
+                            <SelectItem value="genel">Genel</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </LineField>
+                      <LineField label={`Miktar (${line.unit})`}>
+                        <NumField
+                          className="h-9 w-full text-right"
+                          value={line.quantity}
+                          onChange={(quantity) =>
+                            updateLine(line.key, { quantity })
+                          }
+                        />
+                      </LineField>
+                      <LineField label={`Alış birim (${line.sourceCurrency})`}>
+                        <NumField
+                          className="h-9 w-full text-right"
+                          value={line.sourceUnitCost}
+                          onChange={(sourceUnitCost) =>
+                            updateLine(line.key, { sourceUnitCost })
+                          }
+                        />
+                      </LineField>
+                      <LineField label="Kâr %">
+                        <NumField
+                          className="h-9 w-full text-right"
+                          value={round2(line.markupRate * 100)}
+                          onChange={(v) =>
+                            updateLine(line.key, {
+                              markupRate: Math.max(0, v) / 100,
+                            })
+                          }
+                        />
+                      </LineField>
+                      <LineField label="Maliyet">
+                        <div className="flex h-9 items-center justify-end rounded-md bg-muted/60 px-2 text-xs tabular-nums">
+                          {formatMoney(line.totalCost, currency)}
+                        </div>
+                      </LineField>
+                      <LineField label="Satış">
+                        <div className="flex h-9 items-center justify-end rounded-md bg-muted px-2 text-sm font-bold tabular-nums">
+                          {formatMoney(line.saleAmount, currency)}
+                        </div>
+                      </LineField>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </section>
@@ -2796,5 +2771,22 @@ function EnergyOfferPage() {
         </aside>
       </div>
     </>
+  );
+}
+
+function LineField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="mb-0.5 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      {children}
+    </div>
   );
 }

@@ -703,6 +703,7 @@ Nasıl çalışırsın:
 - "Yarın", "cuma", "haftaya" gibi tarihleri bugüne göre YYYY-AA-GG'ye çevir.
 - Kayıt açan araçları (görev, iş emri, proje, satış fırsatı, teklif gönderme) doğrudan çağır; uygulama kullanıcıya ayrıca bir onay kartı gösterir, sen ayrıca "emin misin" diye sorma.
 - GES teklifinde kayıt açılmaz: ges_teklifi_hazirla ile hazırlayıcıyı dolduran bağlantıyı ver, kullanıcının kontrol edip kaydetmesini söyle.
+- Bağlantı adreslerini (https://...) metne yazma; araçların verdiği bağlantılar ekranda düğme olarak çıkar, "aşağıdaki düğmeden açın" de.
 - Kullanıcı bir işlemi reddederse yeniden deneme; ne değiştirmek istediğini sor.
 - Bir araç hata verirse hatayı sade dille anlat.
 - Kullanıcı bir belge, çizim, fatura, fotoğraf ya da eski bir teklifi görmek isterse drive_ara ile NES Drive'ında ara; bulduğun dosyaları kısa listele (ad, klasör, tarih). Açma düğmeleri ekranda otomatik çıkar. Bulamazsan farklı kelimelerle bir kez daha dene.
