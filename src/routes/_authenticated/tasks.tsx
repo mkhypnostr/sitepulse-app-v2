@@ -1019,7 +1019,7 @@ function TasksPage() {
     <>
       <PageHeader
         title="Görevler"
-        description="Bütün operasyon görevlerini tek merkezden açın, atayın, takip edin ve yönetin."
+        description="Saha iş emirleri, proje adımları ve bağımsız görevler tek listede."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button asChild variant="outline" className="h-12 font-bold">
@@ -1039,15 +1039,13 @@ function TasksPage() {
           <div>
             <h2 className="text-lg font-black">
               {activeSource === "all"
-                ? `${taskViews.find((view) => view.value === activeFilter)?.label} Görevler`
+                ? activeFilter === "all"
+                  ? "Tüm görevler"
+                  : taskViews.find((view) => view.value === activeFilter)?.label
                 : `${taskSourceViews.find((view) => view.value === activeSource)?.label} · ${taskViews.find((view) => view.value === activeFilter)?.label}`}
             </h2>
             <p className="text-sm text-muted-foreground">
-              {
-                taskViews.find((view) => view.value === activeFilter)
-                  ?.description
-              }{" "}
-              · {visibleTaskCount} kayıt listeleniyor.
+              {visibleTaskCount} kayıt
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1086,20 +1084,6 @@ function TasksPage() {
         </div>
       </section>
       <section className="surface-panel mt-6 p-4 sm:p-5">
-        <div className="mb-4">
-          <h2 className="text-lg font-black">Görev Listesi</h2>
-          <p className="text-sm text-muted-foreground">
-            Saha, proje ve bağımsız görevler burada tek listede yönetilir.
-            Etiket yalnızca görevin nereden geldiğini gösterir.
-          </p>
-        </div>
-        {activeFilter === "all" && activeSource !== "work_order" ? (
-          <p className="mb-3 rounded-lg border border-primary/25 bg-primary/8 px-3 py-2 text-xs leading-5 text-muted-foreground">
-            Henüz atanmamış proje kontrol listesi kalemleri burada görev
-            sayılmaz; yalnızca proje detayında görünür. Bu liste, Paneldeki
-            görev sayılarıyla aynı kayıtları gösterir.
-          </p>
-        ) : null}
         {unifiedTasks.length === 0 ? (
           <EmptyState
             title="Bu görünümde görev yok"
@@ -1110,12 +1094,6 @@ function TasksPage() {
           <div className="grid gap-5">
             {operationalTaskItems.length > 0 ? (
               <div className="grid gap-3">
-                <div>
-                  <h3 className="font-black">Operasyon Görevleri</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Bağımsız ve saha görevleri aynı listede.
-                  </p>
-                </div>
                 {operationalTaskItems.map((task) => (
                   <TaskCard
                     key={task.id}
@@ -1596,16 +1574,17 @@ function AuditLine({
 }) {
   if (!audit) return null;
   const parts: string[] = [];
+  // Atanan kişi kartın sağında zaten yazıyor; atayan, açanla aynıysa
+  // tekrar yazılmaz.
   if (audit.createdBy || audit.createdAt) {
     parts.push(
-      `Açan: ${audit.createdBy ?? "—"}${audit.createdAt ? ` · ${formatDate(audit.createdAt)}` : ""}`,
+      `${audit.createdBy ?? "—"} açtı${audit.createdAt ? ` · ${formatDate(audit.createdAt)}` : ""}`,
     );
   }
-  if (assignee) {
+  if (assignee && audit.assignedBy && audit.assignedBy !== audit.createdBy) {
     parts.push(
-      `Atayan: ${audit.assignedBy ?? "—"}${audit.assignedAt ? ` · ${formatDate(audit.assignedAt)}` : ""}`,
+      `${audit.assignedBy} atadı${audit.assignedAt ? ` · ${formatDate(audit.assignedAt)}` : ""}`,
     );
-    parts.push(`Atanan: ${assignee.full_name || "Kullanıcı"}`);
   }
   if (parts.length === 0) return null;
   return (

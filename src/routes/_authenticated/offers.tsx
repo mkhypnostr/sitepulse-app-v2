@@ -9,7 +9,6 @@ import {
   Pencil,
   Receipt,
   Plus,
-  Sun,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -355,13 +354,18 @@ function OffersPage() {
 
   const createButton = (
     <div className="flex flex-wrap gap-2">
-      <Button asChild variant="outline" className="h-12 font-bold">
-        <Link to="/energy-offer">
-          <Sun className="mr-2 h-4 w-4" /> GES / Şarj / Taahhüt Teklifi
-        </Link>
+      <Button
+        variant="outline"
+        className="h-12 font-bold"
+        onClick={startCreate}
+        title="Fiyatı Drive'daki Excel şablonunda hesaplanan eski tip teklif"
+      >
+        <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel ile Teklif
       </Button>
-      <Button className="h-12 font-bold" onClick={startCreate}>
-        <Plus className="mr-2 h-4 w-4" /> Yeni Teklif
+      <Button asChild className="h-12 font-bold">
+        <Link to="/energy-offer">
+          <Plus className="mr-2 h-4 w-4" /> Yeni Teklif
+        </Link>
       </Button>
     </div>
   );
@@ -543,7 +547,7 @@ function OffersPage() {
     <>
       <PageHeader
         title="Teklifler"
-        description="TKF kayıtlarını ve Drive'daki teklif Excel dosyalarına erişimi buradan yönetin."
+        description="GES, şarj, taahhüt ve diğer teklifler. Açmak için satıra tıklayın."
         actions={createButton}
       />
       {dialog}
@@ -552,8 +556,7 @@ function OffersPage() {
           <div>
             <h2 className="font-black">Teklif kayıtları</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Fiyatlandırma Drive'daki Excel dosyasında yapılır; burada yalnız
-              kayıt ve durum takibi tutulur.
+              {offers.length} teklif
             </p>
           </div>
           <Select
@@ -578,7 +581,7 @@ function OffersPage() {
         {offers.length === 0 ? (
           <EmptyState
             title="Henüz teklif yok"
-            description="Yeni bir teklif kaydedin; Drive'daki Excel dosyası otomatik oluşturulur."
+            description="Yeni Teklif ile başlayın."
             action={createButton}
           />
         ) : (

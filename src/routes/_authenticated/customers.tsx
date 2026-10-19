@@ -339,7 +339,7 @@ function CustomersPage() {
           </DialogTitle>
           <DialogDescription>
             Var olan portal hesabını eşleştirin. Hesap yoksa müşteri kartındaki
-            “Portal Hesabı Aç” işlemini kullanın.
+            Portal sütunundaki “Hesap aç” bağlantısını kullanın.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
@@ -499,30 +499,30 @@ function CustomersPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {customer.contact_user_id
-                      ? profileById.get(customer.contact_user_id)?.full_name ||
-                        "Bağlı kullanıcı"
-                      : "Eşleştirilmedi"}
+                    {customer.contact_user_id ? (
+                      profileById.get(customer.contact_user_id)?.full_name ||
+                      "Bağlı kullanıcı"
+                    ) : role === "admin" ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-highlight hover:underline"
+                        onClick={() => {
+                          setAccountTarget({
+                            id: customer.id,
+                            name: customer.name,
+                          });
+                          setAccountForm(emptyAccountForm);
+                          setShowAccountPassword(false);
+                        }}
+                      >
+                        <UserPlus className="h-3.5 w-3.5" /> Hesap aç
+                      </button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Yok</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex flex-wrap justify-end gap-2">
-                      {role === "admin" && !customer.contact_user_id ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setAccountTarget({
-                              id: customer.id,
-                              name: customer.name,
-                            });
-                            setAccountForm(emptyAccountForm);
-                            setShowAccountPassword(false);
-                          }}
-                        >
-                          <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Portal
-                          Hesabı Aç
-                        </Button>
-                      ) : null}
                       {role === "admin" ? (
                         <Button asChild variant="outline" size="sm">
                           <Link
