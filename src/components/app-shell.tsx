@@ -30,7 +30,8 @@ import {
   Target,
   UserCog,
   UsersRound,
-  Wallet,
+  UtilityPole,
+  Gauge,
   Wrench,
   X,
   Zap,
@@ -264,13 +265,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           { section: "Saha ve proje" },
           { to: "/projects", label: "Projeler", icon: FolderKanban },
           { to: "/kesif", label: "Keşif", icon: Camera },
+          { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
+          { section: "Hizmetler" },
+          {
+            to: "/transformer-responsibility",
+            label: "Trafo Sorumluluğu",
+            icon: UtilityPole,
+          },
+          {
+            to: "/measurement-tracking",
+            label: "Ölçüm ve Tahsilat",
+            icon: Gauge,
+          },
           {
             to: "/service-requests",
             label: "Servis Talepleri",
             icon: Wrench,
           },
-          { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
-          { to: "/shared-files", label: "Ortak Dosyalar", icon: FolderOpen },
           { section: "Satış" },
           {
             to: "/sales",
@@ -282,25 +293,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           { to: "/price-catalog", label: "Fiyat Kataloğu", icon: Tags },
           { to: "/customers", label: "Müşteriler", icon: UsersRound },
           { section: "Finans" },
-          {
-            to: "/dashboard",
-            label: "Finans Özeti",
-            icon: Wallet,
-            hash: "finance",
-          },
           { to: "/invoices", label: "Faturalar", icon: FileText },
           { to: "/accounting", label: "Ön Muhasebe", icon: Calculator },
           { to: "/receivables", label: "Cari Hesaplar", icon: Landmark },
-          {
-            to: "/measurement-tracking",
-            label: "Ölçüm ve Tahsilat",
-            icon: ClipboardList,
-          },
-          {
-            to: "/transformer-responsibility",
-            label: "Trafo Sorumluluğu",
-            icon: ShieldAlert,
-          },
           { section: "Yönetim" },
           {
             to: "/approvals",
@@ -332,11 +327,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               icon: Wrench,
             },
             { to: "/stock", label: "Stok", icon: Boxes, badgeKey: "stock" },
-            {
-              to: "/shared-files",
-              label: "Ortak Dosyalar",
-              icon: FolderOpen,
-            },
             { section: "Yönetim" },
             { to: "/customers", label: "Müşteriler", icon: UsersRound },
             {
@@ -549,6 +539,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 pressed={pinned}
               />
               <div className="sidebar-reveal flex items-center gap-1">
+                {role === "admin" || role === "technical_office" ? (
+                  <SidebarIconButton
+                    onClick={() => void navigate({ to: "/shared-files" })}
+                    icon={FolderOpen}
+                    label="Ortak Drive dosyaları"
+                  />
+                ) : null}
                 <SidebarIconButton
                   onClick={toggleTheme}
                   icon={theme === "dark" ? Sun : Moon}
@@ -746,6 +743,18 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </div>
                 ))}
                 <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--panel-shadow)]">
+                  {role === "admin" || role === "technical_office" ? (
+                    <Link
+                      to="/shared-files"
+                      onClick={() => setMobileOpen(false)}
+                      className="flex min-h-12 w-full items-center gap-3 border-b border-border/70 px-3 text-[15px] font-medium active:bg-foreground/5"
+                    >
+                      <IconTile className="bg-sky-500">
+                        <FolderOpen className="h-4 w-4" />
+                      </IconTile>
+                      Ortak Drive dosyaları
+                    </Link>
+                  ) : null}
                   <button
                     type="button"
                     onClick={toggleTheme}

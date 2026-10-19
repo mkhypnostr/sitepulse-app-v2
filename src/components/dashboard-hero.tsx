@@ -205,8 +205,8 @@ export function DashboardHero({
                   />
                   <Stat
                     icon={Zap}
-                    label="Güneş"
-                    value={`${today.radiation.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} kWh/m²`}
+                    label="Güneş/m²"
+                    value={`${today.radiation.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} kWh`}
                   />
                 </div>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
