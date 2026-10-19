@@ -151,6 +151,36 @@ const actionLabel: Record<string, string> = {
   deleted: "sildi",
 };
 
+const entityLabel: Record<string, string> = {
+  projects: "proje",
+  project_tasks: "proje adımı",
+  work_orders: "iş emri",
+  work_order_assignments: "iş emri ataması",
+  operational_tasks: "görev",
+};
+
+type ActivityGroup = ActivityLogRow & { count: number };
+
+/** Aynı kişinin aynı dakikada yaptığı aynı türden değişiklikler tek satır. */
+function groupActivity(logs: ActivityLogRow[]): ActivityGroup[] {
+  const groups: ActivityGroup[] = [];
+  for (const log of logs) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      last.actor_id === log.actor_id &&
+      last.entity_type === log.entity_type &&
+      last.action === log.action &&
+      last.created_at.slice(0, 16) === log.created_at.slice(0, 16)
+    ) {
+      last.count += 1;
+    } else {
+      groups.push({ ...log, count: 1 });
+    }
+  }
+  return groups;
+}
+
 function ApprovalsPage() {
   const { role, user } = useAuth();
   const queryClient = useQueryClient();
@@ -252,7 +282,7 @@ function ApprovalsPage() {
               .from("activity_logs")
               .select("*")
               .order("created_at", { ascending: false })
-              .limit(30)
+              .limit(200)
           : Promise.resolve({ data: [], error: null }),
         isContractor && user
           ? supabase
@@ -853,7 +883,7 @@ function ApprovalsPage() {
             <div>
               <h2 className="text-lg font-black">Aktivite Geçmişi</h2>
               <p className="text-sm text-muted-foreground">
-                Sistemdeki son 30 değişiklik kaydı.
+                Son değişiklikler; aynı anda yapılanlar tek satırda.
               </p>
             </div>
           </div>
@@ -864,23 +894,28 @@ function ApprovalsPage() {
             />
           ) : (
             <div className="grid gap-2">
-              {data.activityLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background/20 px-3 py-2 text-sm"
-                >
-                  <span>
-                    <span className="font-bold">
-                      {data.profileNameById.get(log.actor_id ?? "") ?? "Sistem"}
-                    </span>{" "}
-                    {log.entity_type} kaydını{" "}
-                    {actionLabel[log.action] ?? log.action}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {formatDate(log.created_at)}
-                  </span>
-                </div>
-              ))}
+              {groupActivity(data.activityLogs)
+                .slice(0, 12)
+                .map((log) => (
+                  <div
+                    key={log.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-background/20 px-3 py-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-bold">
+                        {data.profileNameById.get(log.actor_id ?? "") ??
+                          "Sistem"}
+                      </span>{" "}
+                      {log.count > 1 ? `${log.count} ` : ""}
+                      {entityLabel[log.entity_type] ?? "kayıt"}
+                      {log.count > 1 ? "" : " kaydını"}{" "}
+                      {actionLabel[log.action] ?? log.action}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(log.created_at)}
+                    </span>
+                  </div>
+                ))}
             </div>
           )}
         </section>

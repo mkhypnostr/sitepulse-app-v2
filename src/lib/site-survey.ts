@@ -504,6 +504,14 @@ export async function pullSurveys(limit = 60) {
     };
     await idbSet("surveys", row.id, survey);
   }
+  // Sunucuda silinmiş keşifler cihazda da kalkar. Yalnız gönderilmiş
+  // (değişikliği olmayan) kopyalar silinir; liste tam geldiyse yapılır.
+  if ((data ?? []).length < limit) {
+    const onServer = new Set((data ?? []).map((row) => row.id));
+    for (const local of await listLocal()) {
+      if (!onServer.has(local.id) && !isDirty(local)) await deleteLocal(local);
+    }
+  }
 }
 
 // ---------------------------------------------------------------- önbellek
