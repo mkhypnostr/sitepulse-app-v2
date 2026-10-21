@@ -73,6 +73,8 @@ type Entry = {
   /** Kullanıcının eklediği fotoğrafların depo yolları. */
   photos?: string[];
   documents?: AssistantDocument[];
+  /** Bu cevabı üreten istek; sunucu sohbete yazdıysa tekrar eklenmez. */
+  request_id?: string;
 };
 type AssistantResponse = {
   /** Yedekten okunan cevapta HTTP durumu. */
@@ -204,35 +206,63 @@ async function keepScreenAwake(): Promise<WakeLockLike | null> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function readBackup(requestId: string) {
-  const { data } = await supabase
-    .from("assistant_responses")
-    .select("body")
-    .eq("request_id", requestId)
-    .maybeSingle();
-  return (data?.body ?? null) as AssistantResponse | null;
-}
-
-async function dropBackup(requestId: string) {
-  await supabase
-    .from("assistant_responses")
-    .delete()
-    .eq("request_id", requestId);
-}
-
-/** Bağlantı koptuğunda sunucunun yedeğe yazdığı cevabı bekler (en çok
- * 3 dk; ekran kapalıyken bekleme durur, açılınca sürer). */
-async function waitForBackup(requestId: string) {
-  const deadline = Date.now() + 180_000;
-  for (;;) {
-    const backup = await readBackup(requestId).catch(() => null);
-    if (backup) {
-      void dropBackup(requestId);
-      return backup;
-    }
-    if (Date.now() > deadline) return null;
-    await sleep(3000);
+const INFLIGHT_KEY = "nes-assistant-inflight";
+type Inflight = { conversationId: string; requestId: string; at: number };
+/** Sunucuya gönderilmiş ama cevabı henüz ekrana gelmemiş istek. */
+function readInflight(): Inflight | null {
+  try {
+    const raw = localStorage.getItem(INFLIGHT_KEY);
+    return raw ? (JSON.parse(raw) as Inflight) : null;
+  } catch {
+    return null;
   }
+}
+function writeInflight(value: Inflight | null) {
+  try {
+    if (value) localStorage.setItem(INFLIGHT_KEY, JSON.stringify(value));
+    else localStorage.removeItem(INFLIGHT_KEY);
+  } catch {
+    // Saklama alanı kapalıysa yalnız açık sayfa bekler.
+  }
+}
+/** Sunucu cevabı sohbete yazana kadar bekle (en çok 5 dk). */
+const REPLY_WAIT_MS = 300_000;
+async function waitForReply(
+  conversationId: string,
+  requestId: string,
+  untilMs: number,
+) {
+  for (;;) {
+    const { data } = await supabase
+      .from("assistant_conversations")
+      .select("id, entries, messages")
+      .eq("id", conversationId)
+      .maybeSingle();
+    const entries = (data?.entries ?? []) as Entry[];
+    if (data && entries.some((e) => e.request_id === requestId)) {
+      return {
+        id: data.id,
+        entries,
+        messages: (data.messages ?? []) as ApiMessage[],
+      } satisfies ConversationState;
+    }
+    if (Date.now() > untilMs) return null;
+    await sleep(4000);
+  }
+}
+
+/** Sohbeti hemen kaydet (istek gönderilmeden önce; sunucu cevabı buna
+ * ekler). */
+async function persistConversation(next: ConversationState) {
+  if (!next.id) return;
+  const firstUser = next.entries.find((e) => e.role === "user");
+  await supabase.from("assistant_conversations").upsert({
+    id: next.id,
+    title: (firstUser?.text ?? "Sohbet").slice(0, 120),
+    entries: next.entries as unknown as never,
+    messages: next.messages as unknown as never,
+  });
+  writeCurrentId(next.id);
 }
 
 async function errorText(error: unknown) {
@@ -282,11 +312,35 @@ export function AssistantPanel() {
       const { data } = await query;
       const row = data?.[0];
       if (row) {
+        const entries = (row.entries ?? []) as Entry[];
         setState({
           id: row.id,
-          entries: (row.entries ?? []) as Entry[],
+          entries,
           messages: (row.messages ?? []) as ApiMessage[],
         });
+        // Uygulama kapanmadan önce gönderilmiş ve cevabı henüz gelmemiş
+        // bir istek varsa, sunucu sohbete yazana kadar bekle.
+        const inflight = readInflight();
+        if (
+          inflight &&
+          inflight.conversationId === row.id &&
+          !entries.some((e) => e.request_id === inflight.requestId) &&
+          Date.now() - inflight.at < REPLY_WAIT_MS
+        ) {
+          setBusy(true);
+          setRecovering(true);
+          const reply = await waitForReply(
+            row.id,
+            inflight.requestId,
+            inflight.at + REPLY_WAIT_MS,
+          );
+          if (reply) setState(reply);
+          writeInflight(null);
+          setRecovering(false);
+          setBusy(false);
+        } else if (inflight) {
+          writeInflight(null);
+        }
       }
     })();
   }, [open, loaded]);
@@ -380,72 +434,97 @@ export function AssistantPanel() {
     async (body: {
       messages: ApiMessage[];
       confirm?: { approved: boolean };
+      conversationId: string;
     }) => {
       setBusy(true);
-      // Cevap beklerken telefon ekranı kapanmasın (kapanınca tarayıcı
-      // bağlantıyı keser).
+      // Cevap beklerken ekran kapanmasın; kapansa da iş sunucuda sürer ve
+      // cevap sohbete yazılır.
       const wakeLock = await keepScreenAwake();
       const requestId = crypto.randomUUID();
       const sent = trimForApi(body.messages);
+      writeInflight({
+        conversationId: body.conversationId,
+        requestId,
+        at: Date.now(),
+      });
       const apply = (response: AssistantResponse) => {
         const added = response.messages
           ? response.messages.slice(sent.length)
           : [];
-        setState((current) => ({
-          ...current,
-          messages: [...body.messages, ...added],
-          entries: [
-            ...current.entries,
-            {
-              role: "assistant",
-              at: nowIso(),
-              text:
-                response.reply ||
-                (response.pending?.length
-                  ? "Şu işlemi yapmamı onaylıyor musunuz?"
-                  : ""),
-              links: response.links,
-              pending: response.pending,
-              documents: response.documents?.length
-                ? response.documents
-                : undefined,
-            },
-          ],
-        }));
+        setState((current) =>
+          current.id !== body.conversationId ||
+          current.entries.some((e) => e.request_id === requestId)
+            ? current
+            : {
+                ...current,
+                messages: [...body.messages, ...added],
+                entries: [
+                  ...current.entries,
+                  {
+                    role: "assistant",
+                    at: nowIso(),
+                    request_id: requestId,
+                    text:
+                      response.reply ||
+                      (response.pending?.length
+                        ? "Şu işlemi yapmamı onaylıyor musunuz?"
+                        : ""),
+                    links: response.links,
+                    pending: response.pending,
+                    documents: response.documents?.length
+                      ? response.documents
+                      : undefined,
+                  },
+                ],
+              },
+        );
       };
       const fail = (text: string) =>
         setState((current) => ({
           ...current,
-          entries: [...current.entries, { role: "error", text, at: nowIso() }],
+          entries: [
+            ...current.entries,
+            { role: "error", text, at: nowIso(), request_id: requestId },
+          ],
         }));
       try {
         const { data, error } =
           await supabase.functions.invoke<AssistantResponse>("nes-assistant", {
-            body: { ...body, messages: sent, request_id: requestId },
+            body: {
+              messages: sent,
+              confirm: body.confirm,
+              request_id: requestId,
+              conversation_id: body.conversationId,
+              history_length: body.messages.length,
+            },
           });
         if (error) throw error;
         apply(data ?? {});
-        void dropBackup(requestId);
       } catch (error) {
         if (error instanceof FunctionsHttpError) {
           fail(await errorText(error));
         } else {
           // Bağlantı koptu (çoğunlukla ekran kapandı): sunucu işi bitirip
-          // cevabı yedeğe yazar; oradan alınır.
+          // cevabı sohbete yazar; oradan alınır.
           setRecovering(true);
-          const backup = await waitForBackup(requestId);
+          const row = await waitForReply(
+            body.conversationId,
+            requestId,
+            Date.now() + REPLY_WAIT_MS,
+          );
           setRecovering(false);
-          if (backup && (backup.status ?? 200) < 400) {
-            apply(backup);
-          } else if (backup?.error) {
-            fail(backup.error);
+          if (row) {
+            setState((current) =>
+              current.id === body.conversationId ? row : current,
+            );
           } else {
             fail(
-              "Bağlantı koptu ve cevap alınamadı (ekran kapanmış ya da internet gitmiş olabilir). Aynı isteği tekrar gönderin.",
+              "Cevap alınamadı (internet gitmiş olabilir). Aynı isteği tekrar gönderin.",
             );
           }
         }
       } finally {
+        writeInflight(null);
         void wakeLock?.release().catch(() => undefined);
         setBusy(false);
       }
@@ -498,11 +577,11 @@ export function AssistantPanel() {
           : trimmed,
       },
     ];
-    setState((current) => ({
-      id: current.id ?? crypto.randomUUID(),
+    const next: ConversationState = {
+      id: state.id ?? crypto.randomUUID(),
       messages,
       entries: [
-        ...current.entries.map((entry) =>
+        ...state.entries.map((entry) =>
           entry.pending && !entry.resolved
             ? { ...entry, resolved: "declined" as const }
             : entry,
@@ -514,20 +593,35 @@ export function AssistantPanel() {
           photos: photoPaths.length ? photoPaths : undefined,
         },
       ],
-    }));
-    void call({ messages });
+    };
+    setState(next);
+    setBusy(true);
+    void persistConversation(next)
+      .catch(() => undefined)
+      .then(() => call({ messages, conversationId: next.id as string }));
   }
 
   function resolve(index: number, approved: boolean) {
-    setState((current) => ({
-      ...current,
-      entries: current.entries.map((entry, i) =>
+    if (!state.id) return;
+    const next: ConversationState = {
+      ...state,
+      entries: state.entries.map((entry, i) =>
         i === index
           ? { ...entry, resolved: approved ? "approved" : "declined" }
           : entry,
       ),
-    }));
-    void call({ messages: state.messages, confirm: { approved } });
+    };
+    setState(next);
+    setBusy(true);
+    void persistConversation(next)
+      .catch(() => undefined)
+      .then(() =>
+        call({
+          messages: state.messages,
+          confirm: { approved },
+          conversationId: next.id as string,
+        }),
+      );
   }
 
   function toggleListening() {
@@ -811,8 +905,8 @@ export function AssistantPanel() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <LoaderCircle className="h-4 w-4 animate-spin" />{" "}
                   {recovering
-                    ? "Bağlantı koptu, cevabı alıyorum..."
-                    : "Çalışıyorum... (ekranı kapatmayın)"}
+                    ? "Cevap hazırlanıyor, gelince buraya eklenecek..."
+                    : "Çalışıyorum... Ekranı kapatsanız da devam ederim."}
                 </div>
               ) : null}
               <div ref={bottomRef} />

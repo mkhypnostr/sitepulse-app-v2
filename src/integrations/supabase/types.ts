@@ -105,27 +105,6 @@ export type Database = {
         };
         Relationships: [];
       };
-      assistant_responses: {
-        Row: {
-          body: Json;
-          created_at: string;
-          request_id: string;
-          user_id: string;
-        };
-        Insert: {
-          body: Json;
-          created_at?: string;
-          request_id: string;
-          user_id?: string;
-        };
-        Update: {
-          body?: Json;
-          created_at?: string;
-          request_id?: string;
-          user_id?: string;
-        };
-        Relationships: [];
-      };
       automation_rules: {
         Row: {
           assign_mode: string;

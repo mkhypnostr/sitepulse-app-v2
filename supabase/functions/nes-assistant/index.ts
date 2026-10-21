@@ -1025,8 +1025,11 @@ async function expandPhotos(
 type Body = {
   messages?: Anthropic.Beta.BetaMessageParam[];
   confirm?: { approved: boolean };
-  /** İstemcinin ürettiği istek kimliği: cevap yedeği için. */
+  /** İstemcinin ürettiği istek kimliği; sohbete yazılan cevabı eşler. */
   request_id?: string;
+  /** Cevabın yazılacağı sohbet ve istemcideki tam geçmiş uzunluğu. */
+  conversation_id?: string;
+  history_length?: number;
 };
 
 Deno.serve(async (req: Request) => {
@@ -1075,6 +1078,7 @@ Deno.serve(async (req: Request) => {
   if (messages.length === 0 || messages.length > 80) {
     return json({ error: "Mesaj geçmişi geçersiz." }, 400);
   }
+  const requestLength = messages.length;
 
   const { data: profile } = await db
     .from("profiles")
@@ -1089,22 +1093,78 @@ Deno.serve(async (req: Request) => {
     authHeader: req.headers.get("Authorization") ?? "",
   };
   const links: { label: string; href: string }[] = [];
-  // Telefon ekranı kapanınca bağlantı kopar ama sunucu işi bitirir; cevap
-  // istek kimliğiyle saklanır, uygulama ekran açılınca buradan alır.
+  // Mesaj bir kez gönderildikten sonra iş sunucuda biter: ekran kapansa,
+  // uygulama kapansa da cevap doğrudan sohbet geçmişine yazılır; uygulama
+  // açılınca oradan gelir. İstemci, isteği göndermeden önce sohbeti kaydeder;
+  // geçmiş uzunluğu tutmazsa (başka cihazdan değişmiş) yazılmaz.
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const requestId =
-    typeof body.request_id === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      body.request_id,
-    )
+    typeof body.request_id === "string" && UUID_RE.test(body.request_id)
       ? body.request_id
       : null;
-  async function respond(payload: Record<string, unknown>, status = 200) {
-    if (requestId) {
+  const conversationId =
+    typeof body.conversation_id === "string" &&
+    UUID_RE.test(body.conversation_id)
+      ? body.conversation_id
+      : null;
+  const historyLength = Number(body.history_length);
+  async function saveToConversation(
+    payload: Record<string, unknown>,
+    status: number,
+  ) {
+    if (!requestId || !conversationId) return;
+    try {
+      const { data: row } = await db
+        .from("assistant_conversations")
+        .select("entries, messages")
+        .eq("id", conversationId)
+        .maybeSingle();
+      if (!row) return;
+      const entries = (row.entries ?? []) as Record<string, unknown>[];
+      const stored = (row.messages ?? []) as unknown[];
+      if (entries.some((e) => e.request_id === requestId)) return;
+      if (stored.length !== historyLength) return;
+      const at = new Date().toISOString();
+      const ok = status < 400;
+      const added =
+        ok && Array.isArray(payload.messages)
+          ? (payload.messages as unknown[]).slice(requestLength)
+          : [];
+      const pending = payload.pending as unknown[] | undefined;
+      const docs = payload.documents as unknown[] | undefined;
+      const entry = ok
+        ? {
+            role: "assistant",
+            at,
+            text:
+              (payload.reply as string | undefined) ||
+              (pending?.length ? "Şu işlemi yapmamı onaylıyor musunuz?" : ""),
+            links: payload.links,
+            pending,
+            documents: docs?.length ? docs : undefined,
+            request_id: requestId,
+          }
+        : {
+            role: "error",
+            at,
+            text: String(payload.error ?? "Asistan yanıt veremedi."),
+            request_id: requestId,
+          };
       const { error } = await db
-        .from("assistant_responses")
-        .insert({ request_id: requestId, body: { ...payload, status } });
-      if (error) console.error("Cevap yedeği yazılamadı", error.message);
+        .from("assistant_conversations")
+        .update({
+          entries: [...entries, entry],
+          messages: [...stored, ...added],
+        })
+        .eq("id", conversationId);
+      if (error) console.error("Sohbete yazılamadı", error.message);
+    } catch (error) {
+      console.error("Sohbete yazılamadı", error);
     }
+  }
+  async function respond(payload: Record<string, unknown>, status = 200) {
+    await saveToConversation(payload, status);
     return json(payload, status);
   }
   const documents: Record<string, unknown>[] = [];
