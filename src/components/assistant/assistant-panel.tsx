@@ -10,6 +10,7 @@ import {
   Check,
   ChevronLeft,
   ExternalLink,
+  FileDown,
   History,
   ImagePlus,
   LoaderCircle,
@@ -17,6 +18,7 @@ import {
   MicOff,
   RotateCcw,
   Send,
+  Share2,
   Sparkles,
   Trash2,
   X,
@@ -34,6 +36,17 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { compressImage } from "@/lib/image-compress";
+import { companyFromProfile } from "@/lib/company";
+import { htmlToPdf } from "@/lib/html-to-pdf";
+import { shareFile } from "@/lib/send-channels";
+import {
+  billTotals,
+  customerBillHtml,
+  internalRecordHtml,
+  tl,
+  type BillHeader,
+  type BillLine,
+} from "@/lib/progress-bill";
 
 const PHOTO_BUCKET = "assistant-uploads";
 /** Fotoğraf mesaja "[[foto:YOL]]" işaretiyle girer; sunucu modele
@@ -43,6 +56,12 @@ const photoMarker = (path: string) => `[[foto:${path}]]`;
 type ApiMessage = { role: "user" | "assistant"; content: unknown };
 type AssistantLink = { label: string; href: string };
 type Pending = { name: string; summary: string };
+/** Asistanın hazırladığı belge; PDF tarayıcıda üretilir. */
+type AssistantDocument = BillHeader & {
+  kind: "hakedis";
+  photo_path: string | null;
+  lines: BillLine[];
+};
 type Entry = {
   role: "user" | "assistant" | "error";
   text: string;
@@ -53,12 +72,14 @@ type Entry = {
   resolved?: "approved" | "declined";
   /** Kullanıcının eklediği fotoğrafların depo yolları. */
   photos?: string[];
+  documents?: AssistantDocument[];
 };
 type AssistantResponse = {
   messages?: ApiMessage[];
   reply?: string;
   links?: AssistantLink[];
   pending?: Pending[];
+  documents?: AssistantDocument[];
   error?: string;
   code?: string;
 };
@@ -337,6 +358,9 @@ export function AssistantPanel() {
                   : ""),
               links: response.links,
               pending: response.pending,
+              documents: response.documents?.length
+                ? response.documents
+                : undefined,
             },
           ],
         }));
@@ -664,6 +688,9 @@ export function AssistantPanel() {
                       {timeTr(entry.at)}
                     </p>
                   ) : null}
+                  {entry.documents?.map((doc, i) => (
+                    <DocumentCard key={i} doc={doc} />
+                  ))}
                   {entry.links?.length ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {entry.links.map((link, i) =>
@@ -819,6 +846,157 @@ export function AssistantPanel() {
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function downloadFile(file: File) {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = file.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+const safeName = (v: string) =>
+  v
+    .replace(/[^wçğıöşüÇĞİÖŞÜ]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 40);
+
+/** Hakediş belgesi: özet + iki PDF (müşteri hakedişi, taşeron iç kaydı). */
+function DocumentCard({ doc }: { doc: AssistantDocument }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const t = billTotals(doc.lines, doc.margin_pct, doc.vat_rate);
+  const diff =
+    doc.written_total != null
+      ? Math.round((t.cost - doc.written_total) * 100) / 100
+      : null;
+  const flagged = doc.lines.filter((l) => l.note).length;
+
+  async function make(kind: "customer" | "internal") {
+    const [profile, bank] = await Promise.all([
+      supabase.from("company_profile").select("*").eq("id", 1).maybeSingle(),
+      supabase
+        .from("cash_accounts")
+        .select("bank_name, iban")
+        .eq("show_on_invoice", true)
+        .eq("is_active", true)
+        .order("sort_order")
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    const company = companyFromProfile(profile.data ?? null, bank.data ?? null);
+    const origin = window.location.origin;
+    const date = doc.bill_date.replace(/-/g, "");
+    const base = `${date}_${safeName(doc.customer_name || doc.title)}`;
+    if (kind === "customer") {
+      return htmlToPdf(
+        customerBillHtml(doc, doc.lines, company, origin),
+        `${base}_Hakedis.pdf`,
+      );
+    }
+    let photo: string | null = null;
+    if (doc.photo_path) {
+      const { data } = await supabase.storage
+        .from(PHOTO_BUCKET)
+        .createSignedUrl(doc.photo_path, 600);
+      if (data?.signedUrl) {
+        const res = await fetch(data.signedUrl);
+        if (res.ok) photo = await blobToDataUrl(await res.blob());
+      }
+    }
+    return htmlToPdf(
+      internalRecordHtml(doc, doc.lines, company, origin, photo),
+      `${date}_${safeName(doc.subcontractor_name)}_TaseronKaydi.pdf`,
+    );
+  }
+
+  async function run(kind: "customer" | "internal", share: boolean) {
+    setBusy(`${kind}-${share}`);
+    try {
+      const file = await make(kind);
+      if (share) {
+        const ok = await shareFile(file, doc.title).catch(() => false);
+        if (!ok) downloadFile(file);
+      } else {
+        downloadFile(file);
+      }
+    } catch {
+      toast.error("PDF hazırlanamadı. Tekrar deneyin.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const icon = (k: string, Icon: typeof FileDown) =>
+    busy === k ? (
+      <LoaderCircle className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+    ) : (
+      <Icon className="mr-1.5 h-3.5 w-3.5" />
+    );
+
+  return (
+    <div className="mt-2 grid gap-2 rounded-xl border border-primary/30 bg-background p-2.5 text-[13px]">
+      <div>
+        <p className="font-bold">{doc.title}</p>
+        <p className="text-xs text-muted-foreground">
+          {doc.lines.length} kalem · taşeron {tl(t.cost)} · müşteriye{" "}
+          {tl(t.sell)} + KDV = <b className="text-foreground">{tl(t.grand)}</b>
+        </p>
+        {diff ? (
+          <p className="text-xs font-semibold text-destructive">
+            Listedeki toplamdan {tl(diff)} fark var
+          </p>
+        ) : doc.written_total != null ? (
+          <p className="text-xs font-semibold text-emerald-600">
+            Listedeki toplamla tutuyor
+          </p>
+        ) : null}
+        {flagged ? (
+          <p className="text-xs text-amber-600">
+            {flagged} satır kontrol edilmeli (taşeron kaydında sarı)
+          </p>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          disabled={!!busy}
+          onClick={() => void run("customer", false)}
+        >
+          {icon("customer-false", FileDown)} Müşteri hakedişi
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!!busy}
+          onClick={() => void run("customer", true)}
+        >
+          {icon("customer-true", Share2)} Paylaş
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={!!busy}
+          onClick={() => void run("internal", false)}
+        >
+          {icon("internal-false", FileDown)} Taşeron kaydı
+        </Button>
+      </div>
+    </div>
   );
 }
 
