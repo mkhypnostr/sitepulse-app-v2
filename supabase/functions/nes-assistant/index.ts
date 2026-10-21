@@ -632,6 +632,137 @@ const TOOLS: Record<string, ToolDef> = {
       };
     },
   },
+  hakedis_hazirla: {
+    write: true,
+    tool: {
+      name: "hakedis_hazirla",
+      description:
+        "Taşeronun (usta/alt yüklenici) malzeme-işçilik listesinden hakediş taslağı açar: kalemler taşeron (alış) tutarıyla kaydedilir, müşteri hakedişi her kaleme kâr oranı eklenerek hesaplanır. Hakediş sayfasında müşteri hakedişi PDF'i ve taşeron iç kaydı PDF'i (fotoğraflı) üretilir. Kayıtlı müşteri varsa önce musteri_ara ile kimliğini bul.",
+      input_schema: schema({
+        baslik: str("İşin kısa adı, ör. 'Yakup Avşar elektrik iç tesisatı'."),
+        taseron: str(
+          "Listeyi getiren taşeron/usta, ör. 'Özkan Elektrik (İlhami)'.",
+        ),
+        musteri_id: nullableStr("Kayıtlı müşterinin kimliği."),
+        musteri_adi: nullableStr("Belgede görünecek müşteri adı."),
+        kar_yuzde: nullableNum(
+          "Alışa eklenecek kâr yüzdesi; söylenmediyse 25.",
+        ),
+        kdv_yuzde: nullableNum("KDV yüzdesi; söylenmediyse 20."),
+        yazili_toplam: nullableNum(
+          "Listenin altında taşeronun yazdığı genel toplam (kontrol için).",
+        ),
+        foto_yolu: nullableStr(
+          "Kullanıcının eklediği fotoğrafın yolu (mesajda '(Ek fotoğraf, yol: ...)' olarak verilir).",
+        ),
+        not: nullableStr("İç not."),
+        kalemler: {
+          type: "array",
+          description:
+            "Listedeki satırlar, yazıldığı sırayla. Tutar o satırın taşeron toplam tutarıdır (birim fiyat değil).",
+          items: {
+            type: "object",
+            properties: {
+              miktar: { type: "number", description: "Miktar." },
+              birim: {
+                type: "string",
+                description: "m, adet, sorti, set, kg, gün…",
+              },
+              aciklama: {
+                type: "string",
+                description: "Kalem, ör. '3x2,5 mm² NYM kablo'.",
+              },
+              tutar: {
+                type: "number",
+                description: "Satırın taşeron tutarı (TL).",
+              },
+              okuma_notu: {
+                type: "string",
+                description:
+                  "Emin olunamayan rakam varsa kısa not, ör. 'Tutar 47.330 okundu, 47.730 da olabilir'. Eminsen gönderme.",
+              },
+            },
+            required: ["miktar", "birim", "aciklama", "tutar"],
+            additionalProperties: false,
+          },
+        },
+      }),
+    },
+    summary: async (i) => {
+      const lines = (i.kalemler as { tutar: number }[] | undefined) ?? [];
+      const cost = lines.reduce((a, l) => a + Number(l.tutar || 0), 0);
+      const kar = Number(i.kar_yuzde ?? 25);
+      const sell = cost * (1 + kar / 100);
+      const fmt = (v: number) =>
+        new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 }).format(v);
+      const yazili = i.yazili_toplam != null ? Number(i.yazili_toplam) : null;
+      const fark =
+        yazili != null && Math.abs(cost - yazili) > 0.5
+          ? ` · DİKKAT: satır toplamı listedeki toplamdan ${fmt(cost - yazili)} ₺ farklı`
+          : "";
+      return `Hakediş taslağı açılsın: ${i.baslik} · ${lines.length} kalem · taşeron toplamı ${fmt(cost)} ₺ → müşteriye %${fmt(kar)} kârla ${fmt(sell)} ₺ (KDV hariç)${fark}`;
+    },
+    run: async (i, ctx) => {
+      const lines =
+        (i.kalemler as {
+          miktar: number;
+          birim: string;
+          aciklama: string;
+          tutar: number;
+          okuma_notu?: string;
+        }[]) ?? [];
+      if (lines.length === 0) throw new Error("Kalem yok.");
+      let customerName = (i.musteri_adi as string | undefined) ?? null;
+      if (!customerName && i.musteri_id) {
+        customerName = await rowName(ctx, "customers", "name", i.musteri_id);
+      }
+      const bill = check(
+        await ctx.db
+          .from("progress_bills")
+          .insert({
+            title: String(i.baslik),
+            subcontractor_name: String(i.taseron),
+            customer_id: (i.musteri_id as string | undefined) ?? null,
+            customer_name: customerName,
+            margin_pct: Number(i.kar_yuzde ?? 25),
+            vat_rate: Number(i.kdv_yuzde ?? 20),
+            written_total:
+              i.yazili_toplam != null ? Number(i.yazili_toplam) : null,
+            photo_path: (i.foto_yolu as string | undefined) ?? null,
+            notes: (i.not as string | undefined) ?? null,
+          })
+          .select("id, bill_no")
+          .single(),
+      ) as { id: string; bill_no: string };
+      check(
+        await ctx.db.from("progress_bill_lines").insert(
+          lines.map((l, n) => ({
+            bill_id: bill.id,
+            position: n,
+            quantity: Number(l.miktar) > 0 ? Number(l.miktar) : 1,
+            unit: String(l.birim || "adet"),
+            description: String(l.aciklama),
+            cost_amount: Math.max(0, Number(l.tutar) || 0),
+            note: l.okuma_notu ? String(l.okuma_notu) : null,
+          })),
+        ),
+      );
+      const cost = lines.reduce((a, l) => a + Number(l.tutar || 0), 0);
+      return {
+        result: {
+          acildi: true,
+          hakedis_no: bill.bill_no,
+          taseron_toplami: cost,
+          yazili_toplam: i.yazili_toplam ?? null,
+          kar_yuzde: Number(i.kar_yuzde ?? 25),
+        },
+        link: {
+          label: `Hakedişi aç (${bill.bill_no})`,
+          href: `/hakedis?id=${bill.id}`,
+        },
+      };
+    },
+  },
   teklifi_gonder: {
     write: true,
     tool: {
@@ -841,7 +972,66 @@ Nasıl çalışırsın:
 - Kullanıcı bir işlemi reddederse yeniden deneme; ne değiştirmek istediğini sor.
 - Bir araç hata verirse hatayı sade dille anlat.
 - Kullanıcı bir belge, çizim, fatura, fotoğraf ya da eski bir teklifi görmek isterse drive_ara ile NES Drive'ında ara; bulduğun dosyaları kısa listele (ad, klasör, tarih). Açma düğmeleri ekranda otomatik çıkar. Bulamazsan farklı kelimelerle bir kez daha dene.
-- Fiyat, maliyet ve kâr bilgisini yalnız yöneticiye söyle.`;
+- Fiyat, maliyet ve kâr bilgisini yalnız yöneticiye söyle.
+- Kullanıcı fotoğraf eklerse önce fotoğrafı dikkatle incele. Taşeron/usta listesi, malzeme listesi ya da hakediş listesi ise ve kullanıcı hakediş istiyorsa:
+  - Satırları yazıldığı sırayla tek tek oku: miktar, birim, açıklama, satır tutarı. El yazısında 3 düz üstlü (Ʒ gibi), 7 çizgili ve kuyruklu yazılabilir; rakamı okurken birim fiyatın (tutar ÷ miktar) mantıklı olup olmadığına bak.
+  - Emin olmadığın rakamı okuma_notu ile işaretle; uydurma.
+  - Altta yazılı genel toplamı yazili_toplam olarak ver. Satırların toplamı tutmuyorsa farkı kullanıcıya açıkça söyle.
+  - Kâr oranı söylenmediyse %25 kullan. Fotoğrafın yolunu foto_yolu olarak geç.
+  - hakedis_hazirla'yı çağır. Sonra hakediş sayfasından müşteri hakedişi PDF'ini ve taşeron kaydı PDF'ini alabileceğini, göndermeden önce sarı işaretli satırları kontrol etmesini söyle.`;
+}
+
+// ---------------------------------------------------------------- fotoğraflar
+// İstemci fotoğrafı "assistant-uploads" deposuna yükler ve mesaja
+// "[[foto:YOL]]" işareti koyar (geçmiş küçük kalır). Modele gönderirken
+// işaret, kısa ömürlü imzalı adresle görsele çevrilir. Yalnız son mesajlardaki
+// fotoğraflar görsel olarak gider; eskiler yalnız yol notu olarak kalır.
+const PHOTO_RE = /^\[\[foto:([\w\-./]+)\]\]$/;
+const PHOTO_WINDOW = 6;
+
+async function expandPhotos(
+  messages: Anthropic.Beta.BetaMessageParam[],
+  ctx: Ctx,
+): Promise<Anthropic.Beta.BetaMessageParam[]> {
+  const cache = new Map<string, string | null>();
+  const signed = async (path: string) => {
+    if (!cache.has(path)) {
+      const { data } = await ctx.db.storage
+        .from("assistant-uploads")
+        .createSignedUrl(path, 900);
+      cache.set(path, data?.signedUrl ?? null);
+    }
+    return cache.get(path) ?? null;
+  };
+  const out: Anthropic.Beta.BetaMessageParam[] = [];
+  for (let m = 0; m < messages.length; m++) {
+    const msg = messages[m];
+    if (msg.role !== "user" || !Array.isArray(msg.content)) {
+      out.push(msg);
+      continue;
+    }
+    const recent = m >= messages.length - PHOTO_WINDOW;
+    const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+    for (const block of msg.content as Anthropic.Beta.BetaContentBlockParam[]) {
+      const match =
+        block.type === "text" ? PHOTO_RE.exec(block.text.trim()) : null;
+      if (!match) {
+        content.push(block);
+        continue;
+      }
+      const path = match[1];
+      const url = recent ? await signed(path) : null;
+      if (url) content.push({ type: "image", source: { type: "url", url } });
+      content.push({
+        type: "text",
+        text: url
+          ? `(Ek fotoğraf, yol: ${path})`
+          : `(Daha önce eklenmiş fotoğraf, yol: ${path})`,
+      });
+    }
+    out.push({ ...msg, content });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- sunucu
@@ -1022,7 +1212,7 @@ Deno.serve(async (req: Request) => {
         output_config: { effort: "medium" },
         system: [{ type: "text", text: systemPrompt(ctx) }],
         tools: ANTHROPIC_TOOLS,
-        messages,
+        messages: await expandPhotos(messages, ctx),
       });
       messages.push({ role: "assistant", content: response.content });
 

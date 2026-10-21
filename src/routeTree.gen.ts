@@ -19,6 +19,7 @@ import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedCustomersRouteImport } from './routes/_authenticated/customers'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedEnergyOfferRouteImport } from './routes/_authenticated/energy-offer'
+import { Route as AuthenticatedHakedisRouteImport } from './routes/_authenticated/hakedis'
 import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticated/invoices'
 import { Route as AuthenticatedKesifRouteImport } from './routes/_authenticated/kesif'
 import { Route as AuthenticatedMapRouteImport } from './routes/_authenticated/map'
@@ -102,6 +103,11 @@ const AuthenticatedEnergyOfferRoute =
     path: '/energy-offer',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedHakedisRoute = AuthenticatedHakedisRouteImport.update({
+  id: '/hakedis',
+  path: '/hakedis',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedInvoicesRoute = AuthenticatedInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
@@ -279,6 +285,7 @@ export interface FileRoutesByFullPath {
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/energy-offer': typeof AuthenticatedEnergyOfferRoute
+  '/hakedis': typeof AuthenticatedHakedisRoute
   '/invoices': typeof AuthenticatedInvoicesRoute
   '/kesif': typeof AuthenticatedKesifRoute
   '/map': typeof AuthenticatedMapRoute
@@ -321,6 +328,7 @@ export interface FileRoutesByTo {
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/energy-offer': typeof AuthenticatedEnergyOfferRoute
+  '/hakedis': typeof AuthenticatedHakedisRoute
   '/invoices': typeof AuthenticatedInvoicesRoute
   '/kesif': typeof AuthenticatedKesifRoute
   '/map': typeof AuthenticatedMapRoute
@@ -365,6 +373,7 @@ export interface FileRoutesById {
   '/_authenticated/customers': typeof AuthenticatedCustomersRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/energy-offer': typeof AuthenticatedEnergyOfferRoute
+  '/_authenticated/hakedis': typeof AuthenticatedHakedisRoute
   '/_authenticated/invoices': typeof AuthenticatedInvoicesRoute
   '/_authenticated/kesif': typeof AuthenticatedKesifRoute
   '/_authenticated/map': typeof AuthenticatedMapRoute
@@ -409,6 +418,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/dashboard'
     | '/energy-offer'
+    | '/hakedis'
     | '/invoices'
     | '/kesif'
     | '/map'
@@ -451,6 +461,7 @@ export interface FileRouteTypes {
     | '/customers'
     | '/dashboard'
     | '/energy-offer'
+    | '/hakedis'
     | '/invoices'
     | '/kesif'
     | '/map'
@@ -494,6 +505,7 @@ export interface FileRouteTypes {
     | '/_authenticated/customers'
     | '/_authenticated/dashboard'
     | '/_authenticated/energy-offer'
+    | '/_authenticated/hakedis'
     | '/_authenticated/invoices'
     | '/_authenticated/kesif'
     | '/_authenticated/map'
@@ -608,6 +620,13 @@ declare module '@tanstack/react-router' {
       path: '/energy-offer'
       fullPath: '/energy-offer'
       preLoaderRoute: typeof AuthenticatedEnergyOfferRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/hakedis': {
+      id: '/_authenticated/hakedis'
+      path: '/hakedis'
+      fullPath: '/hakedis'
+      preLoaderRoute: typeof AuthenticatedHakedisRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/invoices': {
@@ -851,6 +870,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCustomersRoute: typeof AuthenticatedCustomersRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEnergyOfferRoute: typeof AuthenticatedEnergyOfferRoute
+  AuthenticatedHakedisRoute: typeof AuthenticatedHakedisRoute
   AuthenticatedInvoicesRoute: typeof AuthenticatedInvoicesRoute
   AuthenticatedKesifRoute: typeof AuthenticatedKesifRoute
   AuthenticatedMapRoute: typeof AuthenticatedMapRoute
@@ -886,6 +906,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCustomersRoute: AuthenticatedCustomersRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEnergyOfferRoute: AuthenticatedEnergyOfferRoute,
+  AuthenticatedHakedisRoute: AuthenticatedHakedisRoute,
   AuthenticatedInvoicesRoute: AuthenticatedInvoicesRoute,
   AuthenticatedKesifRoute: AuthenticatedKesifRoute,
   AuthenticatedMapRoute: AuthenticatedMapRoute,

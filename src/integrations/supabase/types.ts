@@ -1723,6 +1723,132 @@ export type Database = {
           },
         ];
       };
+      progress_bill_lines: {
+        Row: {
+          bill_id: string;
+          cost_amount: number;
+          description: string;
+          id: string;
+          note: string | null;
+          position: number;
+          quantity: number;
+          unit: string;
+        };
+        Insert: {
+          bill_id: string;
+          cost_amount?: number;
+          description: string;
+          id?: string;
+          note?: string | null;
+          position?: number;
+          quantity?: number;
+          unit?: string;
+        };
+        Update: {
+          bill_id?: string;
+          cost_amount?: number;
+          description?: string;
+          id?: string;
+          note?: string | null;
+          position?: number;
+          quantity?: number;
+          unit?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "progress_bill_lines_bill_id_fkey";
+            columns: ["bill_id"];
+            isOneToOne: false;
+            referencedRelation: "progress_bills";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      progress_bills: {
+        Row: {
+          bill_date: string;
+          bill_no: string | null;
+          created_at: string;
+          created_by: string | null;
+          customer_id: string | null;
+          customer_name: string | null;
+          id: string;
+          margin_pct: number;
+          notes: string | null;
+          photo_path: string | null;
+          project_id: string | null;
+          status: string;
+          subcontractor_name: string;
+          supplier_id: string | null;
+          title: string;
+          updated_at: string;
+          vat_rate: number;
+          written_total: number | null;
+        };
+        Insert: {
+          bill_date?: string;
+          bill_no?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          customer_id?: string | null;
+          customer_name?: string | null;
+          id?: string;
+          margin_pct?: number;
+          notes?: string | null;
+          photo_path?: string | null;
+          project_id?: string | null;
+          status?: string;
+          subcontractor_name: string;
+          supplier_id?: string | null;
+          title: string;
+          updated_at?: string;
+          vat_rate?: number;
+          written_total?: number | null;
+        };
+        Update: {
+          bill_date?: string;
+          bill_no?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          customer_id?: string | null;
+          customer_name?: string | null;
+          id?: string;
+          margin_pct?: number;
+          notes?: string | null;
+          photo_path?: string | null;
+          project_id?: string | null;
+          status?: string;
+          subcontractor_name?: string;
+          supplier_id?: string | null;
+          title?: string;
+          updated_at?: string;
+          vat_rate?: number;
+          written_total?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "progress_bills_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "progress_bills_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "progress_bills_supplier_id_fkey";
+            columns: ["supplier_id"];
+            isOneToOne: false;
+            referencedRelation: "suppliers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       progress_updates: {
         Row: {
           contractor_id: string;
@@ -1844,7 +1970,8 @@ export type Database = {
           new_status: Database["public"]["Enums"]["project_task_status"];
           note?: string | null;
           old_status?:
-            Database["public"]["Enums"]["project_task_status"] | null;
+            | Database["public"]["Enums"]["project_task_status"]
+            | null;
           project_task_id: string;
         };
         Update: {
@@ -1854,7 +1981,8 @@ export type Database = {
           new_status?: Database["public"]["Enums"]["project_task_status"];
           note?: string | null;
           old_status?:
-            Database["public"]["Enums"]["project_task_status"] | null;
+            | Database["public"]["Enums"]["project_task_status"]
+            | null;
           project_task_id?: string;
         };
         Relationships: [
@@ -4262,9 +4390,15 @@ export type Database = {
       app_role: "admin" | "contractor" | "customer" | "technical_office";
       photo_type: "saha" | "montaj_sonrasi" | "malzeme" | "diger";
       project_progress_submission_status:
-        "pending" | "approved" | "revision_requested";
+        | "pending"
+        | "approved"
+        | "revision_requested";
       project_status:
-        "draft" | "active" | "on_hold" | "completed" | "cancelled";
+        | "draft"
+        | "active"
+        | "on_hold"
+        | "completed"
+        | "cancelled";
       project_task_status:
         | "not_started"
         | "in_progress"
@@ -4300,12 +4434,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -4327,12 +4461,13 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -4351,12 +4486,13 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -4375,12 +4511,13 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -4393,11 +4530,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
