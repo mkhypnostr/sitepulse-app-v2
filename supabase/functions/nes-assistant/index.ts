@@ -1025,6 +1025,8 @@ async function expandPhotos(
 type Body = {
   messages?: Anthropic.Beta.BetaMessageParam[];
   confirm?: { approved: boolean };
+  /** İstemcinin ürettiği istek kimliği: cevap yedeği için. */
+  request_id?: string;
 };
 
 Deno.serve(async (req: Request) => {
@@ -1087,6 +1089,24 @@ Deno.serve(async (req: Request) => {
     authHeader: req.headers.get("Authorization") ?? "",
   };
   const links: { label: string; href: string }[] = [];
+  // Telefon ekranı kapanınca bağlantı kopar ama sunucu işi bitirir; cevap
+  // istek kimliğiyle saklanır, uygulama ekran açılınca buradan alır.
+  const requestId =
+    typeof body.request_id === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      body.request_id,
+    )
+      ? body.request_id
+      : null;
+  async function respond(payload: Record<string, unknown>, status = 200) {
+    if (requestId) {
+      const { error } = await db
+        .from("assistant_responses")
+        .insert({ request_id: requestId, body: { ...payload, status } });
+      if (error) console.error("Cevap yedeği yazılamadı", error.message);
+    }
+    return json(payload, status);
+  }
   const documents: Record<string, unknown>[] = [];
 
   async function runTools(
@@ -1206,7 +1226,7 @@ Deno.serve(async (req: Request) => {
       messages.push({ role: "assistant", content: response.content });
 
       if (response.stop_reason === "refusal") {
-        return json({
+        return respond({
           messages,
           reply: "Bu isteğe yanıt veremiyorum.",
           links,
@@ -1220,7 +1240,7 @@ Deno.serve(async (req: Request) => {
           .map((b) => b.text)
           .join("\n")
           .trim();
-        return json({ messages, reply, links, documents });
+        return respond({ messages, reply, links, documents });
       }
 
       const uses = toolUses(response.content);
@@ -1242,24 +1262,24 @@ Deno.serve(async (req: Request) => {
           .map((b) => b.text)
           .join("\n")
           .trim();
-        return json({ messages, reply: text, pending, links, documents });
+        return respond({ messages, reply: text, pending, links, documents });
       }
       messages.push({ role: "user", content: await runTools(uses, null) });
     }
-    return json({
+    return respond({
       messages,
       reply: "İşlem çok uzun sürdü; isteği daha kısa adımlara bölün.",
       links,
     });
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
-      return json(
+      return respond(
         { error: "Anthropic API anahtarı geçersiz.", code: "bad_key" },
         503,
       );
     }
     if (error instanceof Anthropic.RateLimitError) {
-      return json(
+      return respond(
         { error: "Asistan şu an yoğun; biraz sonra tekrar deneyin." },
         429,
       );
@@ -1268,7 +1288,7 @@ Deno.serve(async (req: Request) => {
       console.error("Anthropic hatası", error.status, error.message);
       const detail = String(error.message ?? "").slice(0, 300);
       const lowCredit = /credit balance|billing/i.test(detail);
-      return json(
+      return respond(
         {
           error: lowCredit
             ? "Anthropic API kredisi yok veya yetersiz. platform.claude.com → Billing bölümünü (Max planının aylık API kredisi bağlandı mı) kontrol edin."
@@ -1279,6 +1299,6 @@ Deno.serve(async (req: Request) => {
       );
     }
     console.error(error);
-    return json({ error: "Asistan beklenmedik bir hata verdi." }, 500);
+    return respond({ error: "Asistan beklenmedik bir hata verdi." }, 500);
   }
 });

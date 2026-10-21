@@ -75,6 +75,8 @@ type Entry = {
   documents?: AssistantDocument[];
 };
 type AssistantResponse = {
+  /** Yedekten okunan cevapta HTTP durumu. */
+  status?: number;
   messages?: ApiMessage[];
   reply?: string;
   links?: AssistantLink[];
@@ -186,6 +188,53 @@ function writeCurrentId(id: string | null) {
   }
 }
 
+type WakeLockLike = { release: () => Promise<void> };
+
+/** Ekranı uyanık tut (destekleyen tarayıcılarda; iPhone Safari 16.4+). */
+async function keepScreenAwake(): Promise<WakeLockLike | null> {
+  try {
+    const nav = navigator as Navigator & {
+      wakeLock?: { request: (type: "screen") => Promise<WakeLockLike> };
+    };
+    return (await nav.wakeLock?.request("screen")) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function readBackup(requestId: string) {
+  const { data } = await supabase
+    .from("assistant_responses")
+    .select("body")
+    .eq("request_id", requestId)
+    .maybeSingle();
+  return (data?.body ?? null) as AssistantResponse | null;
+}
+
+async function dropBackup(requestId: string) {
+  await supabase
+    .from("assistant_responses")
+    .delete()
+    .eq("request_id", requestId);
+}
+
+/** Bağlantı koptuğunda sunucunun yedeğe yazdığı cevabı bekler (en çok
+ * 3 dk; ekran kapalıyken bekleme durur, açılınca sürer). */
+async function waitForBackup(requestId: string) {
+  const deadline = Date.now() + 180_000;
+  for (;;) {
+    const backup = await readBackup(requestId).catch(() => null);
+    if (backup) {
+      void dropBackup(requestId);
+      return backup;
+    }
+    if (Date.now() > deadline) return null;
+    await sleep(3000);
+  }
+}
+
 async function errorText(error: unknown) {
   if (error instanceof FunctionsHttpError) {
     try {
@@ -212,6 +261,7 @@ export function AssistantPanel() {
   const [listening, setListening] = useState(false);
   const [photos, setPhotos] = useState<{ path: string; preview: string }[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const speechSupported = Boolean(speechRecognitionCtor());
@@ -332,14 +382,12 @@ export function AssistantPanel() {
       confirm?: { approved: boolean };
     }) => {
       setBusy(true);
-      try {
-        const sent = trimForApi(body.messages);
-        const { data, error } =
-          await supabase.functions.invoke<AssistantResponse>("nes-assistant", {
-            body: { ...body, messages: sent },
-          });
-        if (error) throw error;
-        const response = data ?? {};
+      // Cevap beklerken telefon ekranı kapanmasın (kapanınca tarayıcı
+      // bağlantıyı keser).
+      const wakeLock = await keepScreenAwake();
+      const requestId = crypto.randomUUID();
+      const sent = trimForApi(body.messages);
+      const apply = (response: AssistantResponse) => {
         const added = response.messages
           ? response.messages.slice(sent.length)
           : [];
@@ -364,13 +412,41 @@ export function AssistantPanel() {
             },
           ],
         }));
-      } catch (error) {
-        const text = await errorText(error);
+      };
+      const fail = (text: string) =>
         setState((current) => ({
           ...current,
           entries: [...current.entries, { role: "error", text, at: nowIso() }],
         }));
+      try {
+        const { data, error } =
+          await supabase.functions.invoke<AssistantResponse>("nes-assistant", {
+            body: { ...body, messages: sent, request_id: requestId },
+          });
+        if (error) throw error;
+        apply(data ?? {});
+        void dropBackup(requestId);
+      } catch (error) {
+        if (error instanceof FunctionsHttpError) {
+          fail(await errorText(error));
+        } else {
+          // Bağlantı koptu (çoğunlukla ekran kapandı): sunucu işi bitirip
+          // cevabı yedeğe yazar; oradan alınır.
+          setRecovering(true);
+          const backup = await waitForBackup(requestId);
+          setRecovering(false);
+          if (backup && (backup.status ?? 200) < 400) {
+            apply(backup);
+          } else if (backup?.error) {
+            fail(backup.error);
+          } else {
+            fail(
+              "Bağlantı koptu ve cevap alınamadı (ekran kapanmış ya da internet gitmiş olabilir). Aynı isteği tekrar gönderin.",
+            );
+          }
+        }
       } finally {
+        void wakeLock?.release().catch(() => undefined);
         setBusy(false);
       }
     },
@@ -734,7 +810,9 @@ export function AssistantPanel() {
               {busy ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <LoaderCircle className="h-4 w-4 animate-spin" />{" "}
-                  Çalışıyorum...
+                  {recovering
+                    ? "Bağlantı koptu, cevabı alıyorum..."
+                    : "Çalışıyorum... (ekranı kapatmayın)"}
                 </div>
               ) : null}
               <div ref={bottomRef} />
