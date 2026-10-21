@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ExternalLink,
   History,
+  ImagePlus,
   LoaderCircle,
   Mic,
   MicOff,
@@ -32,6 +33,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { compressImage } from "@/lib/image-compress";
+
+const PHOTO_BUCKET = "assistant-uploads";
+/** Fotoğraf mesaja "[[foto:YOL]]" işaretiyle girer; sunucu modele
+ * gönderirken görsele çevirir (geçmiş küçük kalır). */
+const photoMarker = (path: string) => `[[foto:${path}]]`;
 
 type ApiMessage = { role: "user" | "assistant"; content: unknown };
 type AssistantLink = { label: string; href: string };
@@ -44,6 +51,8 @@ type Entry = {
   links?: AssistantLink[];
   pending?: Pending[];
   resolved?: "approved" | "declined";
+  /** Kullanıcının eklediği fotoğrafların depo yolları. */
+  photos?: string[];
 };
 type AssistantResponse = {
   messages?: ApiMessage[];
@@ -180,6 +189,8 @@ export function AssistantPanel() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
+  const [photos, setPhotos] = useState<{ path: string; preview: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const speechSupported = Boolean(speechRecognitionCtor());
@@ -342,14 +353,50 @@ export function AssistantPanel() {
     [],
   );
 
+  async function addPhoto(file: File) {
+    setUploading(true);
+    try {
+      // El yazısı okunabilsin diye büyük tutulur (~1,5 MB'a kadar).
+      const blob = await compressImage(file, 2400, 1_500_000);
+      const { data: auth } = await supabase.auth.getUser();
+      const path = `${auth.user?.id ?? "anon"}/${crypto.randomUUID()}.jpg`;
+      const { error } = await supabase.storage
+        .from(PHOTO_BUCKET)
+        .upload(path, blob, { contentType: "image/jpeg" });
+      if (error) throw error;
+      setPhotos((list) => [
+        ...list,
+        { path, preview: URL.createObjectURL(blob) },
+      ]);
+    } catch {
+      toast.error("Fotoğraf yüklenemedi. İnternet bağlantısını kontrol edin.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   function send(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || busy) return;
+    const photoPaths = photos.map((p) => p.path);
+    const trimmed =
+      text.trim() || (photoPaths.length ? "Bu fotoğrafı inceler misin?" : "");
+    if (!trimmed || busy || uploading) return;
     recognitionRef.current?.stop();
     setInput("");
+    setPhotos([]);
     const messages: ApiMessage[] = [
       ...state.messages,
-      { role: "user", content: trimmed },
+      {
+        role: "user",
+        content: photoPaths.length
+          ? [
+              ...photoPaths.map((p) => ({
+                type: "text",
+                text: photoMarker(p),
+              })),
+              { type: "text", text: trimmed },
+            ]
+          : trimmed,
+      },
     ];
     setState((current) => ({
       id: current.id ?? crypto.randomUUID(),
@@ -360,7 +407,12 @@ export function AssistantPanel() {
             ? { ...entry, resolved: "declined" as const }
             : entry,
         ),
-        { role: "user", text: trimmed, at: nowIso() },
+        {
+          role: "user",
+          text: trimmed,
+          at: nowIso(),
+          photos: photoPaths.length ? photoPaths : undefined,
+        },
       ],
     }));
     void call({ messages });
@@ -468,8 +520,8 @@ export function AssistantPanel() {
               </div>
             </div>
             <SheetDescription>
-              Yazın ya da mikrofona konuşun. Kayıt açmadan önce onayınızı
-              isterim.
+              Yazın, konuşun ya da fotoğraf ekleyin. Kayıt açmadan önce
+              onayınızı isterim.
             </SheetDescription>
           </SheetHeader>
 
@@ -534,6 +586,11 @@ export function AssistantPanel() {
                       {example}
                     </button>
                   ))}
+                  <p className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                    Hakediş için: aşağıdaki resim düğmesiyle taşeronun
+                    listesinin fotoğrafını ekleyin ve "%25 kârla Yakup Avşar'a
+                    hakediş hazırla" gibi yazın.
+                  </p>
                 </div>
               ) : null}
               {state.entries.map((entry, index) => (
@@ -547,6 +604,13 @@ export function AssistantPanel() {
                         : "mr-8 min-w-0 break-words rounded-2xl rounded-bl-md bg-muted px-3 py-2 text-sm [overflow-wrap:anywhere]"
                   }
                 >
+                  {entry.photos?.length ? (
+                    <div className="mb-1.5 flex flex-wrap gap-1.5">
+                      {entry.photos.map((p) => (
+                        <PhotoThumb key={p} path={p} />
+                      ))}
+                    </div>
+                  ) : null}
                   {entry.text ? (
                     entry.role === "assistant" ? (
                       <AssistantText text={entry.text} />
@@ -650,6 +714,35 @@ export function AssistantPanel() {
             </div>
           )}
 
+          {photos.length || uploading ? (
+            <div className="flex flex-wrap items-center gap-2 border-t px-3 pt-3">
+              {photos.map((p) => (
+                <div key={p.path} className="relative">
+                  <img
+                    src={p.preview}
+                    alt="Eklenen fotoğraf"
+                    className="h-14 w-14 rounded-lg border object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Fotoğrafı çıkar"
+                    className="absolute -top-1.5 -right-1.5 rounded-full bg-foreground p-0.5 text-background"
+                    onClick={() =>
+                      setPhotos((list) => list.filter((x) => x.path !== p.path))
+                    }
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {uploading ? (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />{" "}
+                  Yükleniyor...
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <form
             className="flex items-end gap-2 border-t p-3"
             onSubmit={(event) => {
@@ -672,6 +765,30 @@ export function AssistantPanel() {
               rows={2}
               className="min-h-[44px] flex-1 resize-none"
             />
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="relative h-11 w-11 shrink-0 overflow-hidden"
+              disabled={uploading || busy}
+              aria-label="Fotoğraf ekle"
+              title="Fotoğraf ekle (taşeron listesi, fatura, saha)"
+              asChild
+            >
+              <label>
+                <ImagePlus className="h-4 w-4" />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void addPhoto(file);
+                  }}
+                />
+              </label>
+            </Button>
             {speechSupported ? (
               <Button
                 type="button"
@@ -693,7 +810,7 @@ export function AssistantPanel() {
               type="submit"
               size="icon"
               className="h-11 w-11 shrink-0"
-              disabled={busy || !input.trim()}
+              disabled={busy || uploading || (!input.trim() && !photos.length)}
               aria-label="Gönder"
             >
               <Send className="h-4 w-4" />
@@ -702,6 +819,34 @@ export function AssistantPanel() {
         </SheetContent>
       </Sheet>
     </>
+  );
+}
+
+/** Sohbetteki fotoğrafın küçük önizlemesi (özel depodan imzalı adresle). */
+function PhotoThumb({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void supabase.storage
+      .from(PHOTO_BUCKET)
+      .createSignedUrl(path, 3600)
+      .then(({ data }) => {
+        if (alive) setUrl(data?.signedUrl ?? null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+  return url ? (
+    <a href={url} target="_blank" rel="noreferrer">
+      <img
+        src={url}
+        alt="Eklenen fotoğraf"
+        className="h-20 w-20 rounded-lg border border-white/30 object-cover"
+      />
+    </a>
+  ) : (
+    <div className="h-20 w-20 rounded-lg bg-white/20" />
   );
 }
 
