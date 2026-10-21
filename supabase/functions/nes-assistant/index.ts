@@ -52,6 +52,8 @@ type ToolOutput = {
   result: unknown;
   link?: { label: string; href: string };
   links?: { label: string; href: string }[];
+  /** Sohbette PDF düğmesi olarak çıkan belge (tarayıcı üretir). */
+  document?: Record<string, unknown>;
 };
 
 const str = (description: string) => ({ type: "string", description });
@@ -633,11 +635,13 @@ const TOOLS: Record<string, ToolDef> = {
     },
   },
   hakedis_hazirla: {
-    write: true,
+    // Kayıt açmaz: okunan listeden iki PDF hazırlanır, sohbette indirme
+    // düğmesi olarak çıkar (PDF'i tarayıcı üretir).
+    write: false,
     tool: {
       name: "hakedis_hazirla",
       description:
-        "Taşeronun (usta/alt yüklenici) malzeme-işçilik listesinden hakediş taslağı açar: kalemler taşeron (alış) tutarıyla kaydedilir, müşteri hakedişi her kaleme kâr oranı eklenerek hesaplanır. Hakediş sayfasında müşteri hakedişi PDF'i ve taşeron iç kaydı PDF'i (fotoğraflı) üretilir. Kayıtlı müşteri varsa önce musteri_ara ile kimliğini bul.",
+        "Taşeronun (usta/alt yüklenici) malzeme-işçilik listesinden iki PDF hazırlar ve sohbette indirme düğmesi olarak verir: (1) müşteriye giden hakediş (her kaleme kâr oranı eklenmiş; alış, kâr ve taşeron adı yok), (2) taşeron iç kaydı (alış tutarları, toplam kontrolü, kâr özeti, asıl fotoğraf). Kayıt açmaz. Düzeltme gelirse düzeltilmiş kalemlerle yeniden çağır. Kayıtlı müşteri varsa musteri_ara ile adını doğrula.",
       input_schema: schema({
         baslik: str("İşin kısa adı, ör. 'Yakup Avşar elektrik iç tesisatı'."),
         taseron: str(
@@ -688,20 +692,6 @@ const TOOLS: Record<string, ToolDef> = {
         },
       }),
     },
-    summary: async (i) => {
-      const lines = (i.kalemler as { tutar: number }[] | undefined) ?? [];
-      const cost = lines.reduce((a, l) => a + Number(l.tutar || 0), 0);
-      const kar = Number(i.kar_yuzde ?? 25);
-      const sell = cost * (1 + kar / 100);
-      const fmt = (v: number) =>
-        new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 2 }).format(v);
-      const yazili = i.yazili_toplam != null ? Number(i.yazili_toplam) : null;
-      const fark =
-        yazili != null && Math.abs(cost - yazili) > 0.5
-          ? ` · DİKKAT: satır toplamı listedeki toplamdan ${fmt(cost - yazili)} ₺ farklı`
-          : "";
-      return `Hakediş taslağı açılsın: ${i.baslik} · ${lines.length} kalem · taşeron toplamı ${fmt(cost)} ₺ → müşteriye %${fmt(kar)} kârla ${fmt(sell)} ₺ (KDV hariç)${fark}`;
-    },
     run: async (i, ctx) => {
       const lines =
         (i.kalemler as {
@@ -716,49 +706,45 @@ const TOOLS: Record<string, ToolDef> = {
       if (!customerName && i.musteri_id) {
         customerName = await rowName(ctx, "customers", "name", i.musteri_id);
       }
-      const bill = check(
-        await ctx.db
-          .from("progress_bills")
-          .insert({
-            title: String(i.baslik),
-            subcontractor_name: String(i.taseron),
-            customer_id: (i.musteri_id as string | undefined) ?? null,
-            customer_name: customerName,
-            margin_pct: Number(i.kar_yuzde ?? 25),
-            vat_rate: Number(i.kdv_yuzde ?? 20),
-            written_total:
-              i.yazili_toplam != null ? Number(i.yazili_toplam) : null,
-            photo_path: (i.foto_yolu as string | undefined) ?? null,
-            notes: (i.not as string | undefined) ?? null,
-          })
-          .select("id, bill_no")
-          .single(),
-      ) as { id: string; bill_no: string };
-      check(
-        await ctx.db.from("progress_bill_lines").insert(
-          lines.map((l, n) => ({
-            bill_id: bill.id,
-            position: n,
+      const cost = lines.reduce((a, l) => a + Number(l.tutar || 0), 0);
+      const kar = Number(i.kar_yuzde ?? 25);
+      const yazili = i.yazili_toplam != null ? Number(i.yazili_toplam) : null;
+      const now = new Date();
+      const p = (n: number) => String(n).padStart(2, "0");
+      const tr = new Date(now.getTime() + 3 * 3600_000); // Türkiye saati
+      const no = `NES-HKD-${String(tr.getUTCFullYear()).slice(2)}${p(tr.getUTCMonth() + 1)}${p(tr.getUTCDate())}-${p(tr.getUTCHours())}${p(tr.getUTCMinutes())}`;
+      return {
+        result: {
+          hazir: true,
+          hakedis_no: no,
+          kalem_sayisi: lines.length,
+          taseron_toplami: cost,
+          yazili_toplam: yazili,
+          fark: yazili != null ? Math.round((cost - yazili) * 100) / 100 : null,
+          musteri_tutari_kdv_haric:
+            Math.round(cost * (1 + kar / 100) * 100) / 100,
+          kar_yuzde: kar,
+        },
+        document: {
+          kind: "hakedis",
+          bill_no: no,
+          title: String(i.baslik),
+          customer_name: customerName,
+          subcontractor_name: String(i.taseron),
+          margin_pct: kar,
+          vat_rate: Number(i.kdv_yuzde ?? 20),
+          written_total: yazili,
+          bill_date: tr.toISOString().slice(0, 10),
+          notes: (i.not as string | undefined) ?? null,
+          photo_path: (i.foto_yolu as string | undefined) ?? null,
+          lines: lines.map((l, n) => ({
+            id: String(n),
             quantity: Number(l.miktar) > 0 ? Number(l.miktar) : 1,
             unit: String(l.birim || "adet"),
             description: String(l.aciklama),
             cost_amount: Math.max(0, Number(l.tutar) || 0),
             note: l.okuma_notu ? String(l.okuma_notu) : null,
           })),
-        ),
-      );
-      const cost = lines.reduce((a, l) => a + Number(l.tutar || 0), 0);
-      return {
-        result: {
-          acildi: true,
-          hakedis_no: bill.bill_no,
-          taseron_toplami: cost,
-          yazili_toplam: i.yazili_toplam ?? null,
-          kar_yuzde: Number(i.kar_yuzde ?? 25),
-        },
-        link: {
-          label: `Hakedişi aç (${bill.bill_no})`,
-          href: `/hakedis?id=${bill.id}`,
         },
       };
     },
@@ -978,7 +964,8 @@ Nasıl çalışırsın:
   - Emin olmadığın rakamı okuma_notu ile işaretle; uydurma.
   - Altta yazılı genel toplamı yazili_toplam olarak ver. Satırların toplamı tutmuyorsa farkı kullanıcıya açıkça söyle.
   - Kâr oranı söylenmediyse %25 kullan. Fotoğrafın yolunu foto_yolu olarak geç.
-  - hakedis_hazirla'yı çağır. Sonra hakediş sayfasından müşteri hakedişi PDF'ini ve taşeron kaydı PDF'ini alabileceğini, göndermeden önce sarı işaretli satırları kontrol etmesini söyle.`;
+  - hakedis_hazirla'yı çağır. PDF düğmeleri (müşteri hakedişi, taşeron kaydı) sohbette çıkar. Yanıtında kısa özet ver: kalem sayısı, taşeron toplamı, müşteri tutarı (KDV hariç ve dahil), toplam tutuyor mu; emin olmadığın satırları tek tek yaz ve göndermeden önce kontrol etmesini söyle.
+  - Kullanıcı bir rakamı düzeltirse ("1. satır 47730" gibi) son listeyi düzeltip hakedis_hazirla'yı aynı fotoğraf yoluyla yeniden çağır; düzeltilen satırın okuma notunu kaldır.`;
 }
 
 // ---------------------------------------------------------------- fotoğraflar
@@ -1100,6 +1087,7 @@ Deno.serve(async (req: Request) => {
     authHeader: req.headers.get("Authorization") ?? "",
   };
   const links: { label: string; href: string }[] = [];
+  const documents: Record<string, unknown>[] = [];
 
   async function runTools(
     blocks: Anthropic.Beta.BetaToolUseBlock[],
@@ -1130,6 +1118,7 @@ Deno.serve(async (req: Request) => {
         const out = await def.run(cleanInput(block.input), ctx);
         if (out.link) links.push(out.link);
         if (out.links) links.push(...out.links);
+        if (out.document) documents.push(out.document);
         results.push({
           type: "tool_result",
           tool_use_id: block.id,
@@ -1217,7 +1206,12 @@ Deno.serve(async (req: Request) => {
       messages.push({ role: "assistant", content: response.content });
 
       if (response.stop_reason === "refusal") {
-        return json({ messages, reply: "Bu isteğe yanıt veremiyorum.", links });
+        return json({
+          messages,
+          reply: "Bu isteğe yanıt veremiyorum.",
+          links,
+          documents,
+        });
       }
       if (response.stop_reason === "pause_turn") continue;
       if (response.stop_reason !== "tool_use") {
@@ -1226,7 +1220,7 @@ Deno.serve(async (req: Request) => {
           .map((b) => b.text)
           .join("\n")
           .trim();
-        return json({ messages, reply, links });
+        return json({ messages, reply, links, documents });
       }
 
       const uses = toolUses(response.content);
@@ -1248,7 +1242,7 @@ Deno.serve(async (req: Request) => {
           .map((b) => b.text)
           .join("\n")
           .trim();
-        return json({ messages, reply: text, pending, links });
+        return json({ messages, reply: text, pending, links, documents });
       }
       messages.push({ role: "user", content: await runTools(uses, null) });
     }
