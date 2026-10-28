@@ -8,3 +8,8 @@ verify_jwt = false
 # Yalnız veritabanından paylaşılan anahtarla çağrılır (bkz. send-push/index.ts).
 [functions.send-push]
 verify_jwt = false
+
+# Giriş ekranındaki "Şifremi unuttum" — oturum açılmadan çağrılır; yanıt her
+# durumda aynıdır ve istek sayısı fonksiyon içinde sınırlanır.
+[functions.nes-password-recovery]
+verify_jwt = false

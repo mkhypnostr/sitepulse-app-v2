@@ -55,6 +55,10 @@ function IndexComponent() {
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
   const { user, loading } = useAuth();
   const { redirect } = Route.useSearch();
 
@@ -146,6 +150,31 @@ function IndexComponent() {
       window.location.assign(safeRedirect(redirect));
     }
   };
+
+  async function handleForgot(event: React.FormEvent) {
+    event.preventDefault();
+    const value = forgotIdentifier.trim();
+    if (!value) return;
+    setForgotBusy(true);
+    try {
+      const { error } = await supabase.functions.invoke(
+        "nes-password-recovery",
+        { body: { identifier: value } },
+      );
+      if (error) throw error;
+      setForgotSent(true);
+    } catch {
+      toast.error("İstek gönderilemedi. Lütfen biraz sonra tekrar deneyin.");
+    } finally {
+      setForgotBusy(false);
+    }
+  }
+
+  function openForgot() {
+    setForgotIdentifier(identifier);
+    setForgotSent(false);
+    setForgotOpen(true);
+  }
 
   if (loading) {
     return (
@@ -262,6 +291,15 @@ function IndexComponent() {
                     </button>
                   </div>
                 </label>
+                <div className="-mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={openForgot}
+                    className="text-sm font-semibold text-highlight hover:underline"
+                  >
+                    Şifremi unuttum
+                  </button>
+                </div>
                 <Button
                   type="submit"
                   className="mt-2 h-12 w-full text-base font-bold"
@@ -301,6 +339,57 @@ function IndexComponent() {
           </Card>
         </section>
       </div>
+
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Şifremi unuttum</DialogTitle>
+            <DialogDescription>
+              Kullanıcı adınızı veya e-posta adresinizi yazın. Hesabınızın
+              e-posta adresine yeni şifre belirleme bağlantısı gönderilir.
+            </DialogDescription>
+          </DialogHeader>
+          {forgotSent ? (
+            <div className="space-y-4">
+              <p className="flex items-start gap-2 text-sm leading-6 text-muted-foreground">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-highlight" />
+                Bu bilgilerle kayıtlı bir hesap varsa, e-posta adresine şifre
+                yenileme bağlantısı gönderildi. Bağlantı 1 saat geçerlidir.
+                E-postayı göremiyorsanız gereksiz (spam) klasörüne bakın.
+              </p>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Taşeron hesaplarının şifresi e-postayla yenilenmez; NES Enerji
+                yetkilinizden yeni geçici şifre isteyin.
+              </p>
+              <Button
+                className="h-11 w-full"
+                onClick={() => setForgotOpen(false)}
+              >
+                Tamam
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgot} className="space-y-4">
+              <Input
+                type="text"
+                value={forgotIdentifier}
+                onChange={(e) => setForgotIdentifier(e.target.value)}
+                required
+                autoComplete="username"
+                placeholder="ornek.kullanici veya ornek@firma.com"
+                className="h-12 bg-input"
+              />
+              <Button
+                type="submit"
+                className="h-11 w-full font-bold"
+                disabled={forgotBusy}
+              >
+                {forgotBusy ? "Gönderiliyor..." : "Yenileme bağlantısı gönder"}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={installInstructionsOpen}

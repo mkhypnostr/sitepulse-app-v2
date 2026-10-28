@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as SifreYenileRouteImport } from './routes/sifre-yenile'
 import { Route as AuthenticatedAccountingRouteImport } from './routes/_authenticated/accounting'
 import { Route as AuthenticatedApprovalsRouteImport } from './routes/_authenticated/approvals'
 import { Route as AuthenticatedAutomationsRouteImport } from './routes/_authenticated/automations'
@@ -63,6 +64,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SifreYenileRoute = SifreYenileRouteImport.update({
+  id: '/sifre-yenile',
+  path: '/sifre-yenile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAccountingRoute = AuthenticatedAccountingRouteImport.update({
@@ -272,6 +278,7 @@ const AuthenticatedTeklifDosyasiOfferIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/sifre-yenile': typeof SifreYenileRoute
   '/accounting': typeof AuthenticatedAccountingRoute
   '/approvals': typeof AuthenticatedApprovalsRoute
   '/automations': typeof AuthenticatedAutomationsRoute
@@ -314,6 +321,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/sifre-yenile': typeof SifreYenileRoute
   '/accounting': typeof AuthenticatedAccountingRoute
   '/approvals': typeof AuthenticatedApprovalsRoute
   '/automations': typeof AuthenticatedAutomationsRoute
@@ -358,6 +366,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/auth': typeof AuthRoute
+  '/sifre-yenile': typeof SifreYenileRoute
   '/_authenticated/accounting': typeof AuthenticatedAccountingRoute
   '/_authenticated/approvals': typeof AuthenticatedApprovalsRoute
   '/_authenticated/automations': typeof AuthenticatedAutomationsRoute
@@ -402,6 +411,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/sifre-yenile'
     | '/accounting'
     | '/approvals'
     | '/automations'
@@ -444,6 +454,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/sifre-yenile'
     | '/accounting'
     | '/approvals'
     | '/automations'
@@ -487,6 +498,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/sifre-yenile'
     | '/_authenticated/accounting'
     | '/_authenticated/approvals'
     | '/_authenticated/automations'
@@ -531,6 +543,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AuthRoute: typeof AuthRoute
+  SifreYenileRoute: typeof SifreYenileRoute
   ApiEnerjipazariPricesRoute: typeof ApiEnerjipazariPricesRoute
   ApiPvgisRoute: typeof ApiPvgisRoute
   ApiTcmbRatesRoute: typeof ApiTcmbRatesRoute
@@ -559,6 +572,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sifre-yenile': {
+      id: '/sifre-yenile'
+      path: '/sifre-yenile'
+      fullPath: '/sifre-yenile'
+      preLoaderRoute: typeof SifreYenileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/accounting': {
@@ -924,6 +944,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AuthRoute: AuthRoute,
+  SifreYenileRoute: SifreYenileRoute,
   ApiEnerjipazariPricesRoute: ApiEnerjipazariPricesRoute,
   ApiPvgisRoute: ApiPvgisRoute,
   ApiTcmbRatesRoute: ApiTcmbRatesRoute,
