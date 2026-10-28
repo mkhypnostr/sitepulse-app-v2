@@ -1620,6 +1620,30 @@ export type Database = {
           },
         ];
       };
+      password_recovery_requests: {
+        Row: {
+          created_at: string;
+          id: string;
+          ip_hash: string;
+          sent: boolean;
+          user_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          ip_hash: string;
+          sent?: boolean;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          ip_hash?: string;
+          sent?: boolean;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       photos: {
         Row: {
           caption: string | null;
