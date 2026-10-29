@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FEATURES } from "@/lib/features";
 import {
   CloudDrizzle,
   CloudFog,
@@ -203,11 +204,13 @@ export function DashboardHero({
                     label="Batış"
                     value={hhmm(today.sunset)}
                   />
-                  <Stat
-                    icon={Zap}
-                    label="Güneş/m²"
-                    value={`${today.radiation.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} kWh`}
-                  />
+                  {FEATURES.ges ? (
+                    <Stat
+                      icon={Zap}
+                      label="Güneş/m²"
+                      value={`${today.radiation.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} kWh`}
+                    />
+                  ) : null}
                 </div>
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                   {note ? (

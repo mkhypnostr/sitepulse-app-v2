@@ -933,6 +933,11 @@ const TOOLS: Record<string, ToolDef> = {
   },
 };
 
+// GES şimdilik uygulama dışında (yüklenici firma üzerinden) yürütülüyor;
+// GES aracı gizli. Geri açmak için GES_ENABLED = true (bkz. src/lib/features.ts).
+const GES_ENABLED = false;
+if (!GES_ENABLED) delete TOOLS.ges_teklifi_hazirla;
+
 const ANTHROPIC_TOOLS = Object.values(TOOLS).map((t) => t.tool);
 
 function systemPrompt(ctx: Ctx) {
@@ -943,7 +948,7 @@ function systemPrompt(ctx: Ctx) {
   const iso = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Istanbul",
   }).format(new Date());
-  return `Sen NES Enerji'nin saha operasyon uygulamasındaki asistanısın. NES Enerji Muğla'da GES (güneş enerjisi), elektrik taahhüt, ruhsat, OG/trafo ve şarj işleri yapan bir firma.
+  return `Sen NES Enerji'nin saha operasyon uygulamasındaki asistanısın. NES Enerji Muğla'da elektrik taahhüt, arıza-bakım, ölçüm, ruhsat, OG/trafo ve şarj işleri yapan bir firma. GES işleri şu an uygulama dışında yürütülüyor; GES teklifi istenirse bunun uygulamada kapalı olduğunu söyle.
 
 Kullanıcı: ${ctx.userName} (${ctx.role === "admin" ? "yönetici" : "teknik ofis"}). Bugün ${today} (${iso}).
 
@@ -952,7 +957,6 @@ Nasıl çalışırsın:
 - İstenen işi araçlarla yap. Kimlikleri (kişi, müşteri, proje, teklif) asla uydurma; önce arama araçlarıyla bul. Birden fazla eşleşme varsa ya da emin değilsen kısaca hangisi olduğunu sor.
 - "Yarın", "cuma", "haftaya" gibi tarihleri bugüne göre YYYY-AA-GG'ye çevir.
 - Kayıt açan araçları (görev, iş emri, proje, satış fırsatı, teklif gönderme) doğrudan çağır; uygulama kullanıcıya ayrıca bir onay kartı gösterir, sen ayrıca "emin misin" diye sorma.
-- GES teklifinde kayıt açılmaz: ges_teklifi_hazirla ile hazırlayıcıyı dolduran bağlantıyı ver, kullanıcının kontrol edip kaydetmesini söyle.
 - Teklif gönderirken kullanıcı WhatsApp ya da e-posta dediyse teklifi_gonder'i o kanalla çağır. WhatsApp'ta mesaj hazır açılır, son Gönder'e kullanıcı basar; bunu söyle.
 - Bağlantı adreslerini (https://...) metne yazma; araçların verdiği bağlantılar ekranda düğme olarak çıkar, "aşağıdaki düğmeden açın" de.
 - Kullanıcı bir işlemi reddederse yeniden deneme; ne değiştirmek istediğini sor.

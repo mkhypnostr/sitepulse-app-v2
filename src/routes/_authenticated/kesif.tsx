@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FEATURES } from "@/lib/features";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -618,18 +619,20 @@ function SurveyEditor({
             <div>
               <Label className="mb-1 block">İş türü</Label>
               <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(workTypeLabels) as WorkType[]).map((w) => (
-                  <Button
-                    key={w}
-                    type="button"
-                    size="sm"
-                    variant={s.work_type === w ? "default" : "outline"}
-                    className="h-10"
-                    onClick={() => update({ work_type: w })}
-                  >
-                    {workTypeLabels[w]}
-                  </Button>
-                ))}
+                {(Object.keys(workTypeLabels) as WorkType[])
+                  .filter((w) => FEATURES.ges || w !== "ges")
+                  .map((w) => (
+                    <Button
+                      key={w}
+                      type="button"
+                      size="sm"
+                      variant={s.work_type === w ? "default" : "outline"}
+                      className="h-10"
+                      onClick={() => update({ work_type: w })}
+                    >
+                      {workTypeLabels[w]}
+                    </Button>
+                  ))}
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">

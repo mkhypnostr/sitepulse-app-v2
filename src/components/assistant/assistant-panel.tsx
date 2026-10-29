@@ -142,7 +142,7 @@ const emptyState = (): ConversationState => ({
 const EXAMPLES = [
   "Bugün geciken işler neler?",
   "Mehmetcan'a yarın için pano kontrol görevi aç",
-  "Akyaka'daki villa için 10 kWp on-grid GES teklifi hazırla",
+  "Gökova'daki fabrikanın arıza çağrısını iş emri olarak aç",
   "Datça'daki otel için satış fırsatı ekle, haftaya pazartesi ara",
 ];
 

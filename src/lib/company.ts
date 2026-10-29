@@ -25,7 +25,8 @@ export const NES_COMPANY: CompanyInfo = {
   brand: "NES Enerji",
   legalName:
     "NES TEKNİK ENERJİ MÜHENDİSLİK İNŞAAT SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
-  address: "ORHANİYE MAHALLESİ 12 NOLU SOKAK NUR APARTMANI NO:6 C",
+  address:
+    "MUSLİHİTTİN MAHALLESİ MEHMET POLATOĞLU CADDESİ DEMET APARTMANI NO:10 KAT:2 DAİRE:3",
   district: "Menteşe, MUĞLA – Türkiye",
   city: "MUĞLA",
   phone: "0 (554) 610 24 16",

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { FEATURES } from "@/lib/features";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -131,6 +132,7 @@ function PriceCatalogPage() {
     return catalog.filter(
       (item) =>
         (showInactive || item.is_active) &&
+        (FEATURES.ges || item.module !== "ges") &&
         (moduleFilter === "hepsi" || item.module === moduleFilter) &&
         (!q ||
           [item.code, item.name, item.brand, item.model, item.category]
@@ -211,7 +213,8 @@ function PriceCatalogPage() {
           );
           requests++;
           const body = (await response.json()) as
-            EnerjipazariPage | { error: string };
+            | EnerjipazariPage
+            | { error: string };
           if (!response.ok || "error" in body) {
             throw new Error(
               "error" in body ? body.error : `HTTP ${response.status}`,
@@ -336,178 +339,200 @@ function PriceCatalogPage() {
     <>
       <PageHeader
         title="Fiyat Kataloğu"
-        description="Tekliflerde kullanılan malzeme ve işçilik birim maliyetleri. GES ana ekipmanı Enerji Pazarı liste fiyatından güncellenir."
+        description={
+          FEATURES.ges
+            ? "Tekliflerde kullanılan malzeme ve işçilik birim maliyetleri. GES ana ekipmanı Enerji Pazarı liste fiyatından güncellenir."
+            : "Tekliflerde kullanılan malzeme ve işçilik birim maliyetleri."
+        }
       />
 
-      <section className="surface-panel mb-4 grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-center">
-        <div className="flex items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-500/15 text-amber-600">
-            <Store className="h-5 w-5" />
-          </span>
-          <div className="min-w-0">
-            <h2 className="font-black">Enerji Pazarı fiyat güncellemesi</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Panel, inverter ve batarya liste fiyatları{" "}
-              <a
-                href={ENERJIPAZARI_BASE}
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-primary hover:underline"
-              >
-                enerjipazari.com.tr
-              </a>{" "}
-              sitesinden okunur, KDV ayrılıp sitenin kendi kuruyla USD&apos;ye
-              çevrilir. {epCount} kalem bu kaynağa bağlı; son fiyat tarihi{" "}
-              <b>{dateTr(lastEpDate ?? null)}</b>. Site her istek arasında 30 sn
-              bekleme istediği için okuma 3–4 dakika sürer.
-            </p>
-            {syncing ? (
-              <div className="mt-3 grid gap-1.5">
-                <Progress value={Math.min(100, (progress.done / 4) * 100)} />
-                <p className="text-xs text-muted-foreground">
-                  {progress.label || "Hazırlanıyor..."}
+      {FEATURES.ges ? (
+        <>
+          <section className="surface-panel mb-4 grid gap-4 p-5 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-500/15 text-amber-600">
+                <Store className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="font-black">Enerji Pazarı fiyat güncellemesi</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Panel, inverter ve batarya liste fiyatları{" "}
+                  <a
+                    href={ENERJIPAZARI_BASE}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    enerjipazari.com.tr
+                  </a>{" "}
+                  sitesinden okunur, KDV ayrılıp sitenin kendi kuruyla
+                  USD&apos;ye çevrilir. {epCount} kalem bu kaynağa bağlı; son
+                  fiyat tarihi <b>{dateTr(lastEpDate ?? null)}</b>. Site her
+                  istek arasında 30 sn bekleme istediği için okuma 3–4 dakika
+                  sürer.
                 </p>
+                {syncing ? (
+                  <div className="mt-3 grid gap-1.5">
+                    <Progress
+                      value={Math.min(100, (progress.done / 4) * 100)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {progress.label || "Hazırlanıyor..."}
+                    </p>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {syncing ? (
-            <Button
-              variant="outline"
-              className="h-11"
-              onClick={() => abortRef.current?.abort()}
-            >
-              <CircleX className="mr-2 h-4 w-4" /> Durdur
-            </Button>
-          ) : null}
-          <Button
-            className="h-11 font-bold"
-            onClick={() => void pullPrices()}
-            disabled={syncing}
-          >
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`}
-            />
-            {syncing ? "Okunuyor..." : "Güncel fiyatları çek"}
-          </Button>
-        </div>
-      </section>
-
-      {siteProducts ? (
-        <section className="surface-panel mb-4 overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
-            <div>
-              <h2 className="font-black">Fiyat farkları</h2>
-              <p className="text-sm text-muted-foreground">
-                Sitede {siteProducts.length} ürün okundu, {changes.length}{" "}
-                katalog kalemi eşleşti
-                {unmatchedEp.length > 0
-                  ? `, ${unmatchedEp.length} kalem sitede bulunamadı (fiyatı aynen kalır)`
-                  : ""}
-                . İşaretli olanlar kaydedilir.
-              </p>
             </div>
-            <Button
-              className="h-11 font-bold"
-              disabled={selectedRows.length === 0 || applyChanges.isPending}
-              onClick={() => applyChanges.mutate(selectedRows)}
-            >
-              <Check className="mr-2 h-4 w-4" />
-              {applyChanges.isPending
-                ? "Kaydediliyor..."
-                : `Seçilen ${selectedRows.length} fiyatı kaydet`}
-            </Button>
-          </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10" />
-                  <TableHead>Katalog kalemi</TableHead>
-                  <TableHead>Sitedeki ürün</TableHead>
-                  <TableHead className="text-right">Site (KDV dahil)</TableHead>
-                  <TableHead className="text-right">Eski maliyet</TableHead>
-                  <TableHead className="text-right">Yeni maliyet</TableHead>
-                  <TableHead className="text-right">Değişim</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {changes.map((change) => {
-                  const up = change.changePct > 0.005;
-                  const down = change.changePct < -0.005;
-                  return (
-                    <TableRow key={change.item.id}>
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-primary"
-                          aria-label={`${change.item.name} fiyatını güncelle`}
-                          checked={selected.has(change.item.id)}
-                          onChange={(e) =>
-                            setSelected((prev) => {
-                              const next = new Set(prev);
-                              if (e.target.checked) next.add(change.item.id);
-                              else next.delete(change.item.id);
-                              return next;
-                            })
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-semibold">{change.item.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {change.item.code}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <a
-                          href={`${ENERJIPAZARI_BASE}/urun/${change.product.slug}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-sm hover:underline"
-                        >
-                          {change.product.name}
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                        {!change.exact ? (
-                          <Badge variant="outline" className="ml-2">
-                            tahmini eşleşme
-                          </Badge>
-                        ) : null}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(change.product.priceTry, "TRY")}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatMoney(Number(change.item.cost_amount), "USD")}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">
-                        {formatMoney(change.newCost, "USD")}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right font-semibold tabular-nums ${up ? "text-destructive" : down ? "text-emerald-600" : "text-muted-foreground"}`}
-                      >
-                        <span className="inline-flex items-center gap-0.5">
-                          {up ? (
-                            <ArrowUpRight className="h-3.5 w-3.5" />
-                          ) : down ? (
-                            <ArrowDownRight className="h-3.5 w-3.5" />
-                          ) : null}
-                          {(change.changePct * 100).toLocaleString("tr-TR", {
-                            maximumFractionDigits: 1,
-                            signDisplay: "exceptZero",
-                          })}
-                          %
-                        </span>
-                      </TableCell>
+            <div className="flex flex-wrap gap-2">
+              {syncing ? (
+                <Button
+                  variant="outline"
+                  className="h-11"
+                  onClick={() => abortRef.current?.abort()}
+                >
+                  <CircleX className="mr-2 h-4 w-4" /> Durdur
+                </Button>
+              ) : null}
+              <Button
+                className="h-11 font-bold"
+                onClick={() => void pullPrices()}
+                disabled={syncing}
+              >
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                />
+                {syncing ? "Okunuyor..." : "Güncel fiyatları çek"}
+              </Button>
+            </div>
+          </section>
+
+          {siteProducts ? (
+            <section className="surface-panel mb-4 overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b p-5">
+                <div>
+                  <h2 className="font-black">Fiyat farkları</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Sitede {siteProducts.length} ürün okundu, {changes.length}{" "}
+                    katalog kalemi eşleşti
+                    {unmatchedEp.length > 0
+                      ? `, ${unmatchedEp.length} kalem sitede bulunamadı (fiyatı aynen kalır)`
+                      : ""}
+                    . İşaretli olanlar kaydedilir.
+                  </p>
+                </div>
+                <Button
+                  className="h-11 font-bold"
+                  disabled={selectedRows.length === 0 || applyChanges.isPending}
+                  onClick={() => applyChanges.mutate(selectedRows)}
+                >
+                  <Check className="mr-2 h-4 w-4" />
+                  {applyChanges.isPending
+                    ? "Kaydediliyor..."
+                    : `Seçilen ${selectedRows.length} fiyatı kaydet`}
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10" />
+                      <TableHead>Katalog kalemi</TableHead>
+                      <TableHead>Sitedeki ürün</TableHead>
+                      <TableHead className="text-right">
+                        Site (KDV dahil)
+                      </TableHead>
+                      <TableHead className="text-right">Eski maliyet</TableHead>
+                      <TableHead className="text-right">Yeni maliyet</TableHead>
+                      <TableHead className="text-right">Değişim</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </section>
+                  </TableHeader>
+                  <TableBody>
+                    {changes.map((change) => {
+                      const up = change.changePct > 0.005;
+                      const down = change.changePct < -0.005;
+                      return (
+                        <TableRow key={change.item.id}>
+                          <TableCell>
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-primary"
+                              aria-label={`${change.item.name} fiyatını güncelle`}
+                              checked={selected.has(change.item.id)}
+                              onChange={(e) =>
+                                setSelected((prev) => {
+                                  const next = new Set(prev);
+                                  if (e.target.checked)
+                                    next.add(change.item.id);
+                                  else next.delete(change.item.id);
+                                  return next;
+                                })
+                              }
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-semibold">
+                              {change.item.name}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {change.item.code}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <a
+                              href={`${ENERJIPAZARI_BASE}/urun/${change.product.slug}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-sm hover:underline"
+                            >
+                              {change.product.name}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                            {!change.exact ? (
+                              <Badge variant="outline" className="ml-2">
+                                tahmini eşleşme
+                              </Badge>
+                            ) : null}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatMoney(change.product.priceTry, "TRY")}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatMoney(
+                              Number(change.item.cost_amount),
+                              "USD",
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold tabular-nums">
+                            {formatMoney(change.newCost, "USD")}
+                          </TableCell>
+                          <TableCell
+                            className={`text-right font-semibold tabular-nums ${up ? "text-destructive" : down ? "text-emerald-600" : "text-muted-foreground"}`}
+                          >
+                            <span className="inline-flex items-center gap-0.5">
+                              {up ? (
+                                <ArrowUpRight className="h-3.5 w-3.5" />
+                              ) : down ? (
+                                <ArrowDownRight className="h-3.5 w-3.5" />
+                              ) : null}
+                              {(change.changePct * 100).toLocaleString(
+                                "tr-TR",
+                                {
+                                  maximumFractionDigits: 1,
+                                  signDisplay: "exceptZero",
+                                },
+                              )}
+                              %
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </section>
+          ) : null}
+        </>
       ) : null}
 
       <section className="surface-panel overflow-hidden">
@@ -527,11 +552,13 @@ function PriceCatalogPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="hepsi">Tüm modüller</SelectItem>
-              {Object.entries(moduleLabels).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
+              {Object.entries(moduleLabels)
+                .filter(([value]) => FEATURES.ges || value !== "ges")
+                .map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
           <label className="flex items-center gap-2 text-sm">

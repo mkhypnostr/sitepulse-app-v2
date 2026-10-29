@@ -13,11 +13,12 @@ export const NES_COMPANY = {
   legalNameShort: "NES Teknik Enerji Mühendislik İnşaat San. ve Tic. Ltd. Şti.",
   legalNameUpper:
     "NES TEKNİK ENERJİ MÜHENDİSLİK İNŞAAT SANAYİ VE TİCARET LİMİTED ŞİRKETİ",
-  addressUpper: "ORHANİYE MAHALLESİ 12 NOLU SOKAK NUR APARTMANI NO:6 C",
+  addressUpper:
+    "MUSLİHİTTİN MAHALLESİ MEHMET POLATOĞLU CADDESİ DEMET APARTMANI NO:10 KAT:2 DAİRE:3",
   cityUpper: "MUĞLA / Menteşe",
   /** Antetteki adres satırı. */
   address:
-    "Orhaniye Mahallesi 12 Nolu Sokak Nur Apartmanı No:6/C Menteşe / Muğla",
+    "Muslihittin Mahallesi Mehmet Polatoğlu Caddesi Demet Apartmanı No:10 Kat:2 Daire:3 Menteşe / Muğla",
   /** Antetteki telefon biçimi. */
   phone: "+90 554 610 24 16",
   phoneCompact: "05546102416",
