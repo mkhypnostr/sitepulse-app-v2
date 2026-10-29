@@ -31,8 +31,25 @@ export const surveyUnits = [
   "iş",
 ] as const;
 
+export type SurveyItemKind = "malzeme" | "iscilik";
+
+/** Asistanın çıkardığı kalemin işçilik mi malzeme mi olduğunu tahmin eder. */
+export function guessItemKind(
+  description: string,
+  unit: string | null | undefined,
+): SurveyItemKind {
+  if (unit && ["saat", "gün", "iş"].includes(unit)) return "iscilik";
+  return /i[şs][çc]ilik|montaj|kurulum|devreye alma|ölçüm|test/i.test(
+    description,
+  )
+    ? "iscilik"
+    : "malzeme";
+}
+
 export type SurveyItem = {
   id: string;
+  /** Malzeme mi işçilik mi (eski kayıtlarda yok = malzeme). */
+  kind?: SurveyItemKind;
   description: string;
   quantity: number;
   unit: string;
@@ -67,11 +84,16 @@ export type Survey = {
   work_type: WorkType;
   customer_id: string | null;
   customer_name: string | null;
+  /** Sahadaki yetkili kişi. */
+  contact_name?: string | null;
   contact_phone: string | null;
   location_text: string | null;
   latitude: number | null;
   longitude: number | null;
   location_accuracy_m: number | null;
+  /** İşin tanımı; teklifte "Kapsam" olarak çıkar. */
+  work_description?: string;
+  /** İç notlar: yalnız NES görür, müşteriye giden belgelere yazılmaz. */
   notes: string;
   status: "taslak" | "tamamlandi" | "teklif";
   offer_id: string | null;
@@ -102,11 +124,13 @@ export function newSurvey(): Survey {
     work_type: "taahhut",
     customer_id: null,
     customer_name: null,
+    contact_name: null,
     contact_phone: null,
     location_text: null,
     latitude: null,
     longitude: null,
     location_accuracy_m: null,
+    work_description: "",
     notes: "",
     status: "taslak",
     offer_id: null,
@@ -299,11 +323,13 @@ export async function pushSurvey(survey: Survey): Promise<Survey> {
       work_type: survey.work_type,
       customer_id: survey.customer_id,
       customer_name: survey.customer_name?.trim() || null,
+      contact_name: survey.contact_name?.trim() || null,
       contact_phone: survey.contact_phone?.trim() || null,
       location_text: survey.location_text?.trim() || null,
       latitude: survey.latitude,
       longitude: survey.longitude,
       location_accuracy_m: survey.location_accuracy_m,
+      work_description: survey.work_description?.trim() || null,
       notes: survey.notes || null,
       status: survey.status,
       offer_id: survey.offer_id,
@@ -325,6 +351,7 @@ export async function pushSurvey(survey: Survey): Promise<Survey> {
         id: item.id,
         survey_id: survey.id,
         position: i + 1,
+        kind: item.kind ?? "malzeme",
         description: item.description.trim().slice(0, 300) || "Kalem",
         quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
         unit: item.unit || "adet",
@@ -444,7 +471,7 @@ export async function pullSurveys(limit = 60) {
   const { data, error } = await supabase
     .from("site_surveys")
     .select(
-      "id, survey_no, title, work_type, customer_id, customer_name, contact_phone, location_text, latitude, longitude, location_accuracy_m, notes, status, offer_id, surveyed_at, updated_at, site_survey_items(id, position, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer, kind, duration_s, transcript)",
+      "id, survey_no, title, work_type, customer_id, customer_name, contact_name, contact_phone, location_text, latitude, longitude, location_accuracy_m, work_description, notes, status, offer_id, surveyed_at, updated_at, site_survey_items(id, position, kind, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer, kind, duration_s, transcript)",
     )
     .order("surveyed_at", { ascending: false })
     .limit(limit);
@@ -459,11 +486,13 @@ export async function pullSurveys(limit = 60) {
       work_type: row.work_type as WorkType,
       customer_id: row.customer_id,
       customer_name: row.customer_name,
+      contact_name: row.contact_name,
       contact_phone: row.contact_phone,
       location_text: row.location_text,
       latitude: row.latitude,
       longitude: row.longitude,
       location_accuracy_m: row.location_accuracy_m,
+      work_description: row.work_description ?? "",
       notes: row.notes ?? "",
       status: row.status as Survey["status"],
       offer_id: row.offer_id,
@@ -472,6 +501,9 @@ export async function pullSurveys(limit = 60) {
         .sort((a, b) => a.position - b.position)
         .map((i) => ({
           id: i.id,
+          kind: (i.kind === "iscilik"
+            ? "iscilik"
+            : "malzeme") as SurveyItemKind,
           description: i.description,
           quantity: Number(i.quantity),
           unit: i.unit,

@@ -2583,6 +2583,7 @@ export type Database = {
       };
       site_survey_items: {
         Row: {
+          kind: string;
           catalog_item_id: string | null;
           created_at: string;
           description: string;
@@ -2594,6 +2595,7 @@ export type Database = {
           unit: string;
         };
         Insert: {
+          kind?: string;
           catalog_item_id?: string | null;
           created_at?: string;
           description: string;
@@ -2605,6 +2607,7 @@ export type Database = {
           unit?: string;
         };
         Update: {
+          kind?: string;
           catalog_item_id?: string | null;
           created_at?: string;
           description?: string;
@@ -2681,6 +2684,8 @@ export type Database = {
       };
       site_surveys: {
         Row: {
+          contact_name: string | null;
+          work_description: string | null;
           contact_phone: string | null;
           created_at: string;
           created_by: string | null;
@@ -2703,6 +2708,8 @@ export type Database = {
           work_type: string;
         };
         Insert: {
+          contact_name?: string | null;
+          work_description?: string | null;
           contact_phone?: string | null;
           created_at?: string;
           created_by?: string | null;
@@ -2725,6 +2732,8 @@ export type Database = {
           work_type?: string;
         };
         Update: {
+          contact_name?: string | null;
+          work_description?: string | null;
           contact_phone?: string | null;
           created_at?: string;
           created_by?: string | null;

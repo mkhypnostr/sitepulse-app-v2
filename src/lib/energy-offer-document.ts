@@ -101,6 +101,8 @@ export type OfferDocumentInput = {
   origin: string;
   /** Keşiften gelen teklifte saha fotoğrafları sayfası. */
   siteSurvey?: SiteSurveySection | null;
+  /** İşin kapsamı; boşsa genel kapsam cümlesi yazılır. */
+  scopeText?: string;
 };
 
 const esc = (value: string) =>
@@ -1160,7 +1162,15 @@ ${chunk.map((row, i) => `${multiGroup && (i === 0 || chunk[i - 1].group !== row.
     pages.push(`<section class="page form lh cont"><div class="spec-wrap"><div class="spec">
 <p style="text-transform:uppercase">Teklif ve teknik şartname</p>
 <p style="text-transform:uppercase">Proje adı: ${esc(input.title)}${input.location ? ` · ${esc(input.location)}` : ""}</p>
-<h3>1. Kapsam</h3><p>${esc(input.title)} kapsamında tabloda belirtilen malzemelerin tedariki, montajı, test ve devreye alma işleri anahtar teslim olarak teklif edilmiştir.</p>
+<h3>1. Kapsam</h3>${
+      input.scopeText?.trim()
+        ? input.scopeText
+            .trim()
+            .split(/\n+/)
+            .map((line) => `<p>${esc(line)}</p>`)
+            .join("")
+        : `<p>${esc(input.title)} kapsamında tabloda belirtilen malzemelerin tedariki, montajı, test ve devreye alma işleri anahtar teslim olarak teklif edilmiştir.</p>`
+    }
 ${payment.length ? `<h3>2. Ödeme şekli</h3>${payment.map((row) => `<p>• ${esc(row.label)}: %${num(row.percent)} (${money(row.amount, cur)})</p>`).join("")}` : ""}
 <h3>${payment.length ? "3" : "2"}. Şartlar</h3>${specLines.map((line) => `<p>• ${esc(line)}</p>`).join("")}
 <p>• İşbu teklif ${esc(dateLong(input.validUntil))} tarihine kadar geçerlidir.</p>

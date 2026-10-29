@@ -177,6 +177,8 @@ export type EnergyOfferConfig = {
   recipient?: OfferRecipient;
   /** Teklif kapağında ve özetinde görünen proje yeri (ör. Akyaka / Muğla). */
   projectLocation?: string;
+  /** İşin kapsamı; teklif şartnamesinde "1. Kapsam" olarak çıkar. */
+  scopeText?: string;
   /** Tüm kalemlere uygulanan genel kâr oranı (maliyet üzerine, 0,25 = %25). */
   markupRate?: number;
   /** Yıllık özgül üretim, kWh/kWp. */

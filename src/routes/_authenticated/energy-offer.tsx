@@ -207,12 +207,10 @@ const statuses = {
 } as const;
 type Status = keyof typeof statuses;
 
+// Yeni tekliflerde sabit şart metni. Kayıtlı teklifler kendi metniyle açılır.
 const defaultTerms = [
-  "Teklif bedeli yalnız teklif kapsamındaki mal ve hizmetlerin anahtar teslim bedelidir; KDV ayrıca gösterilmiştir.",
-  "Döviz bazlı bedeller ödeme günündeki banka döviz satış kuru üzerinden TL'ye çevrilir.",
-  "Paket içeriklerindeki markalar stok durumuna göre muadili ile değişebilir.",
-  "Kabul sürecinde dağıtım şirketi veya resmi kurumlarca istenebilecek öngörülemeyen ek ekipman (çift yönlü sayaç ve modemi, ek sayaç panosu, yangın merdiveni vb.) müşteri sorumluluğundadır.",
-  "Montaj yapılacak çatı/cephe alanlarının uygulama öncesi montaja uygun ve tam izolasyonlu olması müşteri sorumluluğundadır; statik yeterlilik keşif sonrası kesinleşir.",
+  "İşler ilgili yönetmelik ve standartlara uygun yapılacaktır.",
+  "Teklifin onayına istinaden 2-3 iş günü içinde işe başlanır; iş planlaması malzeme termin süresine göre yapılır.",
 ].join("\n");
 
 const technicalTerms = [
@@ -392,6 +390,7 @@ function EnergyOfferPage() {
   const [loadedOfferId, setLoadedOfferId] = useState<string | null>(null);
   const [recipient, setRecipient] = useState<OfferRecipient>(defaultRecipient);
   const [projectLocation, setProjectLocation] = useState("");
+  const [scopeText, setScopeText] = useState("");
   const [markupRate, setMarkupRate] = useState(DEFAULT_MARKUP_RATE);
   const [targetSale, setTargetSale] = useState(0);
   const [specificYield, setSpecificYield] = useState(DEFAULT_SPECIFIC_YIELD);
@@ -580,6 +579,7 @@ function EnergyOfferPage() {
       setSarj({ ...defaultSarj, ...cfg.sarj });
       setRecipient({ ...defaultRecipient, ...cfg.recipient });
       setProjectLocation(cfg.projectLocation ?? "");
+      setScopeText(cfg.scopeText ?? "");
       if (typeof cfg.markupRate === "number") setMarkupRate(cfg.markupRate);
       setSpecificYield(cfg.specificYield ?? DEFAULT_SPECIFIC_YIELD);
       setShowLinePrices(Boolean(cfg.showLinePrices));
@@ -822,7 +822,7 @@ function EnergyOfferPage() {
   }
 
   const SURVEY_SELECT =
-    "id, survey_no, title, work_type, customer_id, customer_name, contact_phone, location_text, notes, surveyed_at, site_survey_items(position, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer, kind)";
+    "id, survey_no, title, work_type, customer_id, customer_name, contact_name, contact_phone, location_text, work_description, notes, surveyed_at, site_survey_items(position, kind, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer, kind)";
 
   useEffect(() => {
     if (offerId || kesifDone || !search.kesif || catalog.length === 0) return;
@@ -840,14 +840,21 @@ function EnergyOfferPage() {
       setSurveyId(row.id);
       setTitle(row.title);
       if (row.location_text) setProjectLocation(row.location_text);
+      if (row.work_description?.trim())
+        setScopeText(row.work_description.trim());
       if (row.customer_id) {
-        setRecipient((r) => ({ ...r, mode: "kayitli" }));
+        setRecipient((r) => ({
+          ...r,
+          mode: "kayitli",
+          contactName: row.contact_name ?? r.contactName,
+        }));
         setCustomerId(row.customer_id);
       } else if (row.customer_name) {
         setRecipient((r) => ({
           ...r,
           mode: "aday",
           name: row.customer_name ?? "",
+          contactName: row.contact_name ?? "",
           phone: row.contact_phone ?? "",
         }));
       }
@@ -870,7 +877,7 @@ function EnergyOfferPage() {
           key: newLineKey(),
           catalogItemId: null,
           module: "taahhut",
-          category: "malzeme",
+          category: item.kind === "iscilik" ? "iscilik" : "malzeme",
           description: item.description,
           brand: null,
           unit: item.unit,
@@ -979,15 +986,15 @@ function EnergyOfferPage() {
     setTaahhutPick("");
   }
 
-  function addFreeLine() {
+  function addFreeLine(category: LineCategory = "diger") {
     setLines((current) => [
       ...current,
       {
         key: newLineKey(),
         catalogItemId: null,
         module: "genel",
-        category: "diger",
-        description: "Yeni kalem",
+        category,
+        description: category === "iscilik" ? "İşçilik" : "Yeni kalem",
         brand: null,
         unit: "adet",
         quantity: 1,
@@ -1028,6 +1035,7 @@ function EnergyOfferPage() {
         sarj,
         recipient,
         projectLocation: projectLocation.trim(),
+        scopeText: scopeText.trim() || undefined,
         markupRate,
         specificYield,
         showLinePrices,
@@ -1203,6 +1211,7 @@ function EnergyOfferPage() {
       recipientName: recipientName(),
       contactName: recipient.mode === "aday" ? recipient.contactName : "",
       location: projectLocation.trim(),
+      scopeText: scopeText.trim(),
       currency,
       vatRate,
       rates,
@@ -1619,6 +1628,19 @@ function EnergyOfferPage() {
                 maxLength={120}
                 placeholder="Örn. Akyaka / Muğla"
                 onChange={(e) => setProjectLocation(e.target.value)}
+              />
+            </Field>
+            <Field
+              label="İşin kapsamı"
+              className="sm:col-span-2"
+              hint="Teklif şartnamesinde 1. Kapsam olarak yazılır; boşsa genel cümle kullanılır"
+            >
+              <Textarea
+                value={scopeText}
+                rows={3}
+                maxLength={4000}
+                placeholder="Keşifteki işin tanımı buraya gelir."
+                onChange={(e) => setScopeText(e.target.value)}
               />
             </Field>
             <Field label="Teklif para birimi">
@@ -2284,8 +2306,14 @@ function EnergyOfferPage() {
                 <Button variant="default" onClick={regenerate}>
                   <RefreshCw className="mr-2 h-4 w-4" /> Kalemleri oluştur
                 </Button>
-                <Button variant="outline" onClick={addFreeLine}>
+                <Button variant="outline" onClick={() => addFreeLine()}>
                   <Plus className="mr-2 h-4 w-4" /> Serbest kalem
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => addFreeLine("iscilik")}
+                >
+                  <Plus className="mr-2 h-4 w-4" /> İşçilik ekle
                 </Button>
               </div>
             </div>
