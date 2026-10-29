@@ -1115,6 +1115,7 @@ export type Database = {
           price_date: string | null;
           sort_order: number;
           source: string | null;
+          supplier_ref: string | null;
           template_role: string | null;
           unit: string;
           updated_at: string;
@@ -1141,6 +1142,7 @@ export type Database = {
           price_date?: string | null;
           sort_order?: number;
           source?: string | null;
+          supplier_ref?: string | null;
           template_role?: string | null;
           unit?: string;
           updated_at?: string;
@@ -1167,6 +1169,7 @@ export type Database = {
           price_date?: string | null;
           sort_order?: number;
           source?: string | null;
+          supplier_ref?: string | null;
           template_role?: string | null;
           unit?: string;
           updated_at?: string;
@@ -2899,6 +2902,111 @@ export type Database = {
           },
         ];
       };
+      supplier_price_items: {
+        Row: {
+          code: string;
+          currency: string;
+          is_current: boolean;
+          list_id: string | null;
+          list_price: number;
+          name: string;
+          page: number | null;
+          section: string | null;
+          supplier: string;
+          updated_at: string;
+        };
+        Insert: {
+          code: string;
+          currency: string;
+          is_current?: boolean;
+          list_id?: string | null;
+          list_price: number;
+          name: string;
+          page?: number | null;
+          section?: string | null;
+          supplier: string;
+          updated_at?: string;
+        };
+        Update: {
+          code?: string;
+          currency?: string;
+          is_current?: boolean;
+          list_id?: string | null;
+          list_price?: number;
+          name?: string;
+          page?: number | null;
+          section?: string | null;
+          supplier?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      supplier_price_lists: {
+        Row: {
+          error: string | null;
+          id: string;
+          imported_at: string;
+          item_count: number;
+          list_name: string;
+          published_at: string | null;
+          source_url: string;
+          status: string;
+          supplier: string;
+        };
+        Insert: {
+          error?: string | null;
+          id?: string;
+          imported_at?: string;
+          item_count?: number;
+          list_name: string;
+          published_at?: string | null;
+          source_url: string;
+          status: string;
+          supplier: string;
+        };
+        Update: {
+          error?: string | null;
+          id?: string;
+          imported_at?: string;
+          item_count?: number;
+          list_name?: string;
+          published_at?: string | null;
+          source_url?: string;
+          status?: string;
+          supplier?: string;
+        };
+        Relationships: [];
+      };
+      supplier_settings: {
+        Row: {
+          discount_rate: number;
+          display_name: string;
+          last_check_message: string | null;
+          last_check_status: string | null;
+          last_checked_at: string | null;
+          supplier: string;
+          updated_at: string;
+        };
+        Insert: {
+          discount_rate?: number;
+          display_name: string;
+          last_check_message?: string | null;
+          last_check_status?: string | null;
+          last_checked_at?: string | null;
+          supplier: string;
+          updated_at?: string;
+        };
+        Update: {
+          discount_rate?: number;
+          display_name?: string;
+          last_check_message?: string | null;
+          last_check_status?: string | null;
+          last_checked_at?: string | null;
+          supplier?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       suppliers: {
         Row: {
           address: string | null;
@@ -3806,6 +3914,14 @@ export type Database = {
         };
         Returns: string;
       };
+      add_supplier_item_to_catalog: {
+        Args: { p_code: string; p_supplier: string; p_unit?: string };
+        Returns: string;
+      };
+      apply_supplier_prices: {
+        Args: { p_supplier: string };
+        Returns: number;
+      };
       approve_progress: {
         Args: { approved_pct_value: number; target_work_order_id: string };
         Returns: number;
@@ -4146,6 +4262,10 @@ export type Database = {
       send_whatsapp_notification: {
         Args: { message: string; recipients: Json };
         Returns: undefined;
+      };
+      set_supplier_discount: {
+        Args: { p_discount_rate: number; p_supplier: string };
+        Returns: number;
       };
       set_user_role: {
         Args: {
