@@ -1,6 +1,7 @@
 // Fırsat ayrıntısı: bilgiler, aşama, sonraki adım, görüşme geçmişi ve
 // bağlı teklifler. Yeni fırsat da bu panelden açılır.
 import { useEffect, useState } from "react";
+import { FEATURES } from "@/lib/features";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -107,7 +108,7 @@ const emptyDraft: Draft = {
   phone: "",
   email: "",
   location: "",
-  service: "ges",
+  service: FEATURES.ges ? "ges" : "taahhut",
   source: "telefon",
   stage: "yeni",
   estimated_value: null,
@@ -431,7 +432,7 @@ export function LeadSheet({
               <Input
                 value={draft.title}
                 maxLength={180}
-                placeholder="Örn. Ula villa 10 kWp GES"
+                placeholder="Örn. Ula villa elektrik tesisatı"
                 onChange={(e) => set({ title: e.target.value })}
               />
             </Labeled>
@@ -521,11 +522,16 @@ export function LeadSheet({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(serviceLabels).map(([v, l]) => (
-                    <SelectItem key={v} value={v}>
-                      {l}
-                    </SelectItem>
-                  ))}
+                  {Object.entries(serviceLabels)
+                    .filter(
+                      ([v]) =>
+                        FEATURES.ges || v !== "ges" || draft.service === "ges",
+                    )
+                    .map(([v, l]) => (
+                      <SelectItem key={v} value={v}>
+                        {l}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </Labeled>

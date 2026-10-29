@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { FEATURES } from "@/lib/features";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -547,7 +548,7 @@ function OffersPage() {
     <>
       <PageHeader
         title="Teklifler"
-        description="GES, şarj, taahhüt ve diğer teklifler. Açmak için satıra tıklayın."
+        description={`${FEATURES.ges ? "GES, şarj" : "Şarj"}, taahhüt ve diğer teklifler. Açmak için satıra tıklayın.`}
         actions={createButton}
       />
       {dialog}
@@ -620,7 +621,9 @@ function OffersPage() {
                     <TableCell className="font-bold">{offer.title}</TableCell>
                     <TableCell>
                       {isEnergy
-                        ? "Enerji Paketi (GES/Şarj/Taahhüt)"
+                        ? FEATURES.ges
+                          ? "Enerji Paketi (GES/Şarj/Taahhüt)"
+                          : "Teklif (Şarj/Taahhüt)"
                         : (offerTypeLabels[offer.offer_type as OfferType] ??
                           "Diğer")}
                       {isEnergy && Number(offer.total_amount) > 0 ? (

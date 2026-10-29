@@ -38,7 +38,7 @@ const layerInfo: Record<Layer, { label: string; color: string }> = {
   project: { label: "Projeler", color: "#2563eb" },
   work_order: { label: "İş emirleri", color: "#f59e0b" },
   lead: { label: "Satış fırsatları", color: "#10b981" },
-  offer: { label: "GES teklifleri", color: "#a855f7" },
+  offer: { label: "Teklifler", color: "#a855f7" },
 };
 
 const esc = (v: string) =>
@@ -200,7 +200,7 @@ function MapPage() {
           lat: site.lat,
           lon: site.lon,
           title: `${o.offer_no} ${o.title}`,
-          subtitle: "GES teklifi",
+          subtitle: "Teklif",
           href: `/energy-offer?offerId=${o.id}`,
         });
       }
@@ -331,7 +331,7 @@ function MapPage() {
     <>
       <PageHeader
         title="Harita"
-        description="Projeler, iş emirleri, satış fırsatları ve GES teklifleri tek haritada. Ziyaret planlarken yakın işleri birlikte görün."
+        description="Projeler, iş emirleri, satış fırsatları ve teklifler tek haritada. Ziyaret planlarken yakın işleri birlikte görün."
         actions={
           isAdmin && toGeocode > 0 ? (
             <Button
