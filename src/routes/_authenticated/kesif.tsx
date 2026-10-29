@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   CloudOff,
   CloudUpload,
+  HardHat,
   FileText,
   LoaderCircle,
   LocateFixed,
@@ -544,6 +545,26 @@ function SurveyEditor({
     );
   }
 
+  async function openWorkOrder() {
+    if (!navigator.onLine) {
+      toast.error("İş emri açmak için internet gerekli.");
+      return;
+    }
+    setConverting(true);
+    try {
+      await saveLocal(s);
+      await pushSurvey((await getLocal(s.id)) ?? s);
+      navigate({
+        to: "/work-orders",
+        search: { create: true, surveyId: s.id },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setConverting(false);
+    }
+  }
+
   async function convertToOffer() {
     if (!navigator.onLine) {
       toast.error("Teklifleştirmek için internet gerekli.");
@@ -600,6 +621,19 @@ function SurveyEditor({
               Teklifleştir
             </Button>
           ) : null}
+          <Button
+            variant="outline"
+            className="h-11"
+            disabled={!online || converting}
+            title={
+              online
+                ? "Keşiften taşerona iş emri açar; iç notlar gitmez"
+                : "İnternet gerekli"
+            }
+            onClick={() => void openWorkOrder()}
+          >
+            <HardHat className="mr-2 h-4 w-4" /> Taşerona iş emri
+          </Button>
         </div>
       </div>
 

@@ -55,6 +55,7 @@ type NotificationPayload = {
     | "task_overdue"
     | "work_order_assigned"
     | "work_order_overdue"
+    | "work_order_accepted"
     | "approval_pending"
     | "approval_decision";
   recipients: Recipient[];
@@ -175,7 +176,9 @@ function buildEmail(
     ? `Merhaba ${escapeHtml(greetingName)},`
     : "Merhaba,";
   const isWorkOrderEvent =
-    eventType === "work_order_assigned" || eventType === "work_order_overdue";
+    eventType === "work_order_assigned" ||
+    eventType === "work_order_overdue" ||
+    eventType === "work_order_accepted";
   const taskName = String(
     data.taskName ?? (isWorkOrderEvent ? "İş Emri" : "Görev"),
   );
@@ -261,6 +264,24 @@ function buildEmail(
         )}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
           ${infoRow("İş Emri", taskName)}
           ${infoRow("Taşeron", contractorName)}
+        </table>`,
+      );
+      return { subject, html };
+    }
+    case "work_order_accepted": {
+      const contractorName = String(data.contractorName ?? "Taşeron");
+      const acceptedAt = formatIstanbul(data.acceptedAt);
+      const plannedStart = formatIstanbul(data.plannedStart);
+      const subject = `İş üstlenildi: ${taskName}`;
+      const html = renderShell(
+        "Taşeron işi üstlendi",
+        `${paragraph(greeting)}${paragraph(
+          `<strong>${escapeHtml(contractorName)}</strong> aşağıdaki iş emrini üstlendi:`,
+        )}<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          ${infoRow("İş Emri", taskName)}
+          ${infoRow("Taşeron", contractorName)}
+          ${acceptedAt ? infoRow("Üstlenme Zamanı", acceptedAt) : ""}
+          ${plannedStart ? infoRow("Planlanan Başlangıç", plannedStart) : ""}
         </table>`,
       );
       return { subject, html };

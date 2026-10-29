@@ -7,6 +7,7 @@ import {
   FileSpreadsheet,
   FileText,
   FolderOpen,
+  HardHat,
   Pencil,
   Receipt,
   Plus,
@@ -783,6 +784,22 @@ function OffersPage() {
                             Düzenle
                           </Button>
                         )}
+                        {offer.status === "approved" ? (
+                          <Button
+                            asChild
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                          >
+                            <Link
+                              to="/work-orders"
+                              search={{ create: true, offerId: offer.id }}
+                            >
+                              <HardHat className="mr-1.5 h-3.5 w-3.5" />
+                              Taşerona iş emri
+                            </Link>
+                          </Button>
+                        ) : null}
                         {offer.status === "approved" && offer.customer_id ? (
                           <Button
                             asChild
