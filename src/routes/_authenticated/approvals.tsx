@@ -161,24 +161,24 @@ const entityLabel: Record<string, string> = {
 
 type ActivityGroup = ActivityLogRow & { count: number };
 
-/** Aynı kişinin aynı dakikada yaptığı aynı türden değişiklikler tek satır. */
+/** Aynı kişinin aynı dakikada yaptığı aynı türden değişiklikler tek satır.
+ * Araya başka türden kayıt girse de birleşir (ör. proje silinince adımları
+ * ve iş emirleri karışık sırayla kaydedilir). Sıra, grubun en yeni kaydına
+ * göredir. */
 function groupActivity(logs: ActivityLogRow[]): ActivityGroup[] {
-  const groups: ActivityGroup[] = [];
+  const groups = new Map<string, ActivityGroup>();
   for (const log of logs) {
-    const last = groups[groups.length - 1];
-    if (
-      last &&
-      last.actor_id === log.actor_id &&
-      last.entity_type === log.entity_type &&
-      last.action === log.action &&
-      last.created_at.slice(0, 16) === log.created_at.slice(0, 16)
-    ) {
-      last.count += 1;
-    } else {
-      groups.push({ ...log, count: 1 });
-    }
+    const key = [
+      log.actor_id ?? "",
+      log.entity_type,
+      log.action,
+      log.created_at.slice(0, 16),
+    ].join("|");
+    const group = groups.get(key);
+    if (group) group.count += 1;
+    else groups.set(key, { ...log, count: 1 });
   }
-  return groups;
+  return [...groups.values()];
 }
 
 function ApprovalsPage() {
