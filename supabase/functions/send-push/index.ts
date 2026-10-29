@@ -80,6 +80,15 @@ function buildMessage(
         url: "/tasks",
         tag: `wo-overdue-${name}`,
       };
+    case "work_order_accepted":
+      return {
+        title: "İş üstlenildi",
+        body: `${name}${data.contractorName ? ` · ${text(data.contractorName, "")}` : ""}`,
+        url: data.workOrderId
+          ? `/jobs/${text(data.workOrderId, "")}`
+          : "/tasks",
+        tag: `wo-accepted-${name}`,
+      };
     case "approval_pending":
       return {
         title: "Onay bekleyen kayıt",

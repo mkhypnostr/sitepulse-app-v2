@@ -619,6 +619,23 @@ function JobDetailPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const acceptMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc(
+        "accept_work_order" as never,
+        {
+          target_work_order_id: jobId,
+        } as never,
+      );
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await refresh();
+      toast.success("İşi üstlendiniz; NES'e bildirim gitti.");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   async function uploadPhoto(file: File, caption: string) {
     if (!user) throw new Error("Oturum bulunamadı");
     setUploading(true);
@@ -823,6 +840,58 @@ function JobDetailPage() {
           </div>
         }
       />
+
+      {(() => {
+        const acceptedAt = (order as { accepted_at?: string | null })
+          .accepted_at;
+        const open = !["draft", "completed", "cancelled"].includes(
+          order.status,
+        );
+        if (role === "contractor" && open) {
+          return acceptedAt ? (
+            <p className="mb-6 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+              İşi üstlendiniz · {formatProjectDateTime(acceptedAt)}
+            </p>
+          ) : (
+            <Card className="mb-6 border-primary/40 bg-primary/5">
+              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-bold">Bu iş size atandı.</p>
+                  <p className="text-sm text-muted-foreground">
+                    İşin tarifini, tarihini ve fotoğraflarını aşağıda
+                    görebilirsiniz. İşi yapacaksanız üstlendiğinizi bildirin.
+                  </p>
+                </div>
+                <Button
+                  className="h-12 shrink-0 font-bold"
+                  disabled={acceptMutation.isPending}
+                  onClick={() => acceptMutation.mutate()}
+                >
+                  {acceptMutation.isPending
+                    ? "Bildiriliyor..."
+                    : "İşi üstlendim"}
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        }
+        if ((role === "admin" || role === "technical_office") && open) {
+          return (
+            <p
+              className={`mb-6 rounded-xl border px-4 py-3 text-sm font-semibold ${
+                acceptedAt
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  : "border-warning/40 bg-warning/10 text-warning"
+              }`}
+            >
+              {acceptedAt
+                ? `Taşeron işi üstlendi · ${formatProjectDateTime(acceptedAt)}`
+                : "Taşeron işi henüz üstlenmedi."}
+            </p>
+          );
+        }
+        return null;
+      })()}
 
       {role === "admin" ? (
         <Card className="mb-6 border-primary/30">

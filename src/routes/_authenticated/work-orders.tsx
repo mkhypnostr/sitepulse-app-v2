@@ -49,8 +49,16 @@ import {
 export const Route = createFileRoute("/_authenticated/work-orders")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { create: boolean; projectId?: string; serviceRequestId?: string } => ({
+  ): {
+    create: boolean;
+    projectId?: string;
+    serviceRequestId?: string;
+    offerId?: string;
+    surveyId?: string;
+  } => ({
     create: search.create === true || search.create === "true",
+    offerId: typeof search.offerId === "string" ? search.offerId : undefined,
+    surveyId: typeof search.surveyId === "string" ? search.surveyId : undefined,
     projectId:
       typeof search.projectId === "string" ? search.projectId : undefined,
     serviceRequestId:
@@ -65,7 +73,17 @@ function WorkOrdersPage() {
   const { role } = useAuth();
   const canManage = isOperationalManager(role);
   const canSeeAmounts = canSeeFinancials(role);
-  const { create, projectId, serviceRequestId } = Route.useSearch();
+  const { create, projectId, serviceRequestId, offerId, surveyId } =
+    Route.useSearch();
+  const prefilledSourceKey = useRef<string | null>(null);
+  // Keşif/tekliften açılan iş emrinin kaynağı: kayıttan sonra keşif
+  // fotoğrafları iş emrine kopyalanır ve kaynak bağlanır.
+  const [source, setSource] = useState<{
+    offerId: string | null;
+    surveyId: string | null;
+    photos: { storage_path: string; caption: string | null }[];
+    label: string;
+  } | null>(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const prefilledServiceRequestId = useRef<string | null>(null);
@@ -245,6 +263,150 @@ function WorkOrdersPage() {
     setOpen(true);
   }, [pageQuery.data, serviceRequestId]);
 
+  const sourceQuery = useQuery({
+    queryKey: ["work-order-source", offerId, surveyId],
+    enabled: canManage && Boolean(offerId || surveyId),
+    queryFn: async () => {
+      let offer: {
+        id: string;
+        offer_no: string;
+        title: string;
+        customer_id: string | null;
+      } | null = null;
+      if (offerId) {
+        const { data } = await supabase
+          .from("offers")
+          .select("id, offer_no, title, customer_id")
+          .eq("id", offerId)
+          .maybeSingle();
+        offer = data;
+      }
+      let surveyQuery = supabase
+        .from("site_surveys")
+        .select(
+          "id, survey_no, title, customer_id, location_text, latitude, longitude, work_description, offer_id, site_survey_photos(storage_path, caption, kind, include_in_offer, taken_at)",
+        );
+      if (surveyId) surveyQuery = surveyQuery.eq("id", surveyId);
+      else if (offerId) surveyQuery = surveyQuery.eq("offer_id", offerId);
+      const { data: surveys } =
+        surveyId || offerId
+          ? await surveyQuery.limit(1)
+          : { data: [] as never[] };
+      const survey = (surveys?.[0] ?? null) as {
+        id: string;
+        survey_no: string | null;
+        title: string;
+        customer_id: string | null;
+        location_text: string | null;
+        latitude: number | null;
+        longitude: number | null;
+        work_description: string | null;
+        offer_id: string | null;
+        site_survey_photos: {
+          storage_path: string;
+          caption: string | null;
+          kind: string;
+          taken_at: string;
+        }[];
+      } | null;
+      return { offer, survey };
+    },
+  });
+
+  useEffect(() => {
+    const key = `${offerId ?? ""}|${surveyId ?? ""}`;
+    const loaded = sourceQuery.data;
+    if (!loaded || !pageQuery.data || prefilledSourceKey.current === key) {
+      return;
+    }
+    const { offer, survey } = loaded;
+    if (!offer && !survey) return;
+    const customerId = offer?.customer_id ?? survey?.customer_id ?? "";
+    const customer = pageQuery.data.customers.find((c) => c.id === customerId);
+    const mapUrl =
+      survey?.latitude != null && survey?.longitude != null
+        ? `https://www.google.com/maps?q=${survey.latitude},${survey.longitude}`
+        : "";
+    // Yalnız işin tanımı taşerona gider; keşifteki iç notlar ve teklif gitmez.
+    const description = [
+      survey?.work_description?.trim(),
+      survey?.location_text ? `Yer: ${survey.location_text}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    setForm((current) => ({
+      ...current,
+      projectId: "",
+      customerId,
+      title: offer?.title ?? survey?.title ?? current.title,
+      description: description || current.description,
+      locationUrl: mapUrl || current.locationUrl,
+      billingTitle: customer?.billing_title ?? "",
+      taxNo: customer?.tax_no ?? "",
+      taxOffice: customer?.tax_office ?? "",
+      billingAddress: customer?.billing_address ?? "",
+    }));
+    setSource({
+      offerId: offer?.id ?? survey?.offer_id ?? null,
+      surveyId: survey?.id ?? null,
+      photos: (survey?.site_survey_photos ?? [])
+        .filter((p) => p.kind !== "audio")
+        .sort((a, b) => a.taken_at.localeCompare(b.taken_at))
+        .map((p) => ({ storage_path: p.storage_path, caption: p.caption })),
+      label: [offer?.offer_no, survey?.survey_no].filter(Boolean).join(" · "),
+    });
+    prefilledSourceKey.current = key;
+    setOpen(true);
+  }, [offerId, surveyId, sourceQuery.data, pageQuery.data]);
+
+  /** Keşif fotoğraflarını iş emrine kopyala (taşeron görsün) ve kaynağı bağla. */
+  async function attachSource(workOrderId: string) {
+    if (!source) return 0;
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth.user?.id;
+    let copied = 0;
+    for (const photo of source.photos) {
+      try {
+        const { data: blob } = await supabase.storage
+          .from("site-surveys")
+          .download(photo.storage_path);
+        if (!blob || !userId) continue;
+        const path = `${userId}/${workOrderId}/${crypto.randomUUID()}.jpg`;
+        const { error: upErr } = await supabase.storage
+          .from("work-photos")
+          .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+        if (upErr) continue;
+        const { error: recErr } = await supabase.from("photos").insert({
+          work_order_id: workOrderId,
+          uploaded_by: userId,
+          storage_path: path,
+          caption: photo.caption
+            ? `Keşif: ${photo.caption}`
+            : "Keşif fotoğrafı",
+          photo_type: "saha",
+          show_to_customer: false,
+          is_document: false,
+        });
+        if (recErr) {
+          await supabase.storage.from("work-photos").remove([path]);
+          continue;
+        }
+        copied += 1;
+      } catch {
+        // Tek fotoğraf kopyalanamazsa diğerleri devam eder.
+      }
+    }
+    await supabase.rpc(
+      "link_work_order_sources" as never,
+      {
+        target_work_order_id: workOrderId,
+        source_offer_id: source.offerId,
+        source_survey_id: source.surveyId,
+      } as never,
+    );
+    return copied;
+  }
+
   const createOrder = useMutation({
     mutationFn: async (saveAsDraft: boolean) => {
       const locationUrl = safeHttpsMapUrl(form.locationUrl);
@@ -359,6 +521,7 @@ function WorkOrdersPage() {
           },
         );
         if (error) throw error;
+        const copied = workOrderId ? await attachSource(workOrderId) : 0;
         if (serviceRequestId && workOrderId) {
           const linkResult = await supabase.rpc(
             "mark_technical_service_request_converted",
@@ -367,9 +530,9 @@ function WorkOrdersPage() {
               target_work_order_id: workOrderId,
             },
           );
-          return { linkError: linkResult.error };
+          return { linkError: linkResult.error, copied };
         }
-        return { linkError: null };
+        return { linkError: null, copied };
       }
 
       // Teknik ofis ticari tutar giremez; saha görevi finans kaydı 0 ile
@@ -394,6 +557,7 @@ function WorkOrdersPage() {
         },
       );
       if (error) throw error;
+      const copied = workOrderId ? await attachSource(workOrderId) : 0;
       if (serviceRequestId && workOrderId) {
         const linkResult = await supabase.rpc(
           "mark_technical_service_request_converted",
@@ -402,9 +566,9 @@ function WorkOrdersPage() {
             target_work_order_id: workOrderId,
           },
         );
-        return { linkError: linkResult.error };
+        return { linkError: linkResult.error, copied };
       }
-      return { linkError: null };
+      return { linkError: null, copied };
     },
     onSuccess: async (result, saveAsDraft) => {
       await queryClient.invalidateQueries({ queryKey: ["admin-work-orders"] });
@@ -436,9 +600,14 @@ function WorkOrdersPage() {
         taxOffice: "",
         billingAddress: "",
       });
+      setSource(null);
       if (result.linkError) {
         toast.warning(
           "Görev oluşturuldu; teknik servis talebiyle bağlantı kurulamadı.",
+        );
+      } else if (result.copied) {
+        toast.success(
+          `İş emri oluşturuldu; ${result.copied} keşif fotoğrafı eklendi.`,
         );
       } else {
         toast.success(
@@ -513,6 +682,14 @@ function WorkOrdersPage() {
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Yeni iş emri</DialogTitle>
+          {source ? (
+            <p className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+              Kaynak: <b>{source.label || "keşif"}</b>. İşin tanımı ve konum
+              keşiften geldi; {source.photos.length} keşif fotoğrafı iş emrine
+              eklenecek. Keşifteki iç notlar ve teklif taşerona gitmez.
+              Taşeronu, tarih-saati ve taşerona ödenecek işçilik bedelini girin.
+            </p>
+          ) : null}
           <DialogDescription>
             Bağımsız bir görev oluşturun veya görevi mevcut bir projeye
             bağlayın. Sorumlu taşeron, planlanan başlangıç-bitiş tarihi ve konum
