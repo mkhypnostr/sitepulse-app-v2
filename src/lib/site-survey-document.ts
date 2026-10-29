@@ -1,9 +1,10 @@
-// Keşif föyü (iç kullanım): saha bilgisi, konum, notlar, malzeme listesi,
-// fotoğraflar. Ekip ve satın alma için; fiyat içermez.
+// Keşif föyü: saha bilgisi, konum, işin tanımı, malzeme ve işçilik listesi,
+// fotoğraflar. Fiyat içermez. Föy dışarı da gönderilebildiği için iç notlar
+// (survey.notes) bu belgeye hiçbir zaman yazılmaz.
 import {
-  workTypeLabels,
   type CachedCatalogItem,
   type Survey,
+  type SurveyItem,
 } from "@/lib/site-survey";
 
 const esc = (v: unknown) =>
@@ -35,12 +36,17 @@ export function surveySheetHtml(
     survey.latitude != null && survey.longitude != null
       ? `<a href="https://www.google.com/maps?q=${survey.latitude},${survey.longitude}">${survey.latitude}, ${survey.longitude}</a>${survey.location_accuracy_m ? ` (±${survey.location_accuracy_m} m)` : ""}`
       : "-";
-  const rows = survey.items
-    .map(
-      (item, i) =>
-        `<tr><td class="c">${i + 1}</td><td>${esc(item.description)}${item.note ? `<div class="note">${esc(item.note)}</div>` : ""}</td><td class="c mono">${esc(code(item.catalog_item_id))}</td><td class="r">${num(item.quantity)}</td><td>${esc(item.unit)}</td><td class="chk"></td></tr>`,
-    )
-    .join("");
+  const rowsOf = (items: SurveyItem[]) =>
+    items
+      .map(
+        (item, i) =>
+          `<tr><td class="c">${i + 1}</td><td>${esc(item.description)}${item.note ? `<div class="note">${esc(item.note)}</div>` : ""}</td><td class="c mono">${esc(code(item.catalog_item_id))}</td><td class="r">${num(item.quantity)}</td><td>${esc(item.unit)}</td><td class="chk"></td></tr>`,
+      )
+      .join("");
+  const tableOf = (items: SurveyItem[]) =>
+    `<table><thead><tr><th class="c">#</th><th>Kalem</th><th class="c">Kod</th><th class="r">Miktar</th><th>Birim</th><th class="c">✓</th></tr></thead><tbody>${rowsOf(items)}</tbody></table>`;
+  const materials = survey.items.filter((i) => i.kind !== "iscilik");
+  const labor = survey.items.filter((i) => i.kind === "iscilik");
   const photoHtml = photos
     .map(
       (p, i) =>
@@ -84,19 +90,20 @@ figcaption{font-size:10px;color:#4b5863;margin-top:3px}
 <div><h1>KEŞİF FÖYÜ</h1><div class="no">${esc(survey.survey_no ?? "Numara: gönderim sonrası")}</div></div></div>
 <div class="grid">
 <div><span>Keşif</span><b>${esc(survey.title || "-")}</b></div>
-<div><span>İş türü</span><b>${esc(workTypeLabels[survey.work_type])}</b></div>
 <div><span>Müşteri</span><b>${esc(survey.customer_name || "-")}</b></div>
+<div><span>Yetkili kişi</span><b>${esc(survey.contact_name || "-")}</b></div>
 <div><span>Telefon</span><b>${esc(survey.contact_phone || "-")}</b></div>
 <div><span>Yer</span><b>${esc(survey.location_text || "-")}</b></div>
 <div><span>GPS</span><b>${map}</b></div>
 <div><span>Keşif tarihi</span><b>${esc(date)}</b></div>
 <div><span>Fotoğraf / kalem</span><b>${photos.length} / ${survey.items.length}</b></div>
 </div>
-<h2>Notlar ve ölçüler</h2><div class="notes">${esc(survey.notes || "-")}</div>
-<h2>Malzeme ve iş listesi</h2>
-${survey.items.length ? `<table><thead><tr><th class="c">#</th><th>Malzeme / iş</th><th class="c">Kod</th><th class="r">Miktar</th><th>Birim</th><th class="c">✓</th></tr></thead><tbody>${rows}</tbody></table>` : "<p>-</p>"}
+${survey.work_description?.trim() ? `<h2>İşin tanımı</h2><div class="notes">${esc(survey.work_description.trim())}</div>` : ""}
+<h2>Malzeme listesi</h2>
+${materials.length ? tableOf(materials) : "<p>-</p>"}
+${labor.length ? `<h2>İşçilik</h2>${tableOf(labor)}` : ""}
 ${photos.length ? `<h2>Saha fotoğrafları</h2><div class="photos">${photoHtml}</div>` : ""}
 <div class="sign"><div>Keşfi yapan</div><div>Kontrol eden</div></div>
-<div class="foot">NES Enerji · iç kullanım belgesidir, fiyat içermez · ${esc(new Date().toLocaleDateString("tr-TR"))}</div>
+<div class="foot">NES Enerji · keşif föyü, fiyat içermez · ${esc(new Date().toLocaleDateString("tr-TR"))}</div>
 </div></body></html>`;
 }

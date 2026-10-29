@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FEATURES } from "@/lib/features";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -51,14 +50,13 @@ import {
   removePhoto,
   saveLocal,
   surveyUnits,
+  guessItemKind,
   syncAll,
-  workTypeLabels,
   type CachedCatalogItem,
   type CachedCustomer,
   type Survey,
   type SurveyItem,
   type SurveyPhotoMeta,
-  type WorkType,
 } from "@/lib/site-survey";
 import { surveySheetHtml } from "@/lib/site-survey-document";
 import { htmlToPdf } from "@/lib/html-to-pdf";
@@ -281,7 +279,6 @@ function KesifPage() {
                 {s.title || "Adsız keşif"}
               </div>
               <div className="text-xs text-muted-foreground">
-                {workTypeLabels[s.work_type]} ·{" "}
                 {s.customer_name || "Müşteri yok"}
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
@@ -466,6 +463,7 @@ function SurveyEditor({
         unit: i.unit || "adet",
         catalog_item_id: i.catalog_item_id,
         note: i.note,
+        kind: guessItemKind(i.description, i.unit),
       }));
       if (!items.length) {
         toast.message("Notlarda malzeme / iş kalemi bulunamadı.");
@@ -616,25 +614,6 @@ function SurveyEditor({
                 className="h-12 text-base"
               />
             </Field>
-            <div>
-              <Label className="mb-1 block">İş türü</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {(Object.keys(workTypeLabels) as WorkType[])
-                  .filter((w) => FEATURES.ges || w !== "ges")
-                  .map((w) => (
-                    <Button
-                      key={w}
-                      type="button"
-                      size="sm"
-                      variant={s.work_type === w ? "default" : "outline"}
-                      className="h-10"
-                      onClick={() => update({ work_type: w })}
-                    >
-                      {workTypeLabels[w]}
-                    </Button>
-                  ))}
-              </div>
-            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Müşteri (kayıtlıysa)">
                 <Select
@@ -677,24 +656,14 @@ function SurveyEditor({
                   className="h-12"
                 />
               </Field>
-              <Field label="Durum">
-                <Select
-                  value={s.status}
-                  onValueChange={(v) =>
-                    update({ status: v as Survey["status"] })
-                  }
-                >
-                  <SelectTrigger className="h-12">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="taslak">Devam ediyor</SelectItem>
-                    <SelectItem value="tamamlandi">Keşif tamamlandı</SelectItem>
-                    <SelectItem value="teklif" disabled>
-                      Teklife dönüştü
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+              <Field label="Yetkili kişi">
+                <Input
+                  value={s.contact_name ?? ""}
+                  maxLength={120}
+                  placeholder="Görüşülen kişinin adı"
+                  onChange={(e) => update({ contact_name: e.target.value })}
+                  className="h-12"
+                />
               </Field>
             </div>
           </section>
@@ -742,8 +711,30 @@ function SurveyEditor({
           </section>
 
           <section className="surface-panel space-y-3 p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold">Notlar ve ölçüler</h3>
+            <div>
+              <h3 className="font-bold">İşin tanımı</h3>
+              <p className="text-xs text-muted-foreground">
+                Müşteriye giden föyde ve teklifin kapsam bölümünde görünür.
+              </p>
+            </div>
+            <Textarea
+              value={s.work_description ?? ""}
+              rows={4}
+              maxLength={4000}
+              placeholder="örn. Otoparka 22 kW şarj istasyonu kurulumu, panodan besleme hattı çekilmesi ve topraklama ölçümü."
+              onChange={(e) => update({ work_description: e.target.value })}
+              className="text-base"
+            />
+          </section>
+
+          <section className="surface-panel space-y-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="font-bold">İç notlar</h3>
+                <p className="text-xs text-muted-foreground">
+                  Yalnız NES görür; föye ve teklife yazılmaz.
+                </p>
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -796,7 +787,7 @@ function SurveyEditor({
           <section className="surface-panel space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-bold">Malzeme ve iş kalemleri</h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {catalog.length > 0 ? (
                   <Button
                     type="button"
@@ -816,6 +807,7 @@ function SurveyEditor({
                       ...s.items,
                       {
                         id: crypto.randomUUID(),
+                        kind: "malzeme",
                         description: "",
                         quantity: 1,
                         unit: "adet",
@@ -825,14 +817,35 @@ function SurveyEditor({
                     ])
                   }
                 >
-                  <Plus className="mr-2 h-4 w-4" /> Kalem
+                  <Plus className="mr-2 h-4 w-4" /> Malzeme
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11"
+                  onClick={() =>
+                    setItems([
+                      ...s.items,
+                      {
+                        id: crypto.randomUUID(),
+                        kind: "iscilik",
+                        description: "",
+                        quantity: 1,
+                        unit: "iş",
+                        catalog_item_id: null,
+                        note: null,
+                      },
+                    ])
+                  }
+                >
+                  <Plus className="mr-2 h-4 w-4" /> İşçilik
                 </Button>
               </div>
             </div>
             {s.items.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Henüz kalem yok. Katalogdan seçin, elle ekleyin ya da notlardan
-                çıkarın.
+                Henüz kalem yok. Katalogdan seçin, malzeme veya işçilik ekleyin
+                ya da notlardan çıkarın.
               </p>
             ) : (
               <div className="space-y-2">
@@ -911,6 +924,32 @@ function SurveyEditor({
                           )}
                         </SelectContent>
                       </Select>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          item.kind === "iscilik" ? "default" : "outline"
+                        }
+                        className="h-11"
+                        title="Malzeme / işçilik arasında değiştir"
+                        onClick={() =>
+                          setItems(
+                            s.items.map((x, j) =>
+                              j === i
+                                ? {
+                                    ...x,
+                                    kind:
+                                      x.kind === "iscilik"
+                                        ? "malzeme"
+                                        : "iscilik",
+                                  }
+                                : x,
+                            ),
+                          )
+                        }
+                      >
+                        {item.kind === "iscilik" ? "İşçilik" : "Malzeme"}
+                      </Button>
                       {item.catalog_item_id ? (
                         <Badge variant="secondary" className="text-[11px]">
                           Katalog:{" "}
@@ -1069,6 +1108,7 @@ function SurveyEditor({
             ...s.items,
             {
               id: crypto.randomUUID(),
+              kind: "malzeme",
               description: c.model ? `${c.name} (${c.model})` : c.name,
               quantity: 1,
               unit: c.unit || "adet",
@@ -1249,8 +1289,8 @@ function SheetPreview({
         <DialogHeader>
           <DialogTitle>Keşif föyü</DialogTitle>
           <DialogDescription>
-            İç kullanım: ekip ve satın alma için. Müşteriye resmî teklif
-            &quot;Teklifleştir&quot; ile hazırlanır.
+            Fiyat ve iç notlar yer almaz; müşteriye de gönderilebilir. Resmî
+            teklif &quot;Teklifleştir&quot; ile hazırlanır.
           </DialogDescription>
         </DialogHeader>
         <iframe
