@@ -966,7 +966,8 @@ Nasıl çalışırsın:
 - Kullanıcı fotoğraf eklerse önce fotoğrafı dikkatle incele. Taşeron/usta listesi, malzeme listesi ya da hakediş listesi ise ve kullanıcı hakediş istiyorsa:
   - Satırları yazıldığı sırayla tek tek oku: miktar, birim, açıklama, satır tutarı. El yazısında 3 düz üstlü (Ʒ gibi), 7 çizgili ve kuyruklu yazılabilir; rakamı okurken birim fiyatın (tutar ÷ miktar) mantıklı olup olmadığına bak.
   - Emin olmadığın rakamı okuma_notu ile işaretle; uydurma.
-  - Altta yazılı genel toplamı yazili_toplam olarak ver. Satırların toplamı tutmuyorsa farkı kullanıcıya açıkça söyle.
+  - Altta yazılı genel toplamı da her rakamıyla ayrı ayrı oku (9 ile 5, 3 ile 7, 1 ile 7 sık karışır) ve yazili_toplam olarak ver.
+  - Satırların toplamı tutmuyorsa önce emin olmadığın rakamlara VE genel toplama yeniden bak; tek bir satırı değiştirerek tutturan okumayı ara. Yine tutmuyorsa farkı kullanıcıya açıkça söyle, hangi rakamların şüpheli olduğunu yaz; tahmini kesinmiş gibi sunma.
   - Kâr oranı söylenmediyse %25 kullan. Fotoğrafın yolunu foto_yolu olarak geç.
   - hakedis_hazirla'yı çağır. PDF düğmeleri (müşteri hakedişi, taşeron kaydı) sohbette çıkar. Yanıtında kısa özet ver: kalem sayısı, taşeron toplamı, müşteri tutarı (KDV hariç ve dahil), toplam tutuyor mu; emin olmadığın satırları tek tek yaz ve göndermeden önce kontrol etmesini söyle.
   - Kullanıcı bir rakamı düzeltirse ("1. satır 47730" gibi) son listeyi düzeltip hakedis_hazirla'yı aynı fotoğraf yoluyla yeniden çağır; düzeltilen satırın okuma notunu kaldır.`;
@@ -1274,6 +1275,16 @@ Deno.serve(async (req: Request) => {
     messages.push({ role: "user", content: results });
   }
 
+  const hasRecentPhoto = messages
+    .slice(-PHOTO_WINDOW)
+    .some(
+      (m) =>
+        m.role === "user" &&
+        Array.isArray(m.content) &&
+        (m.content as { type: string; text?: string }[]).some(
+          (b) => b.type === "text" && PHOTO_RE.test((b.text ?? "").trim()),
+        ),
+    );
   const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
   try {
     for (let loop = 0; loop < MAX_LOOPS; loop++) {
@@ -1282,7 +1293,8 @@ Deno.serve(async (req: Request) => {
         max_tokens: 16000,
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
-        output_config: { effort: "medium" },
+        // Fotoğraflı isteklerde el yazısı rakamlar dikkatle okunsun.
+        output_config: { effort: hasRecentPhoto ? "high" : "medium" },
         system: [{ type: "text", text: systemPrompt(ctx) }],
         tools: ANTHROPIC_TOOLS,
         messages: await expandPhotos(messages, ctx),
