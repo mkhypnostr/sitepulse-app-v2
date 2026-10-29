@@ -37,6 +37,7 @@ import {
   LoadingState,
   PageHeader,
 } from "@/components/page-states";
+import { SupplierPricePanel } from "@/components/catalog/supplier-price-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -343,6 +344,12 @@ function PriceCatalogPage() {
           FEATURES.ges
             ? "Tekliflerde kullanılan malzeme ve işçilik birim maliyetleri. GES ana ekipmanı Enerji Pazarı liste fiyatından güncellenir."
             : "Tekliflerde kullanılan malzeme ve işçilik birim maliyetleri."
+        }
+      />
+
+      <SupplierPricePanel
+        onCatalogChanged={() =>
+          void queryClient.invalidateQueries({ queryKey: ["price-catalog"] })
         }
       />
 
