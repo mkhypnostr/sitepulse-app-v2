@@ -33,6 +33,10 @@ export const Route = createFileRoute("/_authenticated/approvals")({
 // project_task_status için geçerli); work_orders sorgusuna eklenirse
 // "invalid input value for enum work_status" hatası fırlatır.
 const TERMINAL_WORK_ORDER_STATUSES = '("completed","cancelled")';
+// Gecikme ölçütü: işin planlanan bitişi (yoksa başlangıcı). Kontrole
+// gönderilmiş iş yönetici onayını beklediği için gecikmiş sayılmaz.
+const NOT_OVERDUE_WORK_ORDER_STATUSES =
+  '("completed","cancelled","review_pending")';
 const TERMINAL_TASK_STATUSES = ["completed", "cancelled", "not_applicable"];
 
 type WorkOrderRef = {
@@ -83,6 +87,7 @@ type PendingProjectTaskSubmission = {
 
 type OverdueWorkOrder = WorkOrderRef & {
   scheduled_at: string;
+  planned_end_at: string | null;
   status: string;
 };
 
@@ -198,13 +203,16 @@ function ApprovalsPage() {
     queryKey: ["approvals", role, user?.id],
     enabled: canAccess && Boolean(user?.id),
     queryFn: async () => {
+      const nowIso = new Date().toISOString();
       const overdueOrdersQuery = supabase
         .from("work_orders")
         .select(
-          "id, work_order_no, title, scheduled_at, status, project_id, customer_id, projects(name, project_no), customers(name)",
+          "id, work_order_no, title, scheduled_at, planned_end_at, status, project_id, customer_id, projects(name, project_no), customers(name)",
         )
-        .lt("scheduled_at", new Date().toISOString())
-        .not("status", "in", TERMINAL_WORK_ORDER_STATUSES)
+        .or(
+          `planned_end_at.lt.${nowIso},and(planned_end_at.is.null,scheduled_at.lt.${nowIso})`,
+        )
+        .not("status", "in", NOT_OVERDUE_WORK_ORDER_STATUSES)
         .order("scheduled_at", { ascending: true });
 
       let projectTasksQuery = supabase
@@ -844,7 +852,10 @@ function ApprovalsPage() {
                       ? `Müşteri: ${order.customers?.name ?? "Müşteri"}`
                       : "Bağımsız saha görevi"
                 }
-                plannedDate={order.scheduled_at}
+                plannedDate={order.planned_end_at ?? order.scheduled_at}
+                dateLabel={
+                  order.planned_end_at ? "Planlanan bitiş" : "Planlanan tarih"
+                }
                 href={`/jobs/${order.id}`}
               />
             ))}
@@ -1105,12 +1116,14 @@ function OverdueCard({
   title,
   relation,
   plannedDate,
+  dateLabel = "Planlanan tarih",
   href,
 }: {
   category: string;
   title: string;
   relation: string;
   plannedDate: string | null;
+  dateLabel?: string;
   href: string;
 }) {
   return (
@@ -1124,7 +1137,7 @@ function OverdueCard({
       <p className="mt-1 font-black">{title}</p>
       <p className="mt-1 text-xs text-muted-foreground">{relation}</p>
       <p className="mt-2 text-xs text-muted-foreground">
-        Planlanan tarih: {plannedDate ? formatDate(plannedDate) : "—"}
+        {dateLabel}: {plannedDate ? formatDate(plannedDate) : "—"}
       </p>
     </a>
   );

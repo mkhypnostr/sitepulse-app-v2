@@ -66,8 +66,11 @@ function JobDetailPage() {
     null,
   );
   const [progressReviewNote, setProgressReviewNote] = useState("");
-  const [completionNote, setCompletionNote] = useState("");
-  const [completionPhotoIds, setCompletionPhotoIds] = useState<string[]>([]);
+  // null: kullanıcı henüz dokunmadı; varsayılan not ve fotoğraflar kullanılır.
+  const [completionNote, setCompletionNote] = useState<string | null>(null);
+  const [completionPhotoIds, setCompletionPhotoIds] = useState<string[] | null>(
+    null,
+  );
   const [reviewNote, setReviewNote] = useState("");
   const [photoType, setPhotoType] = useState<PhotoType>("saha");
   const [uploading, setUploading] = useState(false);
@@ -424,18 +427,18 @@ function JobDetailPage() {
   });
 
   const submitForReviewMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input: { note: string; photoIds: string[] }) => {
       const { error } = await supabase.rpc("submit_work_for_review", {
         target_work_order_id: jobId,
-        submitted_completion_note: completionNote,
-        completion_photo_ids: completionPhotoIds,
+        submitted_completion_note: input.note,
+        completion_photo_ids: input.photoIds,
       });
       if (error) throw error;
     },
     onSuccess: async () => {
       await refresh();
-      setCompletionNote("");
-      setCompletionPhotoIds([]);
+      setCompletionNote(null);
+      setCompletionPhotoIds(null);
       toast.success("İş yönetici kontrolüne gönderildi");
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -787,6 +790,34 @@ function JobDetailPage() {
     !pendingProgress &&
     !isReviewPending &&
     !isFinalized;
+  // %100 onaylandıktan sonra son adım tek dokunuşa insin: son onaylı
+  // ilerlemenin kanıtı ve kişinin yüklediği son fotoğraflar seçili, açıklama
+  // son ilerleme notuyla dolu gelir; kullanıcı değiştirebilir.
+  const lastApprovedProgress = progress.find(
+    (item) => item.status === "approved" && item.contractor_id === user?.id,
+  );
+  const defaultCompletionPhotoIds = [
+    ...new Set(
+      [
+        lastApprovedProgress?.evidence_photo_id,
+        ...completionCandidatePhotos.map((photo) => photo.id),
+      ].filter(
+        (id): id is string =>
+          Boolean(id) &&
+          completionCandidatePhotos.some((photo) => photo.id === id),
+      ),
+    ),
+  ].slice(0, 5);
+  const selectedCompletionPhotoIds =
+    completionPhotoIds ?? defaultCompletionPhotoIds;
+  const completionNoteValue =
+    completionNote ?? lastApprovedProgress?.note ?? "";
+  const completionBlocker =
+    selectedCompletionPhotoIds.length < 1
+      ? "En az bir fotoğraf veya belge seçin."
+      : completionNoteValue.trim().length < 10
+        ? "Açıklama en az 10 karakter olmalı."
+        : null;
   const proposedProgressValue = Number(progressPct);
   const progressSubmissionValid =
     (role === "contractor" || role === "technical_office") &&
@@ -830,10 +861,12 @@ function JobDetailPage() {
             <Badge variant="outline" className="px-3 py-2">
               {statusLabels[order.status]}
             </Badge>
-            {order.status === "completed" ? (
+            {(role === "admin" || role === "technical_office") &&
+            (order.status === "completed" ||
+              order.status === "review_pending") ? (
               <Button asChild variant="outline">
                 <Link to="/job-report/$jobId" params={{ jobId }}>
-                  <FileDown className="mr-2 h-4 w-4" /> Fotoğraflı Rapor
+                  <FileDown className="mr-2 h-4 w-4" /> Teslim Tutanağı
                 </Link>
               </Button>
             ) : null}
@@ -892,6 +925,104 @@ function JobDetailPage() {
         }
         return null;
       })()}
+
+      {canSubmitForReview ? (
+        <Card className="mb-6 border-2 border-primary/50 bg-primary/5">
+          <CardHeader>
+            <CardTitle>Son adım: İşi bitir ve kontrole gönder</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              İlerleme %100 onaylandı. Seçili fotoğrafları ve açıklamayı kontrol
+              edip "İşi bitir" deyin; iş yönetici onayına gider. Fotoğrafa
+              dokunarak seçimi değiştirebilirsiniz (en fazla 5).
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {completionCandidatePhotos.map((photo) => {
+                const selected = selectedCompletionPhotoIds.includes(photo.id);
+                return (
+                  <button
+                    type="button"
+                    key={photo.id}
+                    onClick={() =>
+                      setCompletionPhotoIds(
+                        selected
+                          ? selectedCompletionPhotoIds.filter(
+                              (id) => id !== photo.id,
+                            )
+                          : selectedCompletionPhotoIds.length < 5
+                            ? [...selectedCompletionPhotoIds, photo.id]
+                            : selectedCompletionPhotoIds,
+                      )
+                    }
+                    className={`overflow-hidden rounded-lg border text-left transition-colors ${
+                      selected
+                        ? "border-primary ring-2 ring-primary/30"
+                        : "border-border"
+                    }`}
+                  >
+                    {photo.is_document ? (
+                      <span className="flex aspect-video items-center justify-center bg-muted/40 text-highlight">
+                        <FileText className="h-10 w-10" />
+                      </span>
+                    ) : (
+                      <img
+                        src={photo.signedUrl ?? ""}
+                        alt={photo.caption || photoTypeLabels[photo.photo_type]}
+                        className="aspect-video w-full object-cover"
+                      />
+                    )}
+                    <span className="block p-2 text-xs font-bold">
+                      {selected ? "✓ " : ""}
+                      {photo.is_document
+                        ? "PDF Belge"
+                        : photoTypeLabels[photo.photo_type]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {completionCandidatePhotos.length === 0 ? (
+              <p className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
+                Önce “Fotoğraf veya Belge Ekle” alanından en az bir kanıt
+                yükleyin.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {selectedCompletionPhotoIds.length}/5 kanıt seçildi.
+              </p>
+            )}
+            <Textarea
+              value={completionNoteValue}
+              onChange={(event) => setCompletionNote(event.target.value)}
+              placeholder="İşin nasıl tamamlandığını, varsa önemli notları yazın"
+              minLength={10}
+            />
+            <Button
+              className="h-12 w-full font-bold"
+              onClick={() =>
+                submitForReviewMutation.mutate({
+                  note: completionNoteValue,
+                  photoIds: selectedCompletionPhotoIds,
+                })
+              }
+              disabled={
+                submitForReviewMutation.isPending || Boolean(completionBlocker)
+              }
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              {submitForReviewMutation.isPending
+                ? "Gönderiliyor..."
+                : "İşi bitir, kontrole gönder"}
+            </Button>
+            {completionBlocker ? (
+              <p className="text-xs font-semibold text-warning">
+                {completionBlocker}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {role === "admin" ? (
         <Card className="mb-6 border-primary/30">
@@ -1186,7 +1317,8 @@ function JobDetailPage() {
 
       {canOperate ? (
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
-          {role === "contractor" || role === "technical_office" ? (
+          {(role === "contractor" || role === "technical_office") &&
+          order.progress_pct < 100 ? (
             <Card>
               <CardHeader>
                 <CardTitle>İlerleme Bildir</CardTitle>
@@ -1460,95 +1592,6 @@ function JobDetailPage() {
             <p className="text-xs text-muted-foreground">
               Reddetme işleminde açıklama zorunludur.
             </p>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {canSubmitForReview ? (
-        <Card className="mt-6 border-primary/30">
-          <CardHeader>
-            <CardTitle>İşi Yönetici Kontrolüne Gönder</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Göndermek için onaylı ilerleme %100 olmalı; aşağıdan en az 1, en
-              fazla 5 fotoğraf veya belge seçilmeli ve en az 10 karakter
-              açıklama yazılmalıdır.
-            </p>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {completionCandidatePhotos.map((photo) => {
-                const selected = completionPhotoIds.includes(photo.id);
-                return (
-                  <button
-                    type="button"
-                    key={photo.id}
-                    onClick={() =>
-                      setCompletionPhotoIds((current) =>
-                        selected
-                          ? current.filter((id) => id !== photo.id)
-                          : current.length < 5
-                            ? [...current, photo.id]
-                            : current,
-                      )
-                    }
-                    className={`overflow-hidden rounded-lg border text-left transition-colors ${
-                      selected
-                        ? "border-primary ring-2 ring-primary/30"
-                        : "border-border"
-                    }`}
-                  >
-                    {photo.is_document ? (
-                      <span className="flex aspect-video items-center justify-center bg-muted/40 text-highlight">
-                        <FileText className="h-10 w-10" />
-                      </span>
-                    ) : (
-                      <img
-                        src={photo.signedUrl ?? ""}
-                        alt={photo.caption || photoTypeLabels[photo.photo_type]}
-                        className="aspect-video w-full object-cover"
-                      />
-                    )}
-                    <span className="block p-2 text-xs font-bold">
-                      {selected ? "✓ " : ""}
-                      {photo.is_document
-                        ? "PDF Belge"
-                        : photoTypeLabels[photo.photo_type]}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {completionCandidatePhotos.length === 0 ? (
-              <p className="rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
-                Önce “Fotoğraf veya Belge Ekle” alanından en az bir kanıt
-                yükleyin.
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                {completionPhotoIds.length}/5 kanıt seçildi.
-              </p>
-            )}
-            <Textarea
-              value={completionNote}
-              onChange={(event) => setCompletionNote(event.target.value)}
-              placeholder="İşin nasıl tamamlandığını, varsa önemli notları yazın"
-              minLength={10}
-            />
-            <Button
-              className="w-full"
-              onClick={() => submitForReviewMutation.mutate()}
-              disabled={
-                submitForReviewMutation.isPending ||
-                completionPhotoIds.length < 1 ||
-                completionPhotoIds.length > 5 ||
-                completionNote.trim().length < 10
-              }
-            >
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              {submitForReviewMutation.isPending
-                ? "Gönderiliyor..."
-                : "Kontrole Gönder"}
-            </Button>
           </CardContent>
         </Card>
       ) : null}
