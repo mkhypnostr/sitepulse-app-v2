@@ -132,13 +132,19 @@ function JobReportPage() {
     );
   }
 
-  const { order, photos, materials, submissions, profiles } = reportQuery.data;
-  const profileById = new Map(
-    profiles.map((profile) => [profile.id, profile.full_name]),
-  );
+  const { order, photos, materials, submissions } = reportQuery.data;
   const approvedSubmission = submissions.find(
     (submission) => submission.status === "approved",
   );
+  // Müşteriye verilen belge: taşeron adı ve malzeme kaynağı yazılmaz.
+  const isDraft = order.status !== "completed";
+  const completedAt =
+    approvedSubmission?.reviewed_at ?? order.completion_submitted_at ?? null;
+  const completionText =
+    approvedSubmission?.note ||
+    order.completion_note ||
+    "Tamamlanma açıklaması bulunmuyor.";
+  const fileBase = `NES-teslim-tutanagi-${order.work_order_no}`;
 
   async function downloadWordReport() {
     const logoDataUrl = await imageAsDataUrl(NES_LOGO_URL);
@@ -157,11 +163,10 @@ function JobReportPage() {
           <tr>
             <td>${escapeHtml(material.is_nes_stock ? material.stock_items?.name : material.custom_material_name)}</td>
             <td>${escapeHtml(material.quantity)} ${escapeHtml(material.unit)}</td>
-            <td>${escapeHtml(material.is_nes_stock ? "NES deposu" : "Saha / taşeron")}</td>
           </tr>`,
           )
           .join("")
-      : '<tr><td colspan="3">Malzeme kaydı bulunmuyor.</td></tr>';
+      : '<tr><td colspan="2">Malzeme kaydı bulunmuyor.</td></tr>';
     const photoBlocks = photos.length
       ? photos
           .map(
@@ -185,25 +190,31 @@ function JobReportPage() {
         .letterhead{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:4px solid #0755b5;padding-bottom:14px}
         .letterhead img{height:44px}
         .report-footer{margin-top:32px;border-top:1px solid #cbd5e1;padding-top:10px;text-align:center;font-size:10px;color:#64748b}
+        .sign td{height:90px;vertical-align:top;width:50%}
       </style></head><body>
         <div class="letterhead">
-          <h1 style="margin:0">FOTOĞRAFLI İŞ RAPORU</h1>
+          <h1 style="margin:0">İŞ TAMAMLAMA VE TESLİM TUTANAĞI${isDraft ? " (TASLAK)" : ""}</h1>
           <img src="${logoDataUrl}" alt="NES Enerji" />
         </div>
         <div class="meta">
           <h2>#${escapeHtml(order.work_order_no)} · ${escapeHtml(order.title)}</h2>
-          <p><strong>Müşteri:</strong> ${escapeHtml(order.customers?.name)}</p>
-          <p><strong>Planlanan tarih:</strong> ${escapeHtml(formatDate(order.scheduled_at))}</p>
+          <p><strong>Müşteri:</strong> ${escapeHtml(order.customers?.name || "-")}</p>
+          <p><strong>Başlangıç:</strong> ${escapeHtml(formatDate(order.scheduled_at))}</p>
+          <p><strong>Tamamlanma:</strong> ${escapeHtml(completedAt ? formatDate(completedAt) : "-")}</p>
           <p><strong>Konum:</strong> ${escapeHtml(order.location || order.location_url || "-")}</p>
         </div>
-        <h2>İş Açıklaması</h2><p>${escapeHtml(order.description || "Açıklama girilmemiş.")}</p>
+        <h2>Yapılan İş</h2><p>${escapeHtml(order.description || "Açıklama girilmemiş.")}</p>
         <h2>Tamamlanma Özeti</h2>
-        <p>${escapeHtml(approvedSubmission?.note || order.completion_note || "Tamamlanma açıklaması bulunmuyor.")}</p>
-        <p><strong>Gönderen:</strong> ${escapeHtml(approvedSubmission ? profileById.get(approvedSubmission.submitted_by) : "-")}</p>
-        <p><strong>Onaylayan:</strong> ${escapeHtml(approvedSubmission?.reviewed_by ? profileById.get(approvedSubmission.reviewed_by) : "-")}</p>
+        <p>${escapeHtml(completionText)}</p>
         <h2>Kullanılan Malzemeler</h2>
-        <table><thead><tr><th>Malzeme</th><th>Miktar</th><th>Kaynak</th></tr></thead><tbody>${materialRows}</tbody></table>
+        <table><thead><tr><th>Malzeme</th><th>Miktar</th></tr></thead><tbody>${materialRows}</tbody></table>
         <h2>Saha Fotoğrafları ve Belgeleri</h2>${photoBlocks}
+        <h2>Teslim</h2>
+        <p>Yukarıda belirtilen işler tamamlanmış ve çalışır durumda teslim edilmiştir. Teslim alan, işi yerinde kontrol ettiğini beyan eder.</p>
+        <table class="sign"><tr>
+          <td><strong>Teslim Eden — NES Enerji</strong><br/>Ad Soyad:<br/><br/>İmza:<br/><br/>Tarih:</td>
+          <td><strong>Teslim Alan — Müşteri</strong><br/>Ad Soyad:<br/><br/>İmza:<br/><br/>Tarih:</td>
+        </tr></table>
         <div class="report-footer">
           <p>${escapeHtml(NES_CONTACT_ADDRESS)}</p>
           <p>Telefon: ${escapeHtml(NES_CONTACT_PHONE)} &middot; Mail: ${escapeHtml(NES_CONTACT_EMAIL)}</p>
@@ -213,7 +224,7 @@ function JobReportPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `NES-is-raporu-${order.work_order_no}.doc`;
+    anchor.download = `${fileBase}.doc`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -238,16 +249,26 @@ function JobReportPage() {
 
       <article className="rounded-xl bg-white p-6 pb-20 text-slate-950 shadow-sm print:rounded-none print:p-0 print:pt-24 print:pb-24 print:shadow-none">
         <LetterheadHeader
-          title="Fotoğraflı İş Raporu"
+          title={`İş Tamamlama ve Teslim Tutanağı${isDraft ? " (Taslak)" : ""}`}
           subtitle={`#${order.work_order_no} · ${order.title}`}
         />
+        {isDraft ? (
+          <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-800 print:border-slate-400 print:bg-white print:text-slate-700">
+            Taslak: iş henüz NES onayından geçmedi. Onaydan sonra kesin tutanak
+            olarak yazdırın.
+          </p>
+        ) : null}
 
         <section className="mt-6 grid gap-3 rounded-xl bg-blue-50 p-5 sm:grid-cols-2">
           <p>
-            <strong>Müşteri:</strong> {order.customers?.name}
+            <strong>Müşteri:</strong> {order.customers?.name || "-"}
           </p>
           <p>
-            <strong>Planlanan tarih:</strong> {formatDate(order.scheduled_at)}
+            <strong>Başlangıç:</strong> {formatDate(order.scheduled_at)}
+          </p>
+          <p>
+            <strong>Tamamlanma:</strong>{" "}
+            {completedAt ? formatProjectDateTime(completedAt) : "-"}
           </p>
           <p className="sm:col-span-2">
             <strong>Konum:</strong>{" "}
@@ -256,33 +277,13 @@ function JobReportPage() {
         </section>
 
         <section className="mt-7">
-          <h2 className="text-xl font-black">İş ve Tamamlanma Özeti</h2>
+          <h2 className="text-xl font-black">Yapılan İş ve Tamamlanma Özeti</h2>
           <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
             {order.description || "İş açıklaması girilmemiş."}
           </p>
           <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">
-            {approvedSubmission?.note ||
-              order.completion_note ||
-              "Tamamlanma açıklaması bulunmuyor."}
+            {completionText}
           </p>
-          {approvedSubmission ? (
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <Badge variant="outline">
-                Gönderen:{" "}
-                {profileById.get(approvedSubmission.submitted_by) || "Taşeron"}
-              </Badge>
-              <Badge variant="outline">
-                Onaylayan:{" "}
-                {profileById.get(approvedSubmission.reviewed_by ?? "") ||
-                  "Yönetici"}
-              </Badge>
-              {approvedSubmission.reviewed_at ? (
-                <Badge variant="outline">
-                  {formatProjectDateTime(approvedSubmission.reviewed_at)}
-                </Badge>
-              ) : null}
-            </div>
-          ) : null}
         </section>
 
         <section className="mt-7">
@@ -299,9 +300,6 @@ function JobReportPage() {
                       {material.is_nes_stock
                         ? material.stock_items?.name
                         : material.custom_material_name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {material.is_nes_stock ? "NES deposu" : "Saha / taşeron"}
                     </p>
                   </div>
                   <strong>
@@ -354,6 +352,29 @@ function JobReportPage() {
                 </figcaption>
               </figure>
             ))}
+          </div>
+        </section>
+
+        <section className="mt-8 break-inside-avoid">
+          <h2 className="text-xl font-black">Teslim</h2>
+          <p className="mt-2 text-sm text-slate-700">
+            Yukarıda belirtilen işler tamamlanmış ve çalışır durumda teslim
+            edilmiştir. Teslim alan, işi yerinde kontrol ettiğini beyan eder.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
+            {["Teslim Eden — NES Enerji", "Teslim Alan — Müşteri"].map(
+              (label) => (
+                <div
+                  key={label}
+                  className="rounded-lg border border-slate-300 p-4 text-sm"
+                >
+                  <p className="font-bold">{label}</p>
+                  <p className="mt-4">Ad Soyad:</p>
+                  <p className="mt-8">İmza:</p>
+                  <p className="mt-8">Tarih:</p>
+                </div>
+              ),
+            )}
           </div>
         </section>
 
