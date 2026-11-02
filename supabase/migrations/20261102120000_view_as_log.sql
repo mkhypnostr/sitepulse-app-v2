@@ -15,10 +15,19 @@ CREATE INDEX IF NOT EXISTS view_as_log_admin_idx
 
 ALTER TABLE public.view_as_log ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "admins view view_as_log" ON public.view_as_log;
-CREATE POLICY "admins view view_as_log"
-  ON public.view_as_log FOR SELECT TO authenticated
-  USING ((SELECT public.has_role(auth.uid(), 'admin'::public.app_role)));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'view_as_log'
+      AND policyname = 'admins view view_as_log'
+  ) THEN
+    CREATE POLICY "admins view view_as_log"
+      ON public.view_as_log FOR SELECT TO authenticated
+      USING ((SELECT public.has_role(auth.uid(), 'admin'::public.app_role)));
+  END IF;
+END;
+$$;
 
 REVOKE ALL ON public.view_as_log FROM anon;
 GRANT SELECT ON public.view_as_log TO authenticated;
