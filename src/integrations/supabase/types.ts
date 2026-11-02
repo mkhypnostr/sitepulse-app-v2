@@ -3516,6 +3516,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      view_as_log: {
+        Row: {
+          admin_id: string;
+          created_at: string;
+          id: string;
+          target_role: string;
+          target_user_id: string;
+        };
+        Insert: {
+          admin_id: string;
+          created_at?: string;
+          id?: string;
+          target_role: string;
+          target_user_id: string;
+        };
+        Update: {
+          admin_id?: string;
+          created_at?: string;
+          id?: string;
+          target_role?: string;
+          target_user_id?: string;
+        };
+        Relationships: [];
+      };
       work_completion_evidence: {
         Row: {
           photo_id: string;

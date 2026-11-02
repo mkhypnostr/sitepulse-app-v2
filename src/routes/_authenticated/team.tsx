@@ -21,6 +21,7 @@ import {
   PageHeader,
 } from "@/components/page-states";
 import { Button } from "@/components/ui/button";
+import { PreviewUserButton } from "@/components/preview-user-button";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -676,6 +677,10 @@ function TeamPage() {
                             <KeyRound className="mr-2 h-4 w-4" /> Şifre Yenile
                           </Button>
                         )}
+                        {member.role === "contractor" ||
+                        member.role === "customer" ? (
+                          <PreviewUserButton userId={member.id} />
+                        ) : null}
                       </div>
                     </TableCell>
                   ) : null}

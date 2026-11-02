@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as OnizlemeRouteImport } from './routes/onizleme'
 import { Route as SifreYenileRouteImport } from './routes/sifre-yenile'
 import { Route as AuthenticatedAccountingRouteImport } from './routes/_authenticated/accounting'
 import { Route as AuthenticatedApprovalsRouteImport } from './routes/_authenticated/approvals'
@@ -64,6 +65,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnizlemeRoute = OnizlemeRouteImport.update({
+  id: '/onizleme',
+  path: '/onizleme',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SifreYenileRoute = SifreYenileRouteImport.update({
@@ -278,6 +284,7 @@ const AuthenticatedTeklifDosyasiOfferIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/onizleme': typeof OnizlemeRoute
   '/sifre-yenile': typeof SifreYenileRoute
   '/accounting': typeof AuthenticatedAccountingRoute
   '/approvals': typeof AuthenticatedApprovalsRoute
@@ -321,6 +328,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/onizleme': typeof OnizlemeRoute
   '/sifre-yenile': typeof SifreYenileRoute
   '/accounting': typeof AuthenticatedAccountingRoute
   '/approvals': typeof AuthenticatedApprovalsRoute
@@ -366,6 +374,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/auth': typeof AuthRoute
+  '/onizleme': typeof OnizlemeRoute
   '/sifre-yenile': typeof SifreYenileRoute
   '/_authenticated/accounting': typeof AuthenticatedAccountingRoute
   '/_authenticated/approvals': typeof AuthenticatedApprovalsRoute
@@ -411,6 +420,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/onizleme'
     | '/sifre-yenile'
     | '/accounting'
     | '/approvals'
@@ -454,6 +464,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/onizleme'
     | '/sifre-yenile'
     | '/accounting'
     | '/approvals'
@@ -498,6 +509,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/onizleme'
     | '/sifre-yenile'
     | '/_authenticated/accounting'
     | '/_authenticated/approvals'
@@ -543,6 +555,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   AuthRoute: typeof AuthRoute
+  OnizlemeRoute: typeof OnizlemeRoute
   SifreYenileRoute: typeof SifreYenileRoute
   ApiEnerjipazariPricesRoute: typeof ApiEnerjipazariPricesRoute
   ApiPvgisRoute: typeof ApiPvgisRoute
@@ -572,6 +585,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onizleme': {
+      id: '/onizleme'
+      path: '/onizleme'
+      fullPath: '/onizleme'
+      preLoaderRoute: typeof OnizlemeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sifre-yenile': {
@@ -944,6 +964,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   AuthRoute: AuthRoute,
+  OnizlemeRoute: OnizlemeRoute,
   SifreYenileRoute: SifreYenileRoute,
   ApiEnerjipazariPricesRoute: ApiEnerjipazariPricesRoute,
   ApiPvgisRoute: ApiPvgisRoute,

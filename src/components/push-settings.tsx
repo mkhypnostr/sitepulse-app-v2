@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isPreviewTab } from "@/lib/preview-mode";
 import { BellRing, Share, X } from "lucide-react";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/domain";
@@ -43,7 +44,7 @@ export function PushSettings() {
     }
   }
 
-  if (!state) return null;
+  if (!state || isPreviewTab()) return null;
   return (
     <div className="space-y-3">
       <p className="text-sm leading-6 text-muted-foreground">
@@ -103,7 +104,13 @@ export function PushBanner({ onOpenProfile }: { onOpenProfile: () => void }) {
     void getPushState().then(setState);
   }, []);
 
-  if (dismissed || !state || !["off", "ios-install"].includes(state)) {
+  // Panel önizlemesinde bildirim izni yöneticinin cihazına sorulmasın.
+  if (
+    isPreviewTab() ||
+    dismissed ||
+    !state ||
+    !["off", "ios-install"].includes(state)
+  ) {
     return null;
   }
   const close = () => {

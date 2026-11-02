@@ -45,6 +45,8 @@ import { AssistantPanel } from "@/components/assistant/assistant-panel";
 import { useTheme } from "@/lib/theme";
 import { PushBanner } from "@/components/push-settings";
 import { refreshPushSubscription } from "@/lib/push";
+import { isPreviewTab } from "@/lib/preview-mode";
+import { PreviewBanner } from "@/components/preview-banner";
 
 // Bu liste yalnızca work_orders.status (work_status enum) için kullanılır;
 // "not_applicable" ve "external_approval" bu enum'da yok ve sorguya
@@ -119,7 +121,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
   // Bildirim izni verilmiş cihazda aboneliği bu hesaba (yeniden) bağla.
   useEffect(() => {
-    if (user?.id) void refreshPushSubscription();
+    // Önizleme sekmesinde yöneticinin cihazı başkasının hesabına bağlanmasın.
+    if (user?.id && !isPreviewTab()) void refreshPushSubscription();
   }, [user?.id]);
   const isMac =
     typeof navigator !== "undefined" &&
@@ -435,6 +438,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background lg:flex">
+      <PreviewBanner />
       {/* Masaüstü: kenar çubuğu yer tutucunun üzerinde durur. Daraltılmışken
           yalnız ikonlar görünür; üzerine gelince ya da sabitlenince yer
           tutucu da aynı yumuşak geçişle genişler, sağdaki içerik menünün
