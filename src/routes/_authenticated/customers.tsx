@@ -22,6 +22,7 @@ import {
   PageHeader,
 } from "@/components/page-states";
 import { Button } from "@/components/ui/button";
+import { PreviewUserButton } from "@/components/preview-user-button";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -500,8 +501,18 @@ function CustomersPage() {
                   </TableCell>
                   <TableCell>
                     {customer.contact_user_id ? (
-                      profileById.get(customer.contact_user_id)?.full_name ||
-                      "Bağlı kullanıcı"
+                      <div className="space-y-1.5">
+                        <p>
+                          {profileById.get(customer.contact_user_id)
+                            ?.full_name || "Bağlı kullanıcı"}
+                        </p>
+                        {role === "admin" ? (
+                          <PreviewUserButton
+                            userId={customer.contact_user_id}
+                            label="Müşteri panelini gör"
+                          />
+                        ) : null}
+                      </div>
                     ) : role === "admin" ? (
                       <button
                         type="button"

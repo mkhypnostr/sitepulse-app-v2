@@ -8,6 +8,7 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useRouter } from "@tanstack/react-router";
+import { appStorage, isPreviewTab } from "@/lib/preview-mode";
 
 export type AppRole = "admin" | "technical_office" | "contractor" | "customer";
 
@@ -30,7 +31,7 @@ const AUTH_STORAGE_KEY = "sb-nyfocdnlbknxpxbeeapj-auth-token";
 
 function cachedRole(userId: string): AppRole | null {
   try {
-    const raw = localStorage.getItem(ROLE_KEY);
+    const raw = appStorage().getItem(ROLE_KEY);
     const parsed = raw
       ? (JSON.parse(raw) as { userId: string; role: AppRole })
       : null;
@@ -42,6 +43,8 @@ function cachedRole(userId: string): AppRole | null {
 
 function storedSession(): Session | null {
   try {
+    // Önizleme sekmesi yöneticinin kendi oturumunu asla okumamalı.
+    if (isPreviewTab()) return null;
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     const parsed = raw ? (JSON.parse(raw) as Session) : null;
     return parsed?.user ? parsed : null;
@@ -74,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const next = (data ?? "customer") as AppRole;
     try {
-      localStorage.setItem(ROLE_KEY, JSON.stringify({ userId, role: next }));
+      appStorage().setItem(ROLE_KEY, JSON.stringify({ userId, role: next }));
     } catch {
       // Saklanamazsa yalnız çevrimdışı açılış etkilenir.
     }
@@ -116,7 +119,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await loadRole(session?.user?.id);
     },
     signOut: async () => {
-      await supabase.auth.signOut();
+      // Önizlemede yalnız bu sekmenin oturumu kapanır.
+      await supabase.auth.signOut(
+        isPreviewTab() ? { scope: "local" } : undefined,
+      );
     },
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
