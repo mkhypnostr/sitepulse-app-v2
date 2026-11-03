@@ -293,6 +293,42 @@ export type Database = {
           },
         ];
       };
+      calendar_week_notes: {
+        Row: {
+          body: string;
+          created_at: string;
+          created_by: string | null;
+          done_at: string | null;
+          done_by: string | null;
+          id: string;
+          is_done: boolean;
+          updated_at: string;
+          week_start: string;
+        };
+        Insert: {
+          body: string;
+          created_at?: string;
+          created_by?: string | null;
+          done_at?: string | null;
+          done_by?: string | null;
+          id?: string;
+          is_done?: boolean;
+          updated_at?: string;
+          week_start: string;
+        };
+        Update: {
+          body?: string;
+          created_at?: string;
+          created_by?: string | null;
+          done_at?: string | null;
+          done_by?: string | null;
+          id?: string;
+          is_done?: boolean;
+          updated_at?: string;
+          week_start?: string;
+        };
+        Relationships: [];
+      };
       cash_accounts: {
         Row: {
           bank_name: string | null;

@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/select";
 
 import { GoogleCalendarSync } from "@/components/calendar/google-calendar-sync";
+import { WeeklyNotes } from "@/components/calendar/weekly-notes";
+import { toWeekKey } from "@/lib/week-key";
 export const Route = createFileRoute("/_authenticated/calendar")({
   component: CalendarPage,
 });
@@ -467,6 +469,15 @@ function CalendarPage() {
     }
   };
 
+  // Haftalık notlar: hafta görünümünde gösterilen hafta; ay görünümünde
+  // bugün o aydaysa bu hafta, değilse ayın ilk haftası.
+  const notesWeek =
+    view === "week" ||
+    (anchor.getFullYear() === now.getFullYear() &&
+      anchor.getMonth() === now.getMonth())
+      ? toWeekKey(view === "week" ? anchor : now)
+      : toWeekKey(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
+
   const agendaDays =
     view === "week" ? cells : cells.filter((cell) => cell.inCurrentMonth);
   const agendaDateFormatter = new Intl.DateTimeFormat("tr-TR", {
@@ -877,6 +888,10 @@ function CalendarPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {isManager ? (
+        <WeeklyNotes key={notesWeek} initialWeek={notesWeek} />
+      ) : null}
 
       <div className="mb-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
