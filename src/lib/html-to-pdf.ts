@@ -47,6 +47,8 @@ export async function htmlToPdf(html: string, filename: string) {
       const sliceH = Math.floor(pageH * pxPerMm);
       for (let y = 0; y < canvas.height; y += sliceH) {
         const h = Math.min(sliceH, canvas.height - y);
+        // Yuvarlamadan kalan birkaç piksellik artık boş sayfa açmasın.
+        if (y > 0 && h < pxPerMm * 3) break;
         const slice = document.createElement("canvas");
         slice.width = canvas.width;
         slice.height = h;

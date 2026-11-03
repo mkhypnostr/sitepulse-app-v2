@@ -93,6 +93,8 @@ export type Survey = {
   location_accuracy_m: number | null;
   /** İşin tanımı; teklifte "Kapsam" olarak çıkar. */
   work_description?: string;
+  /** Taşeron iş tarifi: yalnız NES ve işe atanan taşeron görür; föye ve teklife yazılmaz. */
+  contractor_instructions?: string;
   /** İç notlar: yalnız NES görür, müşteriye giden belgelere yazılmaz. */
   notes: string;
   status: "taslak" | "tamamlandi" | "teklif";
@@ -131,6 +133,7 @@ export function newSurvey(): Survey {
     longitude: null,
     location_accuracy_m: null,
     work_description: "",
+    contractor_instructions: "",
     notes: "",
     status: "taslak",
     offer_id: null,
@@ -330,6 +333,7 @@ export async function pushSurvey(survey: Survey): Promise<Survey> {
       longitude: survey.longitude,
       location_accuracy_m: survey.location_accuracy_m,
       work_description: survey.work_description?.trim() || null,
+      contractor_instructions: survey.contractor_instructions?.trim() || null,
       notes: survey.notes || null,
       status: survey.status,
       offer_id: survey.offer_id,
@@ -471,7 +475,7 @@ export async function pullSurveys(limit = 60) {
   const { data, error } = await supabase
     .from("site_surveys")
     .select(
-      "id, survey_no, title, work_type, customer_id, customer_name, contact_name, contact_phone, location_text, latitude, longitude, location_accuracy_m, work_description, notes, status, offer_id, surveyed_at, updated_at, site_survey_items(id, position, kind, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer, kind, duration_s, transcript)",
+      "id, survey_no, title, work_type, customer_id, customer_name, contact_name, contact_phone, location_text, latitude, longitude, location_accuracy_m, work_description, contractor_instructions, notes, status, offer_id, surveyed_at, updated_at, site_survey_items(id, position, kind, description, quantity, unit, catalog_item_id, note), site_survey_photos(id, storage_path, caption, taken_at, include_in_offer, kind, duration_s, transcript)",
     )
     .order("surveyed_at", { ascending: false })
     .limit(limit);
@@ -493,6 +497,7 @@ export async function pullSurveys(limit = 60) {
       longitude: row.longitude,
       location_accuracy_m: row.location_accuracy_m,
       work_description: row.work_description ?? "",
+      contractor_instructions: row.contractor_instructions ?? "",
       notes: row.notes ?? "",
       status: row.status as Survey["status"],
       offer_id: row.offer_id,

@@ -24,6 +24,7 @@ import { Route as AuthenticatedEnergyOfferRouteImport } from './routes/_authenti
 import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticated/invoices'
 import { Route as AuthenticatedKesifRouteImport } from './routes/_authenticated/kesif'
 import { Route as AuthenticatedMapRouteImport } from './routes/_authenticated/map'
+import { Route as AuthenticatedMeasurementOfferRouteImport } from './routes/_authenticated/measurement-offer'
 import { Route as AuthenticatedMeasurementTrackingRouteImport } from './routes/_authenticated/measurement-tracking'
 import { Route as AuthenticatedMyJobsRouteImport } from './routes/_authenticated/my-jobs'
 import { Route as AuthenticatedMyProjectTasksRouteImport } from './routes/_authenticated/my-project-tasks'
@@ -129,6 +130,12 @@ const AuthenticatedMapRoute = AuthenticatedMapRouteImport.update({
   path: '/map',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedMeasurementOfferRoute =
+  AuthenticatedMeasurementOfferRouteImport.update({
+    id: '/measurement-offer',
+    path: '/measurement-offer',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMeasurementTrackingRoute =
   AuthenticatedMeasurementTrackingRouteImport.update({
     id: '/measurement-tracking',
@@ -296,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/invoices': typeof AuthenticatedInvoicesRoute
   '/kesif': typeof AuthenticatedKesifRoute
   '/map': typeof AuthenticatedMapRoute
+  '/measurement-offer': typeof AuthenticatedMeasurementOfferRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/my-jobs': typeof AuthenticatedMyJobsRoute
   '/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
@@ -340,6 +348,7 @@ export interface FileRoutesByTo {
   '/invoices': typeof AuthenticatedInvoicesRoute
   '/kesif': typeof AuthenticatedKesifRoute
   '/map': typeof AuthenticatedMapRoute
+  '/measurement-offer': typeof AuthenticatedMeasurementOfferRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/my-jobs': typeof AuthenticatedMyJobsRoute
   '/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
@@ -386,6 +395,7 @@ export interface FileRoutesById {
   '/_authenticated/invoices': typeof AuthenticatedInvoicesRoute
   '/_authenticated/kesif': typeof AuthenticatedKesifRoute
   '/_authenticated/map': typeof AuthenticatedMapRoute
+  '/_authenticated/measurement-offer': typeof AuthenticatedMeasurementOfferRoute
   '/_authenticated/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
   '/_authenticated/my-jobs': typeof AuthenticatedMyJobsRoute
   '/_authenticated/my-project-tasks': typeof AuthenticatedMyProjectTasksRoute
@@ -432,6 +442,7 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/kesif'
     | '/map'
+    | '/measurement-offer'
     | '/measurement-tracking'
     | '/my-jobs'
     | '/my-project-tasks'
@@ -476,6 +487,7 @@ export interface FileRouteTypes {
     | '/invoices'
     | '/kesif'
     | '/map'
+    | '/measurement-offer'
     | '/measurement-tracking'
     | '/my-jobs'
     | '/my-project-tasks'
@@ -521,6 +533,7 @@ export interface FileRouteTypes {
     | '/_authenticated/invoices'
     | '/_authenticated/kesif'
     | '/_authenticated/map'
+    | '/_authenticated/measurement-offer'
     | '/_authenticated/measurement-tracking'
     | '/_authenticated/my-jobs'
     | '/_authenticated/my-project-tasks'
@@ -669,6 +682,13 @@ declare module '@tanstack/react-router' {
       path: '/map'
       fullPath: '/map'
       preLoaderRoute: typeof AuthenticatedMapRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/measurement-offer': {
+      id: '/_authenticated/measurement-offer'
+      path: '/measurement-offer'
+      fullPath: '/measurement-offer'
+      preLoaderRoute: typeof AuthenticatedMeasurementOfferRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/measurement-tracking': {
@@ -894,6 +914,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInvoicesRoute: typeof AuthenticatedInvoicesRoute
   AuthenticatedKesifRoute: typeof AuthenticatedKesifRoute
   AuthenticatedMapRoute: typeof AuthenticatedMapRoute
+  AuthenticatedMeasurementOfferRoute: typeof AuthenticatedMeasurementOfferRoute
   AuthenticatedMeasurementTrackingRoute: typeof AuthenticatedMeasurementTrackingRoute
   AuthenticatedMyJobsRoute: typeof AuthenticatedMyJobsRoute
   AuthenticatedMyProjectTasksRoute: typeof AuthenticatedMyProjectTasksRoute
@@ -929,6 +950,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedInvoicesRoute: AuthenticatedInvoicesRoute,
   AuthenticatedKesifRoute: AuthenticatedKesifRoute,
   AuthenticatedMapRoute: AuthenticatedMapRoute,
+  AuthenticatedMeasurementOfferRoute: AuthenticatedMeasurementOfferRoute,
   AuthenticatedMeasurementTrackingRoute: AuthenticatedMeasurementTrackingRoute,
   AuthenticatedMyJobsRoute: AuthenticatedMyJobsRoute,
   AuthenticatedMyProjectTasksRoute: AuthenticatedMyProjectTasksRoute,
