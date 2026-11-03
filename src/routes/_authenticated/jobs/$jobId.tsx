@@ -31,6 +31,7 @@ import { compressImage } from "@/lib/image-compress";
 import { EmptyState, LoadingState, PageHeader } from "@/components/page-states";
 import { MapPreview } from "@/components/map-preview";
 import { PhotoCaptureField } from "@/components/photo-capture-field";
+import { WorkOrderInstructionsCard } from "@/components/work-order-instructions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1060,6 +1061,13 @@ function JobDetailPage() {
             </Button>
           </CardContent>
         </Card>
+      ) : null}
+
+      {role && role !== "customer" ? (
+        <WorkOrderInstructionsCard
+          workOrderId={order.id}
+          canEdit={role === "admin" || role === "technical_office"}
+        />
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">

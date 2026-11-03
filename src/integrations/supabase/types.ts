@@ -2689,6 +2689,7 @@ export type Database = {
         Row: {
           contact_name: string | null;
           work_description: string | null;
+          contractor_instructions: string | null;
           contact_phone: string | null;
           created_at: string;
           created_by: string | null;
@@ -2713,6 +2714,7 @@ export type Database = {
         Insert: {
           contact_name?: string | null;
           work_description?: string | null;
+          contractor_instructions?: string | null;
           contact_phone?: string | null;
           created_at?: string;
           created_by?: string | null;
@@ -2737,6 +2739,7 @@ export type Database = {
         Update: {
           contact_name?: string | null;
           work_description?: string | null;
+          contractor_instructions?: string | null;
           contact_phone?: string | null;
           created_at?: string;
           created_by?: string | null;
@@ -3662,6 +3665,35 @@ export type Database = {
             foreignKeyName: "work_order_assignments_work_order_id_fkey";
             columns: ["work_order_id"];
             isOneToOne: false;
+            referencedRelation: "work_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      work_order_instructions: {
+        Row: {
+          body: string;
+          updated_at: string;
+          updated_by: string | null;
+          work_order_id: string;
+        };
+        Insert: {
+          body?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          work_order_id: string;
+        };
+        Update: {
+          body?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          work_order_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "work_order_instructions_work_order_id_fkey";
+            columns: ["work_order_id"];
+            isOneToOne: true;
             referencedRelation: "work_orders";
             referencedColumns: ["id"];
           },

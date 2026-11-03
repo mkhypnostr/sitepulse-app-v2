@@ -763,6 +763,26 @@ function SurveyEditor({
           </section>
 
           <section className="surface-panel space-y-3 p-4">
+            <div>
+              <h3 className="font-bold">Taşeron iş tarifi</h3>
+              <p className="text-xs text-muted-foreground">
+                Yalnız NES ve işe atanan taşeron görür; iş emrine taşınır.
+                Müşteriye giden föye ve teklife yazılmaz.
+              </p>
+            </div>
+            <Textarea
+              value={s.contractor_instructions ?? ""}
+              rows={4}
+              maxLength={4000}
+              placeholder="örn. Hat panodan 5x6 NYY ile çekilecek, kanal tavandan gidecek; pano kapağı değişmeyecek."
+              onChange={(e) =>
+                update({ contractor_instructions: e.target.value })
+              }
+              className="text-base"
+            />
+          </section>
+
+          <section className="surface-panel space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <h3 className="font-bold">İç notlar</h3>

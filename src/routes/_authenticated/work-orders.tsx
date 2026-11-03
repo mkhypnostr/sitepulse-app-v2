@@ -100,6 +100,7 @@ function WorkOrdersPage() {
     customerId: "",
     title: "",
     description: "",
+    contractorInstructions: "",
     locationUrl: "",
     date: new Date().toISOString().slice(0, 10),
     time: "08:00",
@@ -284,7 +285,7 @@ function WorkOrdersPage() {
       let surveyQuery = supabase
         .from("site_surveys")
         .select(
-          "id, survey_no, title, customer_id, location_text, latitude, longitude, work_description, offer_id, site_survey_photos(storage_path, caption, kind, include_in_offer, taken_at)",
+          "id, survey_no, title, customer_id, location_text, latitude, longitude, work_description, contractor_instructions, offer_id, site_survey_photos(storage_path, caption, kind, include_in_offer, taken_at)",
         );
       if (surveyId) surveyQuery = surveyQuery.eq("id", surveyId);
       else if (offerId) surveyQuery = surveyQuery.eq("offer_id", offerId);
@@ -301,6 +302,7 @@ function WorkOrdersPage() {
         latitude: number | null;
         longitude: number | null;
         work_description: string | null;
+        contractor_instructions: string | null;
         offer_id: string | null;
         site_survey_photos: {
           storage_path: string;
@@ -327,7 +329,9 @@ function WorkOrdersPage() {
       survey?.latitude != null && survey?.longitude != null
         ? `https://www.google.com/maps?q=${survey.latitude},${survey.longitude}`
         : "";
-    // Yalnız işin tanımı taşerona gider; keşifteki iç notlar ve teklif gitmez.
+    // Açıklamaya işin tanımı gider (iş tamamlanıp müşteriye açılırsa müşteri de
+    // görür). Taşeron iş tarifi ayrı alanda kalır; müşteri hiç görmez. Keşifteki
+    // iç notlar ve teklif gitmez.
     const description = [
       survey?.work_description?.trim(),
       survey?.location_text ? `Yer: ${survey.location_text}` : "",
@@ -340,6 +344,9 @@ function WorkOrdersPage() {
       customerId,
       title: offer?.title ?? survey?.title ?? current.title,
       description: description || current.description,
+      contractorInstructions:
+        survey?.contractor_instructions?.trim() ||
+        current.contractorInstructions,
       locationUrl: mapUrl || current.locationUrl,
       billingTitle: customer?.billing_title ?? "",
       taxNo: customer?.tax_no ?? "",
@@ -358,6 +365,23 @@ function WorkOrdersPage() {
     prefilledSourceKey.current = key;
     setOpen(true);
   }, [offerId, surveyId, sourceQuery.data, pageQuery.data]);
+
+  /** Taşeron iş tarifini ayrı (müşteriye kapalı) kayda yaz. */
+  async function saveInstructions(workOrderId: string) {
+    const body = form.contractorInstructions.trim();
+    if (!body) return;
+    const { data: auth } = await supabase.auth.getUser();
+    const { error } = await supabase.from("work_order_instructions").upsert({
+      work_order_id: workOrderId,
+      body,
+      updated_by: auth.user?.id ?? null,
+      updated_at: new Date().toISOString(),
+    });
+    if (error)
+      toast.error(
+        `İş emri açıldı ama taşeron iş tarifi kaydedilemedi: ${error.message}`,
+      );
+  }
 
   /** Keşif fotoğraflarını iş emrine kopyala (taşeron görsün) ve kaynağı bağla. */
   async function attachSource(workOrderId: string) {
@@ -521,6 +545,7 @@ function WorkOrdersPage() {
           },
         );
         if (error) throw error;
+        if (workOrderId) await saveInstructions(workOrderId);
         const copied = workOrderId ? await attachSource(workOrderId) : 0;
         if (serviceRequestId && workOrderId) {
           const linkResult = await supabase.rpc(
@@ -557,6 +582,7 @@ function WorkOrdersPage() {
         },
       );
       if (error) throw error;
+      if (workOrderId) await saveInstructions(workOrderId);
       const copied = workOrderId ? await attachSource(workOrderId) : 0;
       if (serviceRequestId && workOrderId) {
         const linkResult = await supabase.rpc(
@@ -582,6 +608,7 @@ function WorkOrdersPage() {
         customerId: "",
         title: "",
         description: "",
+        contractorInstructions: "",
         locationUrl: "",
         date: new Date().toISOString().slice(0, 10),
         time: "08:00",
@@ -826,6 +853,22 @@ function WorkOrdersPage() {
               value={form.description}
               onChange={(event) =>
                 setForm({ ...form, description: event.target.value })
+              }
+            />
+          </label>
+          <label className="grid gap-1 text-sm sm:col-span-2">
+            Taşeron iş tarifi
+            <span className="text-xs text-muted-foreground">
+              Yalnız NES ve atanan taşeron görür; müşteri göremez.
+            </span>
+            <Textarea
+              value={form.contractorInstructions}
+              maxLength={4000}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  contractorInstructions: event.target.value,
+                })
               }
             />
           </label>

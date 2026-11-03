@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import ExcelJS from "exceljs";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Plus } from "lucide-react";
+import { Calculator, Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -195,12 +195,18 @@ function MeasurementTrackingPage() {
         title="Ölçüm, Raporlama ve Ödeme Takibi"
         description="Ölçüm hizmetlerini, rapor teslimini ve tahsilatları tek kayıttan yönetin."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link to="/measurement-offer">
+                <Calculator className="mr-2 h-4 w-4" />
+                Ölçüm Teklifi Hazırla
+              </Link>
+            </Button>
             <Button variant="outline" onClick={exportExcel}>
               <Download className="mr-2 h-4 w-4" />
               Excel Raporu Al
             </Button>
-            <Button onClick={() => setOpen(true)}>
+            <Button variant="outline" onClick={() => setOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Hizmet Kaydı Ekle
             </Button>
