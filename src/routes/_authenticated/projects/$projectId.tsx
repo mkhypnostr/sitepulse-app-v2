@@ -903,6 +903,7 @@ function TaskEditor({
         task={task}
         canSubmit={canSubmitProgress}
         canReview={canReview}
+        canRecord={canReview && editable}
       />
 
       <div
@@ -953,7 +954,9 @@ function TaskEditor({
                     {assignee.full_name || "İsimsiz kullanıcı"} ·{" "}
                     {assignee.role === "contractor"
                       ? "Taşeron"
-                      : "NES Teknik Ofis"}
+                      : assignee.role === "admin"
+                        ? "Yönetici"
+                        : "Teknik Ofis"}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -997,7 +1000,7 @@ function TaskEditor({
         projectId={task.project_id}
         requiresPhoto={task.requires_photo}
         requiresDocument={task.requires_document}
-        canUpload={canSubmitProgress}
+        canUpload={canSubmitProgress || (canReview && editable)}
       />
 
       <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">

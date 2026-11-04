@@ -4275,6 +4275,15 @@ export type Database = {
         Args: { target_invoice_id: string };
         Returns: undefined;
       };
+      record_project_task_progress: {
+        Args: {
+          actual_on?: string;
+          new_progress: number;
+          progress_note: string;
+          target_task_id: string;
+        };
+        Returns: string;
+      };
       remove_project_task_from_task_center: {
         Args: { target_task_id: string };
         Returns: undefined;

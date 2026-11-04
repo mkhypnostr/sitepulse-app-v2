@@ -34,10 +34,13 @@ export function ProjectTaskProgress({
   task,
   canSubmit,
   canReview,
+  canRecord = false,
 }: {
   task: ProjectTask;
   canSubmit: boolean;
   canReview: boolean;
+  /** Yönetici/teknik ofis: ilerlemeyi onaysız, doğrudan kaydeder. */
+  canRecord?: boolean;
 }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -46,6 +49,9 @@ export function ProjectTaskProgress({
   );
   const [note, setNote] = useState("");
   const [actualDate, setActualDate] = useState("");
+  const [recordPct, setRecordPct] = useState("100");
+  const [recordNote, setRecordNote] = useState("");
+  const [recordDate, setRecordDate] = useState("");
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -160,6 +166,41 @@ export function ProjectTaskProgress({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const recordProgress = useMutation({
+    mutationFn: async () => {
+      const pct = Number(recordPct);
+      if (
+        !Number.isInteger(pct) ||
+        pct <= task.approved_progress_pct ||
+        pct > 100 ||
+        pct % 5 !== 0
+      ) {
+        throw new Error(
+          `İlerleme %${task.approved_progress_pct} değerinden yüksek ve 5'in katı olmalıdır.`,
+        );
+      }
+      if (recordNote.trim().length < 10)
+        throw new Error("Açıklama en az 10 karakter olmalıdır.");
+      const { error } = await supabase.rpc("record_project_task_progress", {
+        target_task_id: task.id,
+        new_progress: pct,
+        progress_note: recordNote.trim(),
+        actual_on: recordDate || undefined,
+      });
+      if (error) throw error;
+      return pct;
+    },
+    onSuccess: async (pct) => {
+      setRecordNote("");
+      setRecordDate("");
+      await refresh();
+      toast.success(
+        pct === 100 ? "Görev tamamlandı" : `İlerleme %${pct} olarak işlendi`,
+      );
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const reviewProgress = useMutation({
     mutationFn: async ({
       submission,
@@ -203,9 +244,39 @@ export function ProjectTaskProgress({
     submissionsQuery.data?.profileById ?? new Map<string, string>();
   const submissionFormVisible =
     canSubmit &&
+    !canRecord &&
     !pendingSubmission &&
     task.approved_progress_pct < 100 &&
     task.status !== "not_applicable";
+  // Yönetici/teknik ofis kendi formunu kullanır; aynı kişiye iki form
+  // gösterilmez.
+  const recordFormVisible =
+    canRecord &&
+    !pendingSubmission &&
+    task.approved_progress_pct < 100 &&
+    task.status !== "completed" &&
+    task.status !== "not_applicable";
+  const recordPctNumber = Number(recordPct);
+  const readyPhotos = readyEvidence.filter(
+    (item) => item.evidence_type === "photo",
+  ).length;
+  const readyDocuments = readyEvidence.filter(
+    (item) => item.evidence_type === "document",
+  ).length;
+  const missingEvidence =
+    recordPctNumber === 100
+      ? [
+          task.requires_document && readyDocuments === 0 ? "PDF belge" : "",
+          task.requires_photo && readyPhotos === 0 ? "fotoğraf" : "",
+        ].filter(Boolean)
+      : [];
+  const recordInputValid =
+    Number.isInteger(recordPctNumber) &&
+    recordPctNumber > task.approved_progress_pct &&
+    recordPctNumber <= 100 &&
+    recordPctNumber % 5 === 0 &&
+    recordNote.trim().length >= 10 &&
+    missingEvidence.length === 0;
   const proposedPctNumber = Number(proposedPct);
   const submissionInputValid =
     Number.isInteger(proposedPctNumber) &&
@@ -302,6 +373,83 @@ export function ProjectTaskProgress({
               {pendingSubmission.proposed_pct} Yap
             </Button>
           </div>
+        </div>
+      ) : null}
+
+      {recordFormVisible ? (
+        <div className="mt-4 rounded-xl border border-success/30 bg-success/5 p-4">
+          <p className="font-black">Görevi işle / tamamla</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Yönetici ve teknik ofis ilerlemeyi onaya göndermeden doğrudan işler;
+            işlem geçmişine adınızla kaydedilir.
+            {task.requires_document || task.requires_photo
+              ? ` Tamamlamak için aşağıdan ${[
+                  task.requires_document ? "PDF belge" : "",
+                  task.requires_photo ? "fotoğraf" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ve ")} ekleyin.`
+              : ""}
+          </p>
+          {missingEvidence.length ? (
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-destructive">
+              <Paperclip className="h-3.5 w-3.5" />
+              Tamamlamak için {missingEvidence.join(" ve ")} ekleyin (aşağıdaki
+              Kanıt Dosyaları bölümünden).
+            </p>
+          ) : readyEvidence.length ? (
+            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-success">
+              <Paperclip className="h-3.5 w-3.5" />
+              {readyEvidence.length} kanıt dosyası bu kayda bağlanacak.
+            </p>
+          ) : null}
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 text-xs font-bold">
+              İlerleme (%)
+              <Input
+                type="number"
+                min={Math.min(100, task.approved_progress_pct + 5)}
+                max={100}
+                step={5}
+                value={recordPct}
+                onChange={(event) => setRecordPct(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-bold">
+              Gerçekleşen Tarih (boşsa bugün)
+              <Input
+                type="date"
+                value={recordDate}
+                onChange={(event) => setRecordDate(event.target.value)}
+              />
+            </label>
+          </div>
+          <label className="mt-3 grid gap-1 text-xs font-bold">
+            Açıklama
+            <Textarea
+              value={recordNote}
+              onChange={(event) => setRecordNote(event.target.value)}
+              placeholder="örn. Tapu tapu müdürlüğünden alındı, taraması eklendi."
+              className="min-h-20"
+            />
+          </label>
+          <Button
+            type="button"
+            className="mt-3 w-full bg-success text-success-foreground hover:bg-success/85 sm:w-auto"
+            onClick={() => recordProgress.mutate()}
+            disabled={
+              recordProgress.isPending ||
+              evidenceQuery.isLoading ||
+              !recordInputValid
+            }
+          >
+            <CheckCircle2 className="mr-2 h-4 w-4" />
+            {recordProgress.isPending
+              ? "Kaydediliyor..."
+              : recordPctNumber === 100
+                ? "Görevi Tamamla"
+                : `%${recordPct || 0} Olarak İşle`}
+          </Button>
         </div>
       ) : null}
 
