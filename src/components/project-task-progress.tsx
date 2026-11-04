@@ -270,6 +270,24 @@ export function ProjectTaskProgress({
           task.requires_photo && readyPhotos === 0 ? "fotoğraf" : "",
         ].filter(Boolean)
       : [];
+  // Düğme kapalıyken nedenini açıkça yaz.
+  const recordNoteLength = recordNote.trim().length;
+  const recordBlockers = [
+    !Number.isInteger(recordPctNumber) ||
+    recordPctNumber <= task.approved_progress_pct ||
+    recordPctNumber > 100 ||
+    recordPctNumber % 5 !== 0
+      ? `İlerleme %${task.approved_progress_pct} değerinden yüksek, en fazla 100 ve 5'in katı olmalı.`
+      : "",
+    recordNoteLength < 10
+      ? recordNoteLength === 0
+        ? "Açıklama yazın (en az 10 karakter)."
+        : `Açıklama en az 10 karakter olmalı (${10 - recordNoteLength} karakter daha).`
+      : "",
+    missingEvidence.length
+      ? `${missingEvidence.join(" ve ")} ekleyin (Kanıt Dosyaları bölümü).`
+      : "",
+  ].filter(Boolean);
   const recordInputValid =
     Number.isInteger(recordPctNumber) &&
     recordPctNumber > task.approved_progress_pct &&
@@ -429,7 +447,7 @@ export function ProjectTaskProgress({
             <Textarea
               value={recordNote}
               onChange={(event) => setRecordNote(event.target.value)}
-              placeholder="örn. Tapu tapu müdürlüğünden alındı, taraması eklendi."
+              placeholder="örn. Tapu, tapu müdürlüğünden alındı; taraması eklendi."
               className="min-h-20"
             />
           </label>
@@ -450,6 +468,13 @@ export function ProjectTaskProgress({
                 ? "Görevi Tamamla"
                 : `%${recordPct || 0} Olarak İşle`}
           </Button>
+          {recordBlockers.length && !recordProgress.isPending ? (
+            <ul className="mt-2 space-y-0.5 text-xs font-semibold text-destructive">
+              {recordBlockers.map((reason) => (
+                <li key={reason}>• {reason}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
 
