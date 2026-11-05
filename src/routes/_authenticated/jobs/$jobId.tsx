@@ -10,6 +10,8 @@ import {
   FileDown,
   History,
   Images,
+  Lock,
+  LockOpen,
   MapPin,
   PackageMinus,
   Plus,
@@ -60,6 +62,9 @@ function JobDetailPage() {
   const progressGalleryInput = useRef<HTMLInputElement>(null);
   const progressDocumentInput = useRef<HTMLInputElement>(null);
   const documentInput = useRef<HTMLInputElement>(null);
+  // Tamamlanan/iptal edilen iş kilitli açılır; yönetici veya teknik ofis
+  // sağ üstteki "Bilgileri düzenle" ile bilerek açmadan değişiklik yapılamaz.
+  const [editUnlocked, setEditUnlocked] = useState(false);
   const [progressPct, setProgressPct] = useState("0");
   const [progressNote, setProgressNote] = useState("");
   const [progressEvidence, setProgressEvidence] = useState<File | null>(null);
@@ -758,6 +763,8 @@ function JobDetailPage() {
   const isReviewPending = order.status === "review_pending";
   const isFinalized =
     order.status === "completed" || order.status === "cancelled";
+  const canUnlock = role === "admin" || role === "technical_office";
+  const locked = isFinalized && !(canUnlock && editUnlocked);
   const pendingProgress = progress.find((item) => item.status === "pending");
   const pendingEvidence = pendingProgress
     ? photos.find((photo) => photo.id === pendingProgress.evidence_photo_id)
@@ -859,9 +866,36 @@ function JobDetailPage() {
         description={`${order.customers?.name || "Müşteri yok"} · ${formatDate(order.scheduled_at)}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="px-3 py-2">
+            <Badge
+              variant="outline"
+              className={`px-3 py-2 ${
+                order.status === "completed"
+                  ? "border-success/50 bg-success/15 text-success"
+                  : ""
+              }`}
+            >
+              {order.status === "completed" ? (
+                <CheckCircle2 className="mr-1.5 h-4 w-4" />
+              ) : null}
               {statusLabels[order.status]}
             </Badge>
+            {isFinalized && canUnlock ? (
+              <Button
+                type="button"
+                variant={editUnlocked ? "default" : "outline"}
+                onClick={() => setEditUnlocked((v) => !v)}
+              >
+                {editUnlocked ? (
+                  <>
+                    <Lock className="mr-2 h-4 w-4" /> Düzenlemeyi kapat
+                  </>
+                ) : (
+                  <>
+                    <LockOpen className="mr-2 h-4 w-4" /> Bilgileri düzenle
+                  </>
+                )}
+              </Button>
+            ) : null}
             {(role === "admin" || role === "technical_office") &&
             (order.status === "completed" ||
               order.status === "review_pending") ? (
@@ -874,6 +908,38 @@ function JobDetailPage() {
           </div>
         }
       />
+
+      {isFinalized ? (
+        <div
+          className={`mb-6 flex flex-wrap items-center gap-3 rounded-xl border p-4 ${
+            order.status === "completed"
+              ? "border-success/40 bg-success/10"
+              : "border-border bg-muted/40"
+          }`}
+        >
+          {order.status === "completed" ? (
+            <CheckCircle2 className="h-6 w-6 shrink-0 text-success" />
+          ) : (
+            <Lock className="h-5 w-5 shrink-0 text-muted-foreground" />
+          )}
+          <div className="min-w-0 flex-1">
+            <p
+              className={`font-black ${order.status === "completed" ? "text-success" : ""}`}
+            >
+              {order.status === "completed"
+                ? "Bu iş tamamlandı"
+                : "Bu iş iptal edildi"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {locked
+                ? canUnlock
+                  ? "Kayıt kilitli. Değişiklik için sağ üstteki “Bilgileri düzenle”ye basın."
+                  : "Kayıt kapandı; değişiklik yapılamaz."
+                : "Düzenleme açık. İşiniz bitince “Düzenlemeyi kapat”a basın."}
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {(() => {
         const acceptedAt = (order as { accepted_at?: string | null })
@@ -1025,7 +1091,7 @@ function JobDetailPage() {
         </Card>
       ) : null}
 
-      {role === "admin" ? (
+      {role === "admin" && !locked ? (
         <Card className="mb-6 border-primary/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1066,7 +1132,7 @@ function JobDetailPage() {
       {role && role !== "customer" ? (
         <WorkOrderInstructionsCard
           workOrderId={order.id}
-          canEdit={role === "admin" || role === "technical_office"}
+          canEdit={(role === "admin" || role === "technical_office") && !locked}
         />
       ) : null}
 
@@ -1191,139 +1257,143 @@ function JobDetailPage() {
           <CardHeader>
             <CardTitle>Yönetici Ticari Bilgileri</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Bu tutarlar yalnızca yöneticilere görünür. Müşteri ve taşeron
-              ekranlarında paylaşılmaz.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <label className="grid gap-1 text-sm">
-                Müşteri İşçilik Satış Bedeli (₺)
-                <Input
-                  inputMode="decimal"
-                  value={commercialForm.customerLaborAmount}
-                  onChange={(event) =>
-                    setCommercialForm({
-                      ...commercialForm,
-                      customerLaborAmount: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                Müşteri Malzeme Satış Bedeli (₺)
-                <Input
-                  inputMode="decimal"
-                  value={commercialForm.customerMaterialAmount}
-                  onChange={(event) =>
-                    setCommercialForm({
-                      ...commercialForm,
-                      customerMaterialAmount: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                Taşeron İşçilik Bedeli (₺)
-                <Input
-                  inputMode="decimal"
-                  value={commercialForm.contractorLaborAmount}
-                  onChange={(event) =>
-                    setCommercialForm({
-                      ...commercialForm,
-                      contractorLaborAmount: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                Tahmini Malzeme/Diğer (₺)
-                <Input
-                  inputMode="decimal"
-                  value={commercialForm.estimatedMaterialCost}
-                  onChange={(event) =>
-                    setCommercialForm({
-                      ...commercialForm,
-                      estimatedMaterialCost: event.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                İş Kapsamı
-                <Select
-                  value={commercialForm.workScopeType}
-                  onValueChange={(workScopeType) =>
-                    setCommercialForm({
-                      ...commercialForm,
-                      workScopeType,
-                      materialSource:
-                        workScopeType === "labor_only"
-                          ? "none"
-                          : commercialForm.materialSource === "none"
-                            ? "nes_stock"
-                            : commercialForm.materialSource,
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="labor_only">Yalnızca işçilik</SelectItem>
-                    <SelectItem value="labor_and_material">
-                      İşçilik + malzeme
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="grid gap-1 text-sm">
-                Varsayılan Malzeme Kaynağı
-                <Select
-                  value={commercialForm.materialSource}
-                  disabled={commercialForm.workScopeType === "labor_only"}
-                  onValueChange={(materialSource) =>
-                    setCommercialForm({ ...commercialForm, materialSource })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      Malzeme kullanılmayacak
-                    </SelectItem>
-                    <SelectItem value="nes_stock">NES deposu</SelectItem>
-                    <SelectItem value="contractor">
-                      Taşeron malzemesi
-                    </SelectItem>
-                    <SelectItem value="customer_site">
-                      Müşteri / şantiye malzemesi
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </label>
-              <div className="flex items-end">
-                <Button
-                  className="w-full"
-                  onClick={() => commercialMutation.mutate()}
-                  disabled={
-                    commercialMutation.isPending ||
-                    (commercialForm.workScopeType === "labor_and_material" &&
-                      commercialForm.materialSource === "none")
-                  }
-                >
-                  {commercialMutation.isPending
-                    ? "Kaydediliyor..."
-                    : "Ticari Bilgileri Kaydet"}
-                </Button>
+          <CardContent>
+            <fieldset disabled={locked} className="min-w-0 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Bu tutarlar yalnızca yöneticilere görünür. Müşteri ve taşeron
+                ekranlarında paylaşılmaz.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="grid gap-1 text-sm">
+                  Müşteri İşçilik Satış Bedeli (₺)
+                  <Input
+                    inputMode="decimal"
+                    value={commercialForm.customerLaborAmount}
+                    onChange={(event) =>
+                      setCommercialForm({
+                        ...commercialForm,
+                        customerLaborAmount: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Müşteri Malzeme Satış Bedeli (₺)
+                  <Input
+                    inputMode="decimal"
+                    value={commercialForm.customerMaterialAmount}
+                    onChange={(event) =>
+                      setCommercialForm({
+                        ...commercialForm,
+                        customerMaterialAmount: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Taşeron İşçilik Bedeli (₺)
+                  <Input
+                    inputMode="decimal"
+                    value={commercialForm.contractorLaborAmount}
+                    onChange={(event) =>
+                      setCommercialForm({
+                        ...commercialForm,
+                        contractorLaborAmount: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Tahmini Malzeme/Diğer (₺)
+                  <Input
+                    inputMode="decimal"
+                    value={commercialForm.estimatedMaterialCost}
+                    onChange={(event) =>
+                      setCommercialForm({
+                        ...commercialForm,
+                        estimatedMaterialCost: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  İş Kapsamı
+                  <Select
+                    value={commercialForm.workScopeType}
+                    onValueChange={(workScopeType) =>
+                      setCommercialForm({
+                        ...commercialForm,
+                        workScopeType,
+                        materialSource:
+                          workScopeType === "labor_only"
+                            ? "none"
+                            : commercialForm.materialSource === "none"
+                              ? "nes_stock"
+                              : commercialForm.materialSource,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="labor_only">
+                        Yalnızca işçilik
+                      </SelectItem>
+                      <SelectItem value="labor_and_material">
+                        İşçilik + malzeme
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="grid gap-1 text-sm">
+                  Varsayılan Malzeme Kaynağı
+                  <Select
+                    value={commercialForm.materialSource}
+                    disabled={commercialForm.workScopeType === "labor_only"}
+                    onValueChange={(materialSource) =>
+                      setCommercialForm({ ...commercialForm, materialSource })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        Malzeme kullanılmayacak
+                      </SelectItem>
+                      <SelectItem value="nes_stock">NES deposu</SelectItem>
+                      <SelectItem value="contractor">
+                        Taşeron malzemesi
+                      </SelectItem>
+                      <SelectItem value="customer_site">
+                        Müşteri / şantiye malzemesi
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </label>
+                <div className="flex items-end">
+                  <Button
+                    className="w-full"
+                    onClick={() => commercialMutation.mutate()}
+                    disabled={
+                      commercialMutation.isPending ||
+                      (commercialForm.workScopeType === "labor_and_material" &&
+                        commercialForm.materialSource === "none")
+                    }
+                  >
+                    {commercialMutation.isPending
+                      ? "Kaydediliyor..."
+                      : "Ticari Bilgileri Kaydet"}
+                  </Button>
+                </div>
               </div>
-            </div>
+            </fieldset>
           </CardContent>
         </Card>
       ) : null}
 
-      {canOperate ? (
+      {canOperate && !locked ? (
         <div className="mt-6 grid gap-4 xl:grid-cols-2">
           {(role === "contractor" || role === "technical_office") &&
           order.progress_pct < 100 ? (
@@ -1709,143 +1779,147 @@ function JobDetailPage() {
       {canOperate ? (
         <section className="mt-6">
           <h2 className="mb-3 text-xl font-black">Kullanılan Malzemeler</h2>
-          <p className="mb-3 text-sm text-muted-foreground">
-            İş kapsamı:{" "}
-            <strong>
-              {order.work_scope_type === "labor_only"
-                ? "Yalnızca işçilik"
-                : "İşçilik + malzeme"}
-            </strong>
-            {order.work_scope_type === "labor_and_material"
-              ? ` · Varsayılan kaynak: ${materialSourceLabels[order.default_material_source]}`
-              : " · Harici malzeme eklenirse kapsam otomatik olarak işçilik + malzeme olur."}
-          </p>
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>NES Stoğundan Kullan</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Select value={stockItemId} onValueChange={setStockItemId}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Stok malzemesi seçin" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stockItems.map((item) => (
-                      <SelectItem key={item.id} value={item.id}>
-                        {item.code ? `${item.code} · ` : ""}
-                        {item.name} ({item.quantity} {item.unit})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Input
-                    inputMode="decimal"
-                    value={stockQuantity}
-                    onChange={(event) => setStockQuantity(event.target.value)}
-                    placeholder="Miktar"
-                  />
-                  <Input
-                    value={stockNote}
-                    onChange={(event) => setStockNote(event.target.value)}
-                    placeholder="Not"
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  onClick={() => stockMutation.mutate()}
-                  disabled={
-                    stockMutation.isPending ||
-                    order.work_scope_type === "labor_only"
-                  }
-                >
-                  <PackageMinus className="mr-2 h-4 w-4" /> Stoktan Düş
-                </Button>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Harici / Saha Malzemesi</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Select value={customSource} onValueChange={setCustomSource}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="contractor">
-                      Taşeron malzemesi
-                    </SelectItem>
-                    <SelectItem value="customer_site">
-                      Müşteri / şantiye malzemesi
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={customName}
-                  onChange={(event) => setCustomName(event.target.value)}
-                  placeholder="Malzeme adı"
-                />
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Input
-                    inputMode="decimal"
-                    value={customQuantity}
-                    onChange={(event) => setCustomQuantity(event.target.value)}
-                    placeholder="Miktar"
-                  />
-                  <Select value={customUnit} onValueChange={setCustomUnit}>
+          <fieldset disabled={locked} className="min-w-0">
+            <p className="mb-3 text-sm text-muted-foreground">
+              İş kapsamı:{" "}
+              <strong>
+                {order.work_scope_type === "labor_only"
+                  ? "Yalnızca işçilik"
+                  : "İşçilik + malzeme"}
+              </strong>
+              {order.work_scope_type === "labor_and_material"
+                ? ` · Varsayılan kaynak: ${materialSourceLabels[order.default_material_source]}`
+                : " · Harici malzeme eklenirse kapsam otomatik olarak işçilik + malzeme olur."}
+            </p>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>NES Stoğundan Kullan</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Select value={stockItemId} onValueChange={setStockItemId}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Stok malzemesi seçin" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stockItems.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.code ? `${item.code} · ` : ""}
+                          {item.name} ({item.quantity} {item.unit})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      inputMode="decimal"
+                      value={stockQuantity}
+                      onChange={(event) => setStockQuantity(event.target.value)}
+                      placeholder="Miktar"
+                    />
+                    <Input
+                      value={stockNote}
+                      onChange={(event) => setStockNote(event.target.value)}
+                      placeholder="Not"
+                    />
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={() => stockMutation.mutate()}
+                    disabled={
+                      stockMutation.isPending ||
+                      order.work_scope_type === "labor_only"
+                    }
+                  >
+                    <PackageMinus className="mr-2 h-4 w-4" /> Stoktan Düş
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Harici / Saha Malzemesi</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Select value={customSource} onValueChange={setCustomSource}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="adet">Adet</SelectItem>
-                      <SelectItem value="metre">Metre</SelectItem>
-                      <SelectItem value="kg">kg</SelectItem>
-                      <SelectItem value="litre">Litre</SelectItem>
+                      <SelectItem value="contractor">
+                        Taşeron malzemesi
+                      </SelectItem>
+                      <SelectItem value="customer_site">
+                        Müşteri / şantiye malzemesi
+                      </SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => customMaterialMutation.mutate()}
-                  disabled={customMaterialMutation.isPending}
+                  <Input
+                    value={customName}
+                    onChange={(event) => setCustomName(event.target.value)}
+                    placeholder="Malzeme adı"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Input
+                      inputMode="decimal"
+                      value={customQuantity}
+                      onChange={(event) =>
+                        setCustomQuantity(event.target.value)
+                      }
+                      placeholder="Miktar"
+                    />
+                    <Select value={customUnit} onValueChange={setCustomUnit}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="adet">Adet</SelectItem>
+                        <SelectItem value="metre">Metre</SelectItem>
+                        <SelectItem value="kg">kg</SelectItem>
+                        <SelectItem value="litre">Litre</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => customMaterialMutation.mutate()}
+                    disabled={customMaterialMutation.isPending}
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> Malzeme Kaydet
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="mt-4 grid gap-2">
+              {materials.map((material) => (
+                <div
+                  key={material.id}
+                  className="surface-panel flex items-center justify-between gap-4 p-3"
                 >
-                  <Plus className="mr-2 h-4 w-4" /> Malzeme Kaydet
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="mt-4 grid gap-2">
-            {materials.map((material) => (
-              <div
-                key={material.id}
-                className="surface-panel flex items-center justify-between gap-4 p-3"
-              >
-                <div>
-                  <p className="font-semibold">
-                    {material.is_nes_stock
-                      ? material.stock_items?.name
-                      : material.custom_material_name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {materialSourceLabels[material.material_source] ||
-                      material.material_source}{" "}
-                    · {formatDate(material.created_at)}
-                  </p>
+                  <div>
+                    <p className="font-semibold">
+                      {material.is_nes_stock
+                        ? material.stock_items?.name
+                        : material.custom_material_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {materialSourceLabels[material.material_source] ||
+                        material.material_source}{" "}
+                      · {formatDate(material.created_at)}
+                    </p>
+                  </div>
+                  <strong>
+                    {material.quantity} {material.unit}
+                  </strong>
                 </div>
-                <strong>
-                  {material.quantity} {material.unit}
-                </strong>
-              </div>
-            ))}
-            {materials.length === 0 ? (
-              <p className="surface-panel p-5 text-center text-sm text-muted-foreground">
-                Henüz malzeme kaydı yok.
-              </p>
-            ) : null}
-          </div>
+              ))}
+              {materials.length === 0 ? (
+                <p className="surface-panel p-5 text-center text-sm text-muted-foreground">
+                  Henüz malzeme kaydı yok.
+                </p>
+              ) : null}
+            </div>
+          </fieldset>
         </section>
       ) : null}
 
@@ -1911,43 +1985,45 @@ function JobDetailPage() {
                   <p className="text-sm">
                     {photo.caption || "Açıklama eklenmemiş"}
                   </p>
-                  {role === "admin" ? (
-                    <label className="flex items-center justify-between rounded-md border p-2 text-xs">
-                      Müşteriye Göster
-                      <Switch
-                        checked={photo.show_to_customer}
-                        onCheckedChange={(visible) =>
-                          photoVisibilityMutation.mutate({
-                            photoId: photo.id,
-                            visible,
-                          })
-                        }
-                      />
-                    </label>
-                  ) : null}
-                  {role === "admin" || photo.uploaded_by === user?.id ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="w-full border-destructive/40 text-destructive hover:text-destructive"
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            "Bu dosya silinsin mi? Onaya bağlı kanıtlar silinemez.",
-                          )
-                        ) {
-                          deletePhotoMutation.mutate({
-                            photoId: photo.id,
-                            storagePath: photo.storage_path,
-                          });
-                        }
-                      }}
-                      disabled={deletePhotoMutation.isPending}
-                    >
-                      <Trash2 className="mr-2 h-3.5 w-3.5" /> Dosyayı Sil
-                    </Button>
-                  ) : null}
+                  <fieldset disabled={locked} className="min-w-0 space-y-2">
+                    {role === "admin" ? (
+                      <label className="flex items-center justify-between rounded-md border p-2 text-xs">
+                        Müşteriye Göster
+                        <Switch
+                          checked={photo.show_to_customer}
+                          onCheckedChange={(visible) =>
+                            photoVisibilityMutation.mutate({
+                              photoId: photo.id,
+                              visible,
+                            })
+                          }
+                        />
+                      </label>
+                    ) : null}
+                    {role === "admin" || photo.uploaded_by === user?.id ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-destructive/40 text-destructive hover:text-destructive"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "Bu dosya silinsin mi? Onaya bağlı kanıtlar silinemez.",
+                            )
+                          ) {
+                            deletePhotoMutation.mutate({
+                              photoId: photo.id,
+                              storagePath: photo.storage_path,
+                            });
+                          }
+                        }}
+                        disabled={deletePhotoMutation.isPending}
+                      >
+                        <Trash2 className="mr-2 h-3.5 w-3.5" /> Dosyayı Sil
+                      </Button>
+                    ) : null}
+                  </fieldset>
                 </CardContent>
               </Card>
             ))}

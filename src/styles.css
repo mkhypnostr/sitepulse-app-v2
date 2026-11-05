@@ -304,10 +304,62 @@
   background: color-mix(in oklch, var(--card) 94%, transparent);
 }
 
+/* Görev kartları: devam eden (sarı) ve geciken (kırmızı) işler yumuşakça
+   nabız atar; biten (yeşil) sabit kalır. */
+@keyframes task-pulse-warning {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--warning) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in oklch, var(--warning) 22%, transparent);
+  }
+}
+
+@keyframes task-pulse-danger {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--destructive) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px
+      color-mix(in oklch, var(--destructive) 26%, transparent);
+  }
+}
+
+@keyframes task-dot-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+.task-pulse-warning {
+  animation: task-pulse-warning 2.8s ease-in-out infinite;
+}
+
+.task-pulse-danger {
+  animation: task-pulse-danger 2s ease-in-out infinite;
+}
+
+.task-dot-breathe {
+  animation: task-dot-breathe 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sidebar-reveal,
   .sidebar-transition {
     transition: none;
+  }
+  .task-pulse-warning,
+  .task-pulse-danger,
+  .task-dot-breathe {
+    animation: none;
   }
 }
 
