@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { toast } from "sonner";
+import { asciiSlug } from "@/lib/file-name";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -1039,11 +1040,7 @@ function downloadFile(file: File) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-const safeName = (v: string) =>
-  v
-    .replace(/[^wçğıöşüÇĞİÖŞÜ]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .slice(0, 40);
+const safeName = (v: string) => asciiSlug(v, 40);
 
 /** Hakediş belgesi: özet + iki PDF (müşteri hakedişi, taşeron iç kaydı). */
 function DocumentCard({ doc }: { doc: AssistantDocument }) {

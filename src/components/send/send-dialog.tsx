@@ -131,13 +131,25 @@ export function SendDialog({
           );
           return;
         }
-        throw e;
+        // Tarayıcı dosya paylaşımına izin vermiyorsa (bazı Android
+        // tarayıcıları) çıkmaza düşmesin: PDF indirilir.
+        if (
+          !(
+            e instanceof DOMException &&
+            (e.name === "NotAllowedError" ||
+              e.name === "SecurityError" ||
+              e.name === "DataError" ||
+              e.name === "TypeError")
+          )
+        )
+          throw e;
+        console.warn("Paylaşım menüsü açılamadı:", e);
       }
       if (shared) {
         onSent?.("whatsapp");
         return;
       }
-      // Paylaşım menüsü yoksa (bilgisayar): dosyayı indir.
+      // Paylaşım menüsü yoksa veya açılamadıysa: dosyayı indir.
       const url = URL.createObjectURL(f);
       const a = document.createElement("a");
       a.href = url;
