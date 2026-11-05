@@ -939,6 +939,48 @@ function JobDetailPage() {
             </p>
           </div>
         </div>
+      ) : order.status !== "draft" ? (
+        (() => {
+          // Açık iş: süresi geçtiyse kırmızı, değilse sarı; ikisi de yumuşak
+          // nabız atar (Görevler listesindeki renklerle aynı).
+          const dueAt =
+            (order as { planned_end_at?: string | null }).planned_end_at ??
+            order.scheduled_at;
+          const overdue = Boolean(
+            dueAt && new Date(dueAt).getTime() < Date.now(),
+          );
+          const waiting = order.status === "review_pending";
+          return (
+            <div
+              className={`mb-6 flex flex-wrap items-center gap-3 rounded-xl border p-4 ${
+                overdue && !waiting
+                  ? "border-destructive/40 bg-destructive/10 task-pulse-danger"
+                  : "border-warning/45 bg-warning/10 task-pulse-warning"
+              }`}
+            >
+              <CalendarClock
+                className={`h-6 w-6 shrink-0 ${overdue && !waiting ? "text-destructive" : "text-warning"}`}
+              />
+              <div className="min-w-0 flex-1">
+                <p
+                  className={`font-black ${overdue && !waiting ? "text-destructive" : "text-warning"}`}
+                >
+                  {waiting
+                    ? "İş bitti, yönetici kontrolünde"
+                    : overdue
+                      ? "Bu iş gecikti"
+                      : "Bu iş devam ediyor"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {dueAt
+                    ? `${overdue && !waiting ? "Planlanan bitiş geçti" : "Planlanan bitiş"}: ${formatDate(dueAt)}`
+                    : "Planlanan bitiş girilmemiş."}
+                  {` · İlerleme %${order.progress_pct}`}
+                </p>
+              </div>
+            </div>
+          );
+        })()
       ) : null}
 
       {(() => {

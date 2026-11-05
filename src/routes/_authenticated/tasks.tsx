@@ -182,10 +182,10 @@ function taskTone(status: string, dueDate: string | null): TaskTone {
 }
 
 const toneCardClass: Record<TaskTone, string> = {
-  done: "border-l-4 border-l-success",
-  overdue: "border-l-4 border-l-destructive task-pulse-danger",
-  active: "border-l-4 border-l-warning task-pulse-warning",
-  idle: "border-l-4 border-l-border",
+  done: "border-success/40 bg-success/10",
+  overdue: "border-destructive/40 bg-destructive/10 task-pulse-danger",
+  active: "border-warning/45 bg-warning/10 task-pulse-warning",
+  idle: "",
 };
 
 const toneDotClass: Record<TaskTone, string> = {
@@ -1684,7 +1684,7 @@ function TaskCard({
   return (
     <div
       id={id}
-      className={`scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50 ${toneCardClass[tone]} ${overdue ? "bg-destructive/[0.035]" : ""}`}
+      className={`scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50 ${toneCardClass[tone]}`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button
