@@ -108,6 +108,7 @@ function buildMessage(
     // Gün içi hatırlatma ve tamamlama: başlık/metin veritabanında hazırlanır
     // (kişiye göre sayı ve iş listesi), burada yalnız güvenle aktarılır.
     case "open_work_reminder":
+    case "team_message":
     case "work_completed": {
       const url = text(data.url, "/tasks");
       return {
@@ -120,7 +121,9 @@ function buildMessage(
         tag:
           eventType === "work_completed"
             ? `done-${text(data.ref, name)}`
-            : "open-work-reminder",
+            : eventType === "team_message"
+              ? `msg-${Date.now()}`
+              : "open-work-reminder",
       };
     }
     case "test":

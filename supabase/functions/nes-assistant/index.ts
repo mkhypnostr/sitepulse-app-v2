@@ -749,6 +749,113 @@ const TOOLS: Record<string, ToolDef> = {
       };
     },
   },
+  yapilan_isleri_listele: {
+    write: false,
+    tool: {
+      name: "yapilan_isleri_listele",
+      description:
+        "Belirli bir günde (varsayılan bugün) YAPILAN işleri listeler: tamamlanan iş emirleri, tamamlanan proje adımları ve bağımsız görevler, ayrıca o gün sahadan gelen ilerleme bildirimleri. 'Bugün ne yapıldı', 'dün hangi işler bitti' gibi sorularda kullan.",
+      input_schema: schema({
+        gun: nullableStr("Gün, YYYY-AA-GG. Boşsa bugün (İstanbul saati)."),
+      }),
+    },
+    run: async (input, ctx) => {
+      const day =
+        typeof input.gun === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.gun)
+          ? input.gun
+          : new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Europe/Istanbul",
+            }).format(new Date());
+      const start = new Date(`${day}T00:00:00+03:00`).toISOString();
+      const end = new Date(
+        new Date(`${day}T00:00:00+03:00`).getTime() + 24 * 3600 * 1000,
+      ).toISOString();
+      const [orders, steps, ops, progress] = await Promise.all([
+        ctx.db
+          .from("work_completion_submissions")
+          .select("reviewed_at, work_orders(id, work_order_no, title)")
+          .eq("status", "approved")
+          .gte("reviewed_at", start)
+          .lt("reviewed_at", end)
+          .limit(50),
+        ctx.db
+          .from("project_tasks")
+          .select("task_name, completed_at, projects(name)")
+          .eq("status", "completed")
+          .gte("completed_at", start)
+          .lt("completed_at", end)
+          .limit(50),
+        ctx.db
+          .from("operational_tasks")
+          .select("title, completed_at")
+          .eq("status", "completed")
+          .gte("completed_at", start)
+          .lt("completed_at", end)
+          .limit(50),
+        ctx.db
+          .from("progress_updates")
+          .select(
+            "pct, note, status, created_at, work_orders(work_order_no, title)",
+          )
+          .gte("created_at", start)
+          .lt("created_at", end)
+          .order("created_at", { ascending: false })
+          .limit(50),
+      ]);
+      return {
+        result: {
+          gun: day,
+          tamamlanan_is_emirleri: check(orders),
+          tamamlanan_proje_adimlari: check(steps),
+          tamamlanan_gorevler: check(ops),
+          saha_ilerleme_bildirimleri: check(progress),
+        },
+        link: { label: "Görevlerde aç", href: "/tasks?filter=completed" },
+      };
+    },
+  },
+  bildirim_gonder: {
+    write: true,
+    tool: {
+      name: "bildirim_gonder",
+      description:
+        "NES ekibinden bir veya birkaç kişinin telefonuna anlık bildirim (kısa mesaj) gönderir. Alıcı kimliklerini önce kisileri_listele ile bul. Yalnız yönetici, teknik ofis ve taşeronlara gider; müşteriye gönderilmez. Metin en fazla 300 karakter.",
+      input_schema: schema({
+        alici_idleri: {
+          type: "array",
+          items: { type: "string" },
+          description: "Alıcıların kimlikleri.",
+        },
+        mesaj: str("Bildirim metni, ör. 'Selamlar'."),
+      }),
+    },
+    summary: async (i, ctx) => {
+      const ids = Array.isArray(i.alici_idleri) ? i.alici_idleri : [];
+      const names = await Promise.all(ids.map((id) => personName(ctx, id)));
+      return `Telefona bildirim: "${String(i.mesaj).slice(0, 80)}" → ${names.join(", ") || "alıcı yok"}`;
+    },
+    run: async (i, ctx) => {
+      const ids = (Array.isArray(i.alici_idleri) ? i.alici_idleri : []).filter(
+        (id): id is string => typeof id === "string",
+      );
+      const result = check(
+        await ctx.db.rpc("send_team_push", {
+          target_user_ids: ids,
+          message: String(i.mesaj ?? ""),
+        }),
+      ) as { alici_sayisi: number; bildirimi_acik_alici: number };
+      return {
+        result: {
+          gonderildi: true,
+          ...result,
+          not:
+            result.bildirimi_acik_alici < result.alici_sayisi
+              ? "Bazı alıcıların telefonunda bildirim izni açık değil; onlara ulaşmaz (Profil > Bildirimleri aç)."
+              : undefined,
+        },
+      };
+    },
+  },
   teklifi_gonder: {
     write: true,
     tool: {
@@ -963,6 +1070,8 @@ Nasıl çalışırsın:
 - Bir araç hata verirse hatayı sade dille anlat.
 - Kullanıcı bir belge, çizim, fatura, fotoğraf ya da eski bir teklifi görmek isterse drive_ara ile NES Drive'ında ara; bulduğun dosyaları kısa listele (ad, klasör, tarih). Açma düğmeleri ekranda otomatik çıkar. Bulamazsan farklı kelimelerle bir kez daha dene.
 - Fiyat, maliyet ve kâr bilgisini yalnız yöneticiye söyle.
+- "Bugün ne yapıldı / hangi işler bitti" gibi sorularda yapilan_isleri_listele'yi kullan (gun boşsa bugün); açık işler için gorevleri_listele.
+- "X'e bildirim gönder / telefonuna haber ver" denirse kisileri_listele ile kişiyi bul, bildirim_gonder'i çağır. Sonuçta bildirimi açık cihazı olmayan alıcı varsa bunu söyle. Müşteriye bildirim gönderilmez.
 - Kullanıcı fotoğraf eklerse önce fotoğrafı dikkatle incele. Taşeron/usta listesi, malzeme listesi ya da hakediş listesi ise ve kullanıcı hakediş istiyorsa:
   - Satırları yazıldığı sırayla tek tek oku: miktar, birim, açıklama, satır tutarı. El yazısında 3 düz üstlü (Ʒ gibi), 7 çizgili ve kuyruklu yazılabilir; rakamı okurken birim fiyatın (tutar ÷ miktar) mantıklı olup olmadığına bak.
   - Emin olmadığın rakamı okuma_notu ile işaretle; uydurma.
