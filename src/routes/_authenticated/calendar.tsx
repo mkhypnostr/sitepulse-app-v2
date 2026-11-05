@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -45,7 +45,7 @@ const MONTH_WEEKS_SHOWN = 6;
 const MONTH_CELL_COUNT = MONTH_WEEKS_SHOWN * 7;
 
 type ViewMode = "month" | "week";
-type ColorState = "overdue" | "today" | "future" | "done";
+type ColorState = "overdue" | "today" | "future" | "done" | "cancelled";
 
 type LinkTarget = {
   to: string;
@@ -99,16 +99,17 @@ const colorClasses: Record<ColorState, string> = {
   today: "border-warning/40 bg-warning/15 text-warning hover:bg-warning/25",
   future:
     "border-highlight/40 bg-highlight/15 text-highlight hover:bg-highlight/25",
-  // Tamamlanmış/iptal edilmiş kayıtlar bilerek sade/nötr — kırmızı/amber/mavi
-  // "aksiyon gerekiyor" anlamına geldiği için kapanmış işlerde kullanılmıyor.
-  done: "border-border bg-muted/60 text-muted-foreground hover:bg-muted",
+  // Tamamlanan iş yeşil; iptal/uygulanmayacak nötr gri.
+  done: "border-success/40 bg-success/15 text-success hover:bg-success/25",
+  cancelled: "border-border bg-muted/60 text-muted-foreground hover:bg-muted",
 };
 
 const legendDotClasses: Record<ColorState, string> = {
   overdue: "bg-destructive",
   today: "bg-warning",
   future: "bg-highlight",
-  done: "bg-muted-foreground",
+  done: "bg-success",
+  cancelled: "bg-muted-foreground",
 };
 
 function pad(n: number) {
@@ -129,7 +130,9 @@ function colorStateFor(
   dateKey: string,
   todayKey: string,
   terminal: boolean,
+  cancelled = false,
 ): ColorState {
+  if (cancelled) return "cancelled";
   if (terminal) return "done";
   if (dateKey < todayKey) return "overdue";
   if (dateKey === todayKey) return "today";
@@ -167,6 +170,10 @@ function CalendarPage() {
     initialEventForm(toDateKey(new Date())),
   );
   const todayCardRef = useRef<HTMLDivElement | null>(null);
+  const todayCellRef = useRef<HTMLDivElement | null>(null);
+  // "Bugün"e basınca takvim bugüne döner ve bugün ekranın ortasına kayar
+  // (telefonda liste kartı, geniş ekranda ızgara hücresi).
+  const [todayScrollRequest, setTodayScrollRequest] = useState(0);
   const now = new Date();
   const todayKey = toDateKey(now);
   const eventNeedsDateRange =
@@ -340,6 +347,7 @@ function CalendarPage() {
             dateKey,
             todayKey,
             WORK_ORDER_TERMINAL.has(order.status),
+            order.status === "cancelled",
           ),
           link: { to: "/jobs/$jobId", params: { jobId: order.id } },
         });
@@ -355,6 +363,7 @@ function CalendarPage() {
             task.planned_date,
             todayKey,
             TASK_TERMINAL.has(task.status),
+            task.status !== "completed" && TASK_TERMINAL.has(task.status),
           ),
           link: isManager
             ? {
@@ -376,6 +385,7 @@ function CalendarPage() {
             task.planned_date,
             todayKey,
             TASK_TERMINAL.has(task.status),
+            task.status !== "completed" && TASK_TERMINAL.has(task.status),
           ),
           link: isManager
             ? { to: "/tasks", hash: `operational-${task.id}` }
@@ -409,6 +419,7 @@ function CalendarPage() {
               dateKey,
               todayKey,
               status === "completed" || status === "cancelled",
+              status === "cancelled",
             ),
           });
           cursor.setDate(cursor.getDate() + 1);
@@ -459,15 +470,18 @@ function CalendarPage() {
 
   const goToday = () => {
     setAnchor(new Date());
-    if (window.matchMedia("(max-width: 639px)").matches) {
-      requestAnimationFrame(() => {
-        todayCardRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-      });
-    }
+    setTodayScrollRequest((n) => n + 1);
   };
+
+  useEffect(() => {
+    if (!todayScrollRequest || query.isLoading) return;
+    const frame = requestAnimationFrame(() => {
+      const mobile = window.matchMedia("(max-width: 639px)").matches;
+      const target = mobile ? todayCardRef.current : todayCellRef.current;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [todayScrollRequest, query.isLoading, query.data]);
 
   // Haftalık notlar: hafta görünümünde gösterilen hafta; ay görünümünde
   // bugün o aydaysa bu hafta, değilse ayın ilk haftası.
@@ -916,7 +930,13 @@ function CalendarPage() {
           <span
             className={`h-2.5 w-2.5 rounded-full ${legendDotClasses.done}`}
           />{" "}
-          Tamamlandı / İptal
+          Tamamlandı
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${legendDotClasses.cancelled}`}
+          />{" "}
+          İptal
         </span>
       </div>
 
@@ -949,6 +969,7 @@ function CalendarPage() {
                 return (
                   <div
                     key={cell.key}
+                    ref={isToday ? todayCellRef : undefined}
                     className={`surface-panel group relative flex min-h-[92px] flex-col gap-1 p-1.5 transition-colors hover:border-blue-400 hover:bg-blue-500/5 sm:min-h-[120px] sm:p-2 ${
                       cell.inCurrentMonth ? "" : "opacity-40"
                     } ${isToday ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30" : ""}`}
