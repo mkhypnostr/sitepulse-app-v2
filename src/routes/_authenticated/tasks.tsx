@@ -94,6 +94,7 @@ type AssignedWorkOrder = {
   customer_id: string | null;
   status: string;
   scheduled_at: string | null;
+  planned_end_at: string | null;
   progress_pct: number;
   created_by: string | null;
   created_at: string | null;
@@ -167,6 +168,50 @@ function taskListHref(filter: TaskFilter, source: TaskSource) {
 
 function isTerminal(status: string) {
   return ["completed", "cancelled", "not_applicable"].includes(status);
+}
+
+type TaskTone = "done" | "overdue" | "active" | "idle";
+
+/** Kart rengi: biten yeşil (sabit), geciken kırmızı ve devam eden sarı
+ *  (yumuşak nabız), iptal/uygulanmayacak/taslak nötr. */
+function taskTone(status: string, dueDate: string | null): TaskTone {
+  if (status === "completed") return "done";
+  if (isTerminal(status) || status === "draft") return "idle";
+  if (isOverdue(dueDate)) return "overdue";
+  return "active";
+}
+
+const toneCardClass: Record<TaskTone, string> = {
+  done: "border-success/40 bg-success/10",
+  overdue: "border-destructive/40 bg-destructive/10 task-pulse-danger",
+  active: "border-warning/45 bg-warning/10 task-pulse-warning",
+  idle: "",
+};
+
+const toneDotClass: Record<TaskTone, string> = {
+  done: "bg-success",
+  overdue: "bg-destructive task-dot-breathe",
+  active: "bg-warning task-dot-breathe",
+  idle: "bg-muted-foreground/50",
+};
+
+const toneLabel: Record<TaskTone, string> = {
+  done: "Bitti",
+  overdue: "Gecikti",
+  active: "Devam ediyor",
+  idle: "Kapalı",
+};
+
+/** Proje grubu: biri gecikmişse kırmızı, açık varsa sarı, hepsi bittiyse
+ *  yeşil. Grup çerçevesi nabız atmaz (içindeki kartlar atar); yalnız nokta. */
+function groupTone(
+  tasks: Array<{ status: string; dueDate: string | null }>,
+): TaskTone {
+  const tones = tasks.map((t) => taskTone(t.status, t.dueDate));
+  if (tones.includes("overdue")) return "overdue";
+  if (tones.includes("active")) return "active";
+  if (tones.length && tones.every((t) => t === "done")) return "done";
+  return "idle";
 }
 
 function isOverdue(plannedDate: string | null) {
@@ -251,7 +296,7 @@ function TasksPage() {
         supabase
           .from("work_orders")
           .select(
-            "id, work_order_no, title, description, project_id, customer_id, status, scheduled_at, progress_pct, created_by, created_at",
+            "id, work_order_no, title, description, project_id, customer_id, status, scheduled_at, planned_end_at, progress_pct, created_by, created_at",
           )
           .order("scheduled_at", { ascending: true, nullsFirst: false }),
         supabase
@@ -752,7 +797,10 @@ function TasksPage() {
     activeSource === "all" || activeSource === "work_order"
       ? data.workOrders.filter((task) =>
           matchesFilter(
-            { status: task.status, plannedDate: task.scheduled_at },
+            {
+              status: task.status,
+              plannedDate: task.planned_end_at ?? task.scheduled_at,
+            },
             activeFilter,
           ),
         )
@@ -831,6 +879,7 @@ function TasksPage() {
       title: `#${task.work_order_no ?? "—"} · ${task.title}`,
       status: task.status,
       plannedDate: task.scheduled_at,
+      dueDate: task.planned_end_at ?? task.scheduled_at,
       assignee: contractorsByWorkOrder.get(task.id),
       audit: {
         createdBy: personName(task.created_by),
@@ -885,6 +934,7 @@ function TasksPage() {
       title: task.title,
       status: task.status,
       plannedDate: task.planned_date,
+      dueDate: task.planned_date,
       assignee: task.assigned_to
         ? assigneeById.get(task.assigned_to)
         : undefined,
@@ -944,6 +994,7 @@ function TasksPage() {
       title: task.task_name,
       status: task.status,
       plannedDate: task.planned_date,
+      dueDate: task.planned_date,
       assignee: task.responsible_id
         ? assigneeById.get(task.responsible_id)
         : undefined,
@@ -1101,6 +1152,7 @@ function TasksPage() {
                     title={task.title}
                     status={task.status}
                     plannedDate={task.plannedDate}
+                    dueDate={task.dueDate}
                     assignee={task.assignee}
                     audit={task.audit}
                     relation={task.relation}
@@ -1114,13 +1166,17 @@ function TasksPage() {
             {[...projectTaskGroups.entries()].map(([projectName, tasks]) => (
               <details
                 key={projectName}
-                className="rounded-xl border border-border bg-background/20 p-4"
+                className={`rounded-xl border border-border bg-background/20 p-4 ${toneCardClass[groupTone(tasks)].replace(/ task-pulse-\S+/, "")}`}
                 open={activeFilter !== "all"}
               >
                 <summary className="cursor-pointer list-none">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 className="font-black">
+                      <h3 className="flex items-center gap-2 font-black">
+                        <span
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${toneDotClass[groupTone(tasks)]}`}
+                          aria-label={toneLabel[groupTone(tasks)]}
+                        />
                         {projectName.replace("Proje: ", "")}
                       </h3>
                       <p className="text-sm text-muted-foreground">
@@ -1138,6 +1194,7 @@ function TasksPage() {
                       title={task.title}
                       status={task.status}
                       plannedDate={task.plannedDate}
+                      dueDate={task.dueDate}
                       assignee={task.assignee}
                       audit={task.audit}
                       relation={task.relation}
@@ -1600,6 +1657,7 @@ function TaskCard({
   title,
   status,
   plannedDate,
+  dueDate,
   assignee,
   audit,
   relation,
@@ -1612,6 +1670,8 @@ function TaskCard({
   title: string;
   status: string;
   plannedDate: string | null;
+  /** Gecikme bu tarihe göre (iş emrinde planlanan bitiş). */
+  dueDate?: string | null;
   assignee?: Assignee;
   audit?: TaskAudit;
   relation: string;
@@ -1619,11 +1679,12 @@ function TaskCard({
   onOpen?: () => void;
   actions?: ReactNode;
 }) {
-  const overdue = !isTerminal(status) && isOverdue(plannedDate);
+  const tone = taskTone(status, dueDate ?? plannedDate);
+  const overdue = tone === "overdue";
   return (
     <div
       id={id}
-      className={`scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50 ${overdue ? "border-warning/50 bg-warning/[0.035]" : ""}`}
+      className={`scroll-mt-6 surface-panel p-4 transition-colors hover:border-primary/50 ${toneCardClass[tone]}`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button
@@ -1632,10 +1693,15 @@ function TaskCard({
           onClick={onOpen}
         >
           <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`h-2.5 w-2.5 shrink-0 rounded-full ${toneDotClass[tone]}`}
+              title={toneLabel[tone]}
+              aria-label={toneLabel[tone]}
+            />
             <p className="font-bold">{title}</p>
             {category ? <Badge variant="secondary">{category}</Badge> : null}
             {overdue ? (
-              <Badge className="border-warning/50 bg-warning/15 text-warning">
+              <Badge className="border-destructive/50 bg-destructive/15 text-destructive">
                 Gecikti
               </Badge>
             ) : null}
@@ -1647,7 +1713,16 @@ function TaskCard({
           <AuditLine audit={audit} assignee={assignee} />
         </button>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Badge variant="outline">{statusLabel[status] || status}</Badge>
+          <Badge
+            variant="outline"
+            className={
+              tone === "done"
+                ? "border-success/40 bg-success/10 text-success"
+                : ""
+            }
+          >
+            {statusLabel[status] || status}
+          </Badge>
           {assignee ? (
             <Badge variant="secondary">
               <UserRound className="mr-1 h-3 w-3" />
@@ -1659,7 +1734,9 @@ function TaskCard({
           {plannedDate ? (
             <Badge
               className={
-                overdue ? "border-warning/50 bg-warning/15 text-warning" : ""
+                overdue
+                  ? "border-destructive/50 bg-destructive/15 text-destructive"
+                  : ""
               }
               variant="secondary"
             >
