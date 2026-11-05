@@ -1,3 +1,5 @@
+import { asciiFileName } from "@/lib/file-name";
+
 // Bizim ürettiğimiz A4 HTML belgeleri (keşif föyü vb.) PDF dosyasına çevirir:
 // belge görünmez bir çerçevede çizilir, her ".page" bölümü resme dönüştürülüp
 // A4 sayfalara yerleştirilir. Kütüphaneler yalnız gerektiğinde yüklenir.
@@ -68,7 +70,9 @@ export async function htmlToPdf(html: string, filename: string) {
       }
     }
     const blob = pdf.output("blob");
-    return new File([blob], filename, { type: "application/pdf" });
+    return new File([blob], asciiFileName(filename, "belge.pdf"), {
+      type: "application/pdf",
+    });
   } finally {
     frame.remove();
   }

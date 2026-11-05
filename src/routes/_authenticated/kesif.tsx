@@ -62,6 +62,7 @@ import {
 } from "@/lib/site-survey";
 import { surveySheetHtml } from "@/lib/site-survey-document";
 import { htmlToPdf } from "@/lib/html-to-pdf";
+import { asciiFileName, asciiSlug } from "@/lib/file-name";
 import { SendDialog, type SendTarget } from "@/components/send/send-dialog";
 import { AccessDenied, EmptyState, PageHeader } from "@/components/page-states";
 import { Badge } from "@/components/ui/badge";
@@ -506,9 +507,9 @@ function SurveyEditor({
         ? `https://www.google.com/maps?q=${s.latitude},${s.longitude}`
         : "";
     const name = (s.title || "Keşif").trim();
-    const fileName = `${s.survey_no ?? "Kesif"}_${name
-      .replace(/[^\wçğıöşüÇĞİÖŞÜ]+/g, "_")
-      .slice(0, 50)}.pdf`;
+    const fileName = asciiFileName(
+      `${s.survey_no ?? "Kesif"}_${asciiSlug(name, 50)}.pdf`,
+    );
     setSendTarget({
       kind: "survey",
       title: s.survey_no ? `${s.survey_no} keşif föyü` : "Keşif föyü",

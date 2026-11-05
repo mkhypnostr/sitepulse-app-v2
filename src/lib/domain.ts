@@ -1,3 +1,4 @@
+import { asciiFileName } from "@/lib/file-name";
 import type { Database } from "@/integrations/supabase/types";
 
 export type AppRole = Database["public"]["Enums"]["app_role"];
@@ -54,7 +55,7 @@ export function downloadWordDocument(
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = asciiFileName(filename);
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -66,7 +67,7 @@ export function downloadCsv(filename: string, rows: unknown[][]) {
   );
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = asciiFileName(filename);
   link.click();
   URL.revokeObjectURL(url);
 }
