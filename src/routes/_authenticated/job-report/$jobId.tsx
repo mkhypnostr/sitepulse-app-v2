@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Download, FileText, Printer } from "lucide-react";
@@ -6,14 +7,9 @@ import { errorMessage, photoTypeLabels } from "@/lib/domain";
 import { formatDate } from "@/lib/format";
 import { formatProjectDateTime } from "@/lib/projects";
 import { EmptyState, LoadingState } from "@/components/page-states";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  LetterheadFooter,
-  LetterheadHeader,
-} from "@/components/print-letterhead";
-import { NES_COMPANY } from "@/lib/nes-company";
-import { Card, CardContent } from "@/components/ui/card";
+import { NES_COMPANY, NES_CONTACT_LINE } from "@/lib/nes-company";
+import { coordinatesFromLocation, reverseGeocode } from "@/lib/reverse-geocode";
 
 export const Route = createFileRoute("/_authenticated/job-report/$jobId")({
   component: JobReportPage,
@@ -118,6 +114,58 @@ function JobReportPage() {
     },
   });
 
+  // Konum: yazılı adres varsa o; yoksa bağlantıdaki koordinattan adres
+  // çözülür. Belgeye Google bağlantısı yazılmaz.
+  const locationText = reportQuery.data?.order.location?.trim() || "";
+  const coordinates = locationText
+    ? null
+    : coordinatesFromLocation(reportQuery.data?.order.location_url);
+  const addressQuery = useQuery({
+    queryKey: [
+      "reverse-geocode",
+      coordinates?.latitude,
+      coordinates?.longitude,
+    ],
+    enabled: Boolean(coordinates),
+    staleTime: Infinity,
+    queryFn: () =>
+      reverseGeocode(coordinates!.latitude, coordinates!.longitude),
+  });
+  const addressText =
+    locationText ||
+    addressQuery.data ||
+    (coordinates
+      ? addressQuery.isLoading
+        ? "Adres alınıyor..."
+        : `${coordinates.latitude.toFixed(5)}, ${coordinates.longitude.toFixed(5)}`
+      : "-");
+
+  // A4'e sığdırma: içerik sayfadan uzunsa tamamı orantılı küçültülür.
+  const sheetRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  const fitToPage = useCallback(() => {
+    const sheet = sheetRef.current;
+    const content = contentRef.current;
+    if (!sheet || !content) return;
+    const style = getComputedStyle(sheet);
+    const available =
+      sheet.clientHeight -
+      parseFloat(style.paddingTop) -
+      parseFloat(style.paddingBottom);
+    content.style.zoom = "1";
+    content.style.width = "100%";
+    const natural = content.scrollHeight;
+    const next = natural > available ? available / natural : 1;
+    const rounded = Math.floor(next * 1000) / 1000;
+    content.style.zoom = String(rounded);
+    content.style.width = `${100 / rounded}%`;
+    setScale(rounded);
+  }, []);
+  useEffect(() => {
+    fitToPage();
+  }, [fitToPage, reportQuery.data, addressText]);
+
   if (reportQuery.isLoading) return <LoadingState />;
   if (reportQuery.error || !reportQuery.data) {
     return (
@@ -201,9 +249,9 @@ function JobReportPage() {
           <p><strong>Müşteri:</strong> ${escapeHtml(order.customers?.name || "-")}</p>
           <p><strong>Başlangıç:</strong> ${escapeHtml(formatDate(order.scheduled_at))}</p>
           <p><strong>Tamamlanma:</strong> ${escapeHtml(completedAt ? formatDate(completedAt) : "-")}</p>
-          <p><strong>Konum:</strong> ${escapeHtml(order.location || order.location_url || "-")}</p>
+          <p><strong>Konum:</strong> ${escapeHtml(addressText)}</p>
         </div>
-        <h2>Yapılan İş</h2><p>${escapeHtml(order.description || "Açıklama girilmemiş.")}</p>
+        ${order.description?.trim() ? `<h2>Yapılan İş</h2><p>${escapeHtml(order.description)}</p>` : ""}
         <h2>Tamamlanma Özeti</h2>
         <p>${escapeHtml(completionText)}</p>
         <h2>Kullanılan Malzemeler</h2>
@@ -229,16 +277,70 @@ function JobReportPage() {
     URL.revokeObjectURL(url);
   }
 
+  function printSheet() {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    // Yazdırma ayrı bir çerçevede yapılır: menü ve uygulama kabuğu basılmaz,
+    // sayfa tam bir A4 olur.
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText =
+      "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0";
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+    if (!doc || !win) {
+      frame.remove();
+      return;
+    }
+    const styles = [
+      ...document.querySelectorAll('link[rel="stylesheet"], style'),
+    ]
+      .map((node) => node.outerHTML)
+      .join("");
+    doc.open();
+    doc.write(
+      `<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>${escapeHtml(fileBase)}</title>${styles}<style>@page{size:A4;margin:0}html,body{margin:0!important;padding:0!important;background:#fff!important}.a4-sheet{margin:0!important;box-shadow:none!important;border-radius:0!important}</style></head><body>${sheet.outerHTML}</body></html>`,
+    );
+    doc.close();
+    const images = [...doc.images];
+    void Promise.all(
+      images.map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise((resolve) => {
+              img.onload = img.onerror = () => resolve(null);
+            }),
+      ),
+    ).then(() => {
+      setTimeout(() => {
+        win.focus();
+        win.print();
+        setTimeout(() => frame.remove(), 60_000);
+      }, 250);
+    });
+  }
+
+  const visualPhotos = photos.filter((photo) => !photo.is_document);
+  const documents = photos.filter((photo) => photo.is_document);
+  const photoColumns =
+    visualPhotos.length <= 2 ? 2 : visualPhotos.length <= 6 ? 3 : 4;
+
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="print:hidden mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <Button asChild variant="ghost">
           <Link to="/jobs/$jobId" params={{ jobId }}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Göreve dön
           </Link>
         </Button>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => window.print()}>
+        <div className="flex flex-wrap items-center gap-2">
+          {scale < 1 ? (
+            <span className="text-xs text-muted-foreground">
+              Tek A4 sayfaya sığdırıldı (%{Math.round(scale * 100)})
+            </span>
+          ) : null}
+          <Button variant="outline" onClick={printSheet}>
             <Printer className="mr-2 h-4 w-4" /> PDF / Yazdır
           </Button>
           <Button onClick={downloadWordReport}>
@@ -247,139 +349,198 @@ function JobReportPage() {
         </div>
       </div>
 
-      <article className="rounded-xl bg-white p-6 pb-20 text-slate-950 shadow-sm print:rounded-none print:p-0 print:pt-24 print:pb-24 print:shadow-none">
-        <LetterheadHeader
-          title={`İş Tamamlama ve Teslim Tutanağı${isDraft ? " (Taslak)" : ""}`}
-          subtitle={`#${order.work_order_no} · ${order.title}`}
-        />
-        {isDraft ? (
-          <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-800 print:border-slate-400 print:bg-white print:text-slate-700">
-            Taslak: iş henüz NES onayından geçmedi. Onaydan sonra kesin tutanak
-            olarak yazdırın.
-          </p>
-        ) : null}
+      <div className="overflow-x-auto pb-6">
+        <article
+          ref={sheetRef}
+          className="a4-sheet relative mx-auto overflow-hidden bg-white text-slate-950 shadow-[0_6px_30px_rgba(20,40,40,0.15)]"
+          style={{
+            width: "210mm",
+            height: "297mm",
+            padding: "11mm 13mm 24mm",
+            fontFamily: "Arial, Helvetica, sans-serif",
+          }}
+        >
+          <img
+            src={NES_LOGO_URL}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-1/2 w-[150mm] -translate-x-1/2 -translate-y-1/2 opacity-[0.08]"
+          />
+          <div ref={contentRef} className="relative">
+            <header className="flex items-end justify-between gap-4 border-b border-slate-800 pb-2">
+              <div className="min-w-0">
+                <h1 className="text-[20px] leading-tight font-black">
+                  İş Tamamlama ve Teslim Tutanağı
+                  {isDraft ? " (Taslak)" : ""}
+                </h1>
+                <p className="mt-0.5 text-[11px] text-slate-500">
+                  #{order.work_order_no} · {order.title}
+                </p>
+              </div>
+              <img
+                src={NES_LOGO_URL}
+                alt="NES Enerji"
+                className="h-[10mm] w-auto shrink-0 object-contain"
+              />
+            </header>
 
-        <section className="mt-6 grid gap-3 rounded-xl bg-blue-50 p-5 sm:grid-cols-2">
-          <p>
-            <strong>Müşteri:</strong> {order.customers?.name || "-"}
-          </p>
-          <p>
-            <strong>Başlangıç:</strong> {formatDate(order.scheduled_at)}
-          </p>
-          <p>
-            <strong>Tamamlanma:</strong>{" "}
-            {completedAt ? formatProjectDateTime(completedAt) : "-"}
-          </p>
-          <p className="sm:col-span-2">
-            <strong>Konum:</strong>{" "}
-            {order.location || order.location_url || "-"}
-          </p>
-        </section>
-
-        <section className="mt-7">
-          <h2 className="text-xl font-black">Yapılan İş ve Tamamlanma Özeti</h2>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-            {order.description || "İş açıklaması girilmemiş."}
-          </p>
-          <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">
-            {completionText}
-          </p>
-        </section>
-
-        <section className="mt-7">
-          <h2 className="text-xl font-black">Kullanılan Malzemeler</h2>
-          <div className="mt-3 grid gap-2">
-            {materials.map((material) => (
-              <Card
-                key={material.id}
-                className="border-slate-200 bg-white text-slate-950 shadow-none"
-              >
-                <CardContent className="flex items-center justify-between gap-4 p-3">
-                  <div>
-                    <p className="font-bold">
-                      {material.is_nes_stock
-                        ? material.stock_items?.name
-                        : material.custom_material_name}
-                    </p>
-                  </div>
-                  <strong>
-                    {material.quantity} {material.unit}
-                  </strong>
-                </CardContent>
-              </Card>
-            ))}
-            {materials.length === 0 ? (
-              <p className="text-sm text-slate-500">Malzeme kaydı yok.</p>
+            {isDraft ? (
+              <p className="mt-3 rounded border border-slate-400 p-2 text-[11px] font-semibold text-slate-700">
+                Taslak: iş henüz NES onayından geçmedi. Onaydan sonra kesin
+                tutanak olarak yazdırın.
+              </p>
             ) : null}
-          </div>
-        </section>
 
-        <section className="mt-7">
-          <h2 className="flex items-center gap-2 text-xl font-black">
-            <FileText className="h-5 w-5 text-blue-700" /> Saha Fotoğrafları ve
-            Belgeleri
-          </h2>
-          <div className="mt-3 grid gap-5 sm:grid-cols-2">
-            {photos.map((photo) => (
-              <figure
-                key={photo.id}
-                className="break-inside-avoid overflow-hidden rounded-xl border border-slate-200"
-              >
-                {photo.is_document ? (
-                  <a
-                    href={photo.signedUrl ?? undefined}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex aspect-video w-full flex-col items-center justify-center gap-2 bg-slate-100 text-blue-700"
+            <section className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-lg bg-blue-50 p-3 text-[12px]">
+              <p>
+                <strong>Müşteri:</strong> {order.customers?.name || "-"}
+              </p>
+              <p>
+                <strong>Başlangıç:</strong> {formatDate(order.scheduled_at)}
+              </p>
+              <p>
+                <strong>Tamamlanma:</strong>{" "}
+                {completedAt ? formatProjectDateTime(completedAt) : "-"}
+              </p>
+              <p>
+                <strong>İş no:</strong> #{order.work_order_no}
+              </p>
+              <p className="col-span-2">
+                <strong>Konum:</strong> {addressText}
+              </p>
+            </section>
+
+            <section className="mt-4">
+              <h2 className="text-[14px] font-black">
+                Yapılan İş ve Tamamlanma Özeti
+              </h2>
+              {order.description?.trim() ? (
+                <p className="mt-1 text-[12px] whitespace-pre-wrap text-slate-700">
+                  {order.description}
+                </p>
+              ) : null}
+              <p className="mt-1 text-[12px] whitespace-pre-wrap text-slate-700">
+                {completionText}
+              </p>
+            </section>
+
+            <section className="mt-4">
+              <h2 className="text-[14px] font-black">Kullanılan Malzemeler</h2>
+              {materials.length ? (
+                <table className="mt-1.5 w-full border-collapse text-[11.5px]">
+                  <thead>
+                    <tr className="bg-slate-100 text-left">
+                      <th className="border border-slate-300 px-2 py-1">
+                        Malzeme
+                      </th>
+                      <th className="w-[35mm] border border-slate-300 px-2 py-1">
+                        Miktar
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {materials.map((material) => (
+                      <tr key={material.id}>
+                        <td className="border border-slate-300 px-2 py-1">
+                          {material.is_nes_stock
+                            ? material.stock_items?.name
+                            : material.custom_material_name}
+                        </td>
+                        <td className="border border-slate-300 px-2 py-1">
+                          {material.quantity} {material.unit}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="mt-1 text-[12px] text-slate-500">
+                  Malzeme kaydı yok.
+                </p>
+              )}
+            </section>
+
+            {visualPhotos.length || documents.length ? (
+              <section className="mt-4">
+                <h2 className="flex items-center gap-1.5 text-[14px] font-black">
+                  <FileText className="h-4 w-4 text-blue-700" /> Saha
+                  Fotoğrafları ve Belgeleri
+                </h2>
+                {visualPhotos.length ? (
+                  <div
+                    className="mt-1.5 grid gap-2"
+                    style={{
+                      gridTemplateColumns: `repeat(${photoColumns}, minmax(0, 1fr))`,
+                    }}
                   >
-                    <FileText className="h-10 w-10" />
-                    <span className="text-sm font-bold">PDF belgeyi aç</span>
-                  </a>
-                ) : photo.signedUrl ? (
-                  <img
-                    src={photo.signedUrl}
-                    alt={photo.caption || "Saha fotoğrafı"}
-                    className="aspect-video w-full object-cover"
-                  />
+                    {visualPhotos.map((photo) => (
+                      <figure
+                        key={photo.id}
+                        className="overflow-hidden rounded-md border border-slate-200 bg-white"
+                      >
+                        {photo.signedUrl ? (
+                          <img
+                            src={photo.signedUrl}
+                            alt={photo.caption || "Saha fotoğrafı"}
+                            onLoad={fitToPage}
+                            className="aspect-[4/3] w-full object-cover"
+                          />
+                        ) : null}
+                        <figcaption className="px-2 py-1 text-[10px] leading-snug text-slate-600">
+                          <strong className="text-slate-900">
+                            {photoTypeLabels[photo.photo_type]}
+                          </strong>
+                          {photo.caption ? ` · ${photo.caption}` : ""}
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </div>
                 ) : null}
-                <figcaption className="p-3">
-                  <strong className="text-sm">
-                    {photoTypeLabels[photo.photo_type]}
-                  </strong>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {photo.caption || "Açıklama eklenmemiş"}
+                {documents.length ? (
+                  <p className="mt-1.5 text-[11px] text-slate-600">
+                    <strong>Ekli belgeler:</strong>{" "}
+                    {documents
+                      .map((doc) => doc.caption || "PDF belge")
+                      .join(" · ")}
                   </p>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        </section>
+                ) : null}
+              </section>
+            ) : null}
 
-        <section className="mt-8 break-inside-avoid">
-          <h2 className="text-xl font-black">Teslim</h2>
-          <p className="mt-2 text-sm text-slate-700">
-            Yukarıda belirtilen işler tamamlanmış ve çalışır durumda teslim
-            edilmiştir. Teslim alan, işi yerinde kontrol ettiğini beyan eder.
-          </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 print:grid-cols-2">
-            {["Teslim Eden — NES Enerji", "Teslim Alan — Müşteri"].map(
-              (label) => (
-                <div
-                  key={label}
-                  className="rounded-lg border border-slate-300 p-4 text-sm"
-                >
-                  <p className="font-bold">{label}</p>
-                  <p className="mt-4">Ad Soyad:</p>
-                  <p className="mt-8">İmza:</p>
-                  <p className="mt-8">Tarih:</p>
-                </div>
-              ),
-            )}
+            <section className="mt-4">
+              <h2 className="text-[14px] font-black">Teslim</h2>
+              <p className="mt-1 text-[11.5px] text-slate-700">
+                Yukarıda belirtilen işler tamamlanmış ve çalışır durumda teslim
+                edilmiştir. Teslim alan, işi yerinde kontrol ettiğini beyan
+                eder.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-4">
+                {["Teslim Eden — NES Enerji", "Teslim Alan — Müşteri"].map(
+                  (label) => (
+                    <div
+                      key={label}
+                      className="rounded-md border border-slate-300 p-3 text-[11.5px]"
+                    >
+                      <p className="font-bold">{label}</p>
+                      <p className="mt-2">Ad Soyad:</p>
+                      <p className="mt-5">İmza:</p>
+                      <p className="mt-5">Tarih:</p>
+                    </div>
+                  ),
+                )}
+              </div>
+            </section>
           </div>
-        </section>
 
-        <LetterheadFooter />
-      </article>
+          <footer
+            className="absolute border-t border-slate-800 pt-1.5 text-center text-[9px] leading-4 text-slate-700"
+            style={{ left: "13mm", right: "13mm", bottom: "8mm" }}
+          >
+            <p>{NES_COMPANY.address}</p>
+            <p>{NES_CONTACT_LINE}</p>
+          </footer>
+        </article>
+      </div>
     </div>
   );
 }
