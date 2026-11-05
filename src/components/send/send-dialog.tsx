@@ -1,7 +1,7 @@
 // Ortak "Gönder" penceresi: WhatsApp (hazır mesaj; son Gönder kullanıcıda)
 // ve e-posta (uygulamadan, NES adına). Dosya varsa tabletin paylaşım menüsü
 // ile WhatsApp'a PDF olarak da gönderilebilir.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Download,
   LoaderCircle,
@@ -56,6 +56,12 @@ export function SendDialog({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<"" | "file" | "email">("");
   const [file, setFile] = useState<File | null>(null);
+  const currentTarget = useRef<SendTarget | null>(null);
+  const pending = useRef<{
+    target: SendTarget;
+    promise: Promise<File | null>;
+  } | null>(null);
+  currentTarget.current = target;
 
   useEffect(() => {
     if (!target) return;
@@ -66,6 +72,11 @@ export function SendDialog({
     setMessage(target.message);
     setFile(null);
     setTab("whatsapp");
+    // PDF pencere açılır açılmaz arka planda hazırlanır. Telefon tarayıcısı
+    // paylaşım menüsünü yalnız dokunuştan hemen sonra açar; PDF'i dokunuştan
+    // sonra üretmek birkaç saniye sürdüğü için "Permission denied" hatası
+    // veriyordu. Dosya hazırsa paylaşım dokunuşla anında açılır.
+    if (target.makeFile) void prepareFile(target);
   }, [target]);
 
   if (!target) return null;
@@ -74,24 +85,54 @@ export function SendDialog({
     ? `${message.trim()}\n\n${target.link.url}`
     : message.trim();
 
+  async function prepareFile(forTarget: SendTarget) {
+    if (!forTarget.makeFile) return null;
+    if (pending.current?.target === forTarget) return pending.current.promise;
+    const promise = (async () => {
+      setBusy("file");
+      try {
+        const f = await forTarget.makeFile!();
+        if (currentTarget.current === forTarget) setFile(f);
+        return f;
+      } finally {
+        if (currentTarget.current === forTarget) setBusy("");
+      }
+    })();
+    pending.current = { target: forTarget, promise };
+    promise.catch(() => {
+      if (pending.current?.promise === promise) pending.current = null;
+    });
+    return promise;
+  }
+
   async function getFile() {
     if (file) return file;
     if (!target?.makeFile) return null;
-    setBusy("file");
-    try {
-      const f = await target.makeFile();
-      setFile(f);
-      return f;
-    } finally {
-      setBusy("");
-    }
+    return prepareFile(target);
   }
 
   async function shareAsFile() {
     try {
-      const f = await getFile();
+      // Hazır dosya varsa paylaşım menüsü dokunuşun içinde açılır.
+      const ready = file;
+      const f = ready ?? (await getFile());
       if (!f) return;
-      const shared = await shareFile(f, message.trim());
+      let shared = false;
+      try {
+        shared = await shareFile(f, message.trim());
+      } catch (e) {
+        if (
+          !ready &&
+          e instanceof DOMException &&
+          (e.name === "NotAllowedError" || e.name === "SecurityError")
+        ) {
+          toast.message(
+            "PDF hazır. Paylaşmak için düğmeye bir kez daha basın.",
+          );
+          return;
+        }
+        throw e;
+      }
       if (shared) {
         onSent?.("whatsapp");
         return;
@@ -226,7 +267,7 @@ export function SendDialog({
                   ) : (
                     <Share2 className="mr-2 h-4 w-4" />
                   )}
-                  PDF olarak paylaş
+                  {busy === "file" ? "PDF hazırlanıyor…" : "PDF olarak paylaş"}
                 </Button>
               ) : null}
             </div>
