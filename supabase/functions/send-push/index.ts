@@ -105,6 +105,24 @@ function buildMessage(
         tag: `decision-${name}`,
       };
     }
+    // Gün içi hatırlatma ve tamamlama: başlık/metin veritabanında hazırlanır
+    // (kişiye göre sayı ve iş listesi), burada yalnız güvenle aktarılır.
+    case "open_work_reminder":
+    case "work_completed": {
+      const url = text(data.url, "/tasks");
+      return {
+        title: text(
+          data.title,
+          eventType === "work_completed" ? "✅ İş tamamlandı" : "Açık işler",
+        ).slice(0, 120),
+        body: text(data.body, name).slice(0, 400),
+        url: url.startsWith("/") ? url : "/tasks",
+        tag:
+          eventType === "work_completed"
+            ? `done-${text(data.ref, name)}`
+            : "open-work-reminder",
+      };
+    }
     case "test":
       return {
         title: "NES Enerji",
@@ -179,7 +197,14 @@ Deno.serve(async (req: Request) => {
             keys: { p256dh: sub.p256dh, auth: sub.auth },
           },
           body,
-          { TTL: 60 * 60 * 24, urgency: "high" },
+          {
+            // Hatırlatma birkaç saat sonra anlamını yitirir; eskisi düşmesin.
+            TTL:
+              payload.event_type === "open_work_reminder"
+                ? 60 * 60 * 3
+                : 60 * 60 * 24,
+            urgency: "high",
+          },
         );
         sent += 1;
         succeeded.push(sub.id);
