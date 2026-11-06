@@ -109,21 +109,27 @@ function buildMessage(
     // (kişiye göre sayı ve iş listesi), burada yalnız güvenle aktarılır.
     case "open_work_reminder":
     case "team_message":
+    case "work_change":
     case "work_completed": {
       const url = text(data.url, "/tasks");
+      const fallbackTitle =
+        eventType === "work_completed"
+          ? "✅ İş tamamlandı"
+          : eventType === "work_change"
+            ? "✏️ İş güncellendi"
+            : "Açık işler";
       return {
-        title: text(
-          data.title,
-          eventType === "work_completed" ? "✅ İş tamamlandı" : "Açık işler",
-        ).slice(0, 120),
+        title: text(data.title, fallbackTitle).slice(0, 120),
         body: text(data.body, name).slice(0, 400),
         url: url.startsWith("/") ? url : "/tasks",
         tag:
           eventType === "work_completed"
             ? `done-${text(data.ref, name)}`
-            : eventType === "team_message"
-              ? `msg-${Date.now()}`
-              : "open-work-reminder",
+            : eventType === "work_change"
+              ? `chg-${text(data.ref, name)}-${Date.now()}`
+              : eventType === "team_message"
+                ? `msg-${Date.now()}`
+                : "open-work-reminder",
       };
     }
     case "test":
