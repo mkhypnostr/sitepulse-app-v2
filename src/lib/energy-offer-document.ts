@@ -1055,13 +1055,26 @@ function lineGroup(line: PricedLine) {
   return "Diğer";
 }
 
+/** Kalem adı + marka ("Kablo kanalı - Legrand"); marka adda zaten geçiyorsa
+ *  (ör. "ABB Terra AC 22 kW", marka ABB) tekrar yazılmaz. */
+function lineNameWithBrand(line: PricedLine) {
+  const name = line.description.trim();
+  const brand = line.brand?.trim();
+  if (!brand) return name;
+  return name
+    .toLocaleLowerCase("tr-TR")
+    .includes(brand.toLocaleLowerCase("tr-TR"))
+    ? name
+    : `${name} - ${brand}`;
+}
+
 /** NES formunda olduğu gibi kalemleri sadeleştirir: şarjda istasyon(lar) ayrı,
  * diğer şarj kalemleri "montaj, devreye alma ve sarf malzeme dahil" tek satır;
  * taahhütte kalemler olduğu gibi listelenir. */
 function formRows(ctx: Ctx, detailed: boolean): FormRow[] {
   const rows: FormRow[] = [];
   const toRow = (line: PricedLine): FormRow => ({
-    name: line.description,
+    name: lineNameWithBrand(line),
     quantity: line.quantity,
     unit: unitLabel(line.unit),
     unitPrice: line.quantity > 0 ? line.saleAmount / line.quantity : 0,

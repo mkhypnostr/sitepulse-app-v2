@@ -1122,7 +1122,7 @@ function EnergyOfferPage() {
         catalog_item_id: line.catalogItemId,
         category: line.category,
         description: line.description.slice(0, 500),
-        brand: line.brand,
+        brand: line.brand?.trim().slice(0, 60) || null,
         unit: line.unit.slice(0, 20) || "adet",
         quantity: line.quantity,
         unit_cost: line.unitCost,
@@ -2352,20 +2352,35 @@ function EnergyOfferPage() {
                   >
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
-                        <Input
-                          value={line.description}
-                          onChange={(e) =>
-                            updateLine(line.key, {
-                              description: e.target.value,
-                            })
-                          }
-                          className="h-10"
-                        />
-                        <p className="mt-1 text-[11px] text-muted-foreground">
-                          {categoryLabels[line.category]} · {line.unit}
-                          {line.brand ? ` · ${line.brand}` : ""}
-                          {line.auto ? " · otomatik" : ""}
-                        </p>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Input
+                            value={line.description}
+                            onChange={(e) =>
+                              updateLine(line.key, {
+                                description: e.target.value,
+                              })
+                            }
+                            aria-label="Kalem adı"
+                            className="h-10 min-w-0 flex-1"
+                          />
+                          <Input
+                            value={line.brand ?? ""}
+                            onChange={(e) =>
+                              updateLine(line.key, {
+                                brand: e.target.value || null,
+                              })
+                            }
+                            placeholder="Marka"
+                            aria-label="Marka"
+                            maxLength={60}
+                            className="h-10 sm:w-40"
+                          />
+                        </div>
+                        {line.auto ? (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            otomatik
+                          </p>
+                        ) : null}
                         {line.sourceUnitCost > 0 ? null : (
                           <p className="mt-1 text-[11px] font-bold text-red-600">
                             Alış fiyatı 0 — maliyet yazın ya da bilerek 0 ise
@@ -2396,7 +2411,7 @@ function EnergyOfferPage() {
                         </Button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
                       <LineField label="Modül">
                         <Select
                           value={line.module}
@@ -2414,6 +2429,29 @@ function EnergyOfferPage() {
                             <SelectItem value="sarj">Şarj</SelectItem>
                             <SelectItem value="taahhut">Taahhüt</SelectItem>
                             <SelectItem value="genel">Genel</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </LineField>
+                      <LineField label="Tür">
+                        <Select
+                          value={line.category}
+                          onValueChange={(v) =>
+                            updateLine(line.key, {
+                              category: v as LineCategory,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-9 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(
+                              Object.keys(categoryLabels) as LineCategory[]
+                            ).map((key) => (
+                              <SelectItem key={key} value={key}>
+                                {categoryLabels[key]}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </LineField>
