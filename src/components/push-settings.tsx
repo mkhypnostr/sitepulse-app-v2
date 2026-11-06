@@ -89,15 +89,21 @@ export function PushSettings() {
 }
 
 const DISMISS_KEY = "nes-push-banner-dismissed";
+// Kapatılan hatırlatma 3 gün sonra yeniden görünür; bildirim açılana kadar
+// kişi gün içi hatırlatmaları kaçırmasın.
+const DISMISS_MS = 3 * 24 * 60 * 60 * 1000;
 
-/** Bildirimi açık olmayan kullanıcıya bir kez gösterilen hatırlatma. */
+/** Bildirimi açık olmayan kullanıcıya birkaç günde bir gösterilen hatırlatma. */
 export function PushBanner({ onOpenProfile }: { onOpenProfile: () => void }) {
   const [state, setState] = useState<PushState | null>(null);
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
     try {
-      setDismissed(window.localStorage.getItem(DISMISS_KEY) === "1");
+      const at = Number(window.localStorage.getItem(DISMISS_KEY));
+      setDismissed(
+        Number.isFinite(at) && at > 1 && Date.now() - at < DISMISS_MS,
+      );
     } catch {
       setDismissed(false);
     }
@@ -116,7 +122,7 @@ export function PushBanner({ onOpenProfile }: { onOpenProfile: () => void }) {
   const close = () => {
     setDismissed(true);
     try {
-      window.localStorage.setItem(DISMISS_KEY, "1");
+      window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
     } catch {
       // yalnız bu oturum için kapanır
     }
