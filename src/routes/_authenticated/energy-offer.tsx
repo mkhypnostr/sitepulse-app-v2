@@ -1122,7 +1122,7 @@ function EnergyOfferPage() {
         catalog_item_id: line.catalogItemId,
         category: line.category,
         description: line.description.slice(0, 500),
-        brand: line.brand,
+        brand: line.brand?.trim().slice(0, 60) || null,
         unit: line.unit.slice(0, 20) || "adet",
         quantity: line.quantity,
         unit_cost: line.unitCost,
@@ -2352,18 +2352,32 @@ function EnergyOfferPage() {
                   >
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
-                        <Input
-                          value={line.description}
-                          onChange={(e) =>
-                            updateLine(line.key, {
-                              description: e.target.value,
-                            })
-                          }
-                          className="h-10"
-                        />
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Input
+                            value={line.description}
+                            onChange={(e) =>
+                              updateLine(line.key, {
+                                description: e.target.value,
+                              })
+                            }
+                            aria-label="Kalem adı"
+                            className="h-10 min-w-0 flex-1"
+                          />
+                          <Input
+                            value={line.brand ?? ""}
+                            onChange={(e) =>
+                              updateLine(line.key, {
+                                brand: e.target.value || null,
+                              })
+                            }
+                            placeholder="Marka"
+                            aria-label="Marka"
+                            maxLength={60}
+                            className="h-10 sm:w-40"
+                          />
+                        </div>
                         <p className="mt-1 text-[11px] text-muted-foreground">
                           {categoryLabels[line.category]} · {line.unit}
-                          {line.brand ? ` · ${line.brand}` : ""}
                           {line.auto ? " · otomatik" : ""}
                         </p>
                         {line.sourceUnitCost > 0 ? null : (
