@@ -32,6 +32,7 @@ import {
   UsersRound,
   UtilityPole,
   Gauge,
+  ShieldCheck,
   Wrench,
   X,
   Zap,
@@ -279,6 +280,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             to: "/measurement-tracking",
             label: "Ölçüm ve Tahsilat",
             icon: Gauge,
+          },
+          {
+            to: "/maintenance-offer",
+            label: "Bakım Paketleri",
+            icon: ShieldCheck,
           },
           {
             to: "/service-requests",
@@ -856,6 +862,7 @@ const NAV_TILE_COLORS: Record<string, string> = {
   "/accounting": "bg-cyan-700",
   "/receivables": "bg-emerald-700",
   "/measurement-tracking": "bg-teal-500",
+  "/maintenance-offer": "bg-emerald-600",
   "/transformer-responsibility": "bg-yellow-500",
   "/approvals": "bg-rose-500",
   "/automations": "bg-purple-500",

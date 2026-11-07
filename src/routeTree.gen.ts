@@ -23,6 +23,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedEnergyOfferRouteImport } from './routes/_authenticated/energy-offer'
 import { Route as AuthenticatedInvoicesRouteImport } from './routes/_authenticated/invoices'
 import { Route as AuthenticatedKesifRouteImport } from './routes/_authenticated/kesif'
+import { Route as AuthenticatedMaintenanceOfferRouteImport } from './routes/_authenticated/maintenance-offer'
 import { Route as AuthenticatedMapRouteImport } from './routes/_authenticated/map'
 import { Route as AuthenticatedMeasurementOfferRouteImport } from './routes/_authenticated/measurement-offer'
 import { Route as AuthenticatedMeasurementTrackingRouteImport } from './routes/_authenticated/measurement-tracking'
@@ -125,6 +126,12 @@ const AuthenticatedKesifRoute = AuthenticatedKesifRouteImport.update({
   path: '/kesif',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedMaintenanceOfferRoute =
+  AuthenticatedMaintenanceOfferRouteImport.update({
+    id: '/maintenance-offer',
+    path: '/maintenance-offer',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMapRoute = AuthenticatedMapRouteImport.update({
   id: '/map',
   path: '/map',
@@ -302,6 +309,7 @@ export interface FileRoutesByFullPath {
   '/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/invoices': typeof AuthenticatedInvoicesRoute
   '/kesif': typeof AuthenticatedKesifRoute
+  '/maintenance-offer': typeof AuthenticatedMaintenanceOfferRoute
   '/map': typeof AuthenticatedMapRoute
   '/measurement-offer': typeof AuthenticatedMeasurementOfferRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
@@ -347,6 +355,7 @@ export interface FileRoutesByTo {
   '/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/invoices': typeof AuthenticatedInvoicesRoute
   '/kesif': typeof AuthenticatedKesifRoute
+  '/maintenance-offer': typeof AuthenticatedMaintenanceOfferRoute
   '/map': typeof AuthenticatedMapRoute
   '/measurement-offer': typeof AuthenticatedMeasurementOfferRoute
   '/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
@@ -394,6 +403,7 @@ export interface FileRoutesById {
   '/_authenticated/energy-offer': typeof AuthenticatedEnergyOfferRoute
   '/_authenticated/invoices': typeof AuthenticatedInvoicesRoute
   '/_authenticated/kesif': typeof AuthenticatedKesifRoute
+  '/_authenticated/maintenance-offer': typeof AuthenticatedMaintenanceOfferRoute
   '/_authenticated/map': typeof AuthenticatedMapRoute
   '/_authenticated/measurement-offer': typeof AuthenticatedMeasurementOfferRoute
   '/_authenticated/measurement-tracking': typeof AuthenticatedMeasurementTrackingRoute
@@ -441,6 +451,7 @@ export interface FileRouteTypes {
     | '/energy-offer'
     | '/invoices'
     | '/kesif'
+    | '/maintenance-offer'
     | '/map'
     | '/measurement-offer'
     | '/measurement-tracking'
@@ -486,6 +497,7 @@ export interface FileRouteTypes {
     | '/energy-offer'
     | '/invoices'
     | '/kesif'
+    | '/maintenance-offer'
     | '/map'
     | '/measurement-offer'
     | '/measurement-tracking'
@@ -532,6 +544,7 @@ export interface FileRouteTypes {
     | '/_authenticated/energy-offer'
     | '/_authenticated/invoices'
     | '/_authenticated/kesif'
+    | '/_authenticated/maintenance-offer'
     | '/_authenticated/map'
     | '/_authenticated/measurement-offer'
     | '/_authenticated/measurement-tracking'
@@ -675,6 +688,13 @@ declare module '@tanstack/react-router' {
       path: '/kesif'
       fullPath: '/kesif'
       preLoaderRoute: typeof AuthenticatedKesifRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/maintenance-offer': {
+      id: '/_authenticated/maintenance-offer'
+      path: '/maintenance-offer'
+      fullPath: '/maintenance-offer'
+      preLoaderRoute: typeof AuthenticatedMaintenanceOfferRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/map': {
@@ -913,6 +933,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedEnergyOfferRoute: typeof AuthenticatedEnergyOfferRoute
   AuthenticatedInvoicesRoute: typeof AuthenticatedInvoicesRoute
   AuthenticatedKesifRoute: typeof AuthenticatedKesifRoute
+  AuthenticatedMaintenanceOfferRoute: typeof AuthenticatedMaintenanceOfferRoute
   AuthenticatedMapRoute: typeof AuthenticatedMapRoute
   AuthenticatedMeasurementOfferRoute: typeof AuthenticatedMeasurementOfferRoute
   AuthenticatedMeasurementTrackingRoute: typeof AuthenticatedMeasurementTrackingRoute
@@ -949,6 +970,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedEnergyOfferRoute: AuthenticatedEnergyOfferRoute,
   AuthenticatedInvoicesRoute: AuthenticatedInvoicesRoute,
   AuthenticatedKesifRoute: AuthenticatedKesifRoute,
+  AuthenticatedMaintenanceOfferRoute: AuthenticatedMaintenanceOfferRoute,
   AuthenticatedMapRoute: AuthenticatedMapRoute,
   AuthenticatedMeasurementOfferRoute: AuthenticatedMeasurementOfferRoute,
   AuthenticatedMeasurementTrackingRoute: AuthenticatedMeasurementTrackingRoute,

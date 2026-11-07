@@ -1029,6 +1029,27 @@ export type Database = {
           },
         ];
       };
+      maintenance_price_list: {
+        Row: {
+          id: number;
+          prices: Json;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: number;
+          prices?: Json;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: number;
+          prices?: Json;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
       measurement_service_records: {
         Row: {
           agreed_amount: number;

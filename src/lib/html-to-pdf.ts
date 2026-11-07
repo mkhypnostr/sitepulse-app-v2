@@ -22,6 +22,12 @@ export async function htmlToPdf(html: string, filename: string) {
     doc.close();
     // Görsellerin ve yazı tiplerinin yüklenmesini bekle.
     await new Promise((r) => setTimeout(r, 300));
+    // Belge web yazı tipi kullanıyorsa (ör. bakım teklifi) yüklenmesini bekle;
+    // en fazla 3 sn, gelmezse yedek yazı tipiyle devam edilir.
+    await Promise.race([
+      doc.fonts?.ready ?? Promise.resolve(),
+      new Promise((r) => setTimeout(r, 3000)),
+    ]);
     await Promise.all(
       [...doc.images].map((img) =>
         img.complete
