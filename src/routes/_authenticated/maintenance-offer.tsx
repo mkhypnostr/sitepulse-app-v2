@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
   Eye,
+  FileSpreadsheet,
   LoaderCircle,
   RotateCcw,
   Send,
@@ -16,6 +17,7 @@ import { useAuth } from "@/lib/auth-context";
 import { errorMessage } from "@/lib/domain";
 import { formatTRY } from "@/lib/format";
 import { htmlToPdf } from "@/lib/html-to-pdf";
+import { NES_COMPANY } from "@/lib/nes-company";
 import {
   EXTRAS,
   KVA_BANDS,
@@ -160,6 +162,33 @@ function MaintenanceOfferPage() {
   }
 
   const makePdf = () => htmlToPdf(html(), fileName);
+
+  async function downloadExcel() {
+    if (!validate()) return;
+    setBusy(true);
+    try {
+      const { buildMaintenanceOfferWorkbook } =
+        await import("@/lib/maintenance-offer-excel");
+      const blob = await buildMaintenanceOfferWorkbook({
+        form,
+        prices,
+        result,
+        logoUrl: NES_COMPANY.logoPath,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName.replace(/\.pdf$/i, ".xlsx");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (e) {
+      toast.error(errorMessage(e) || "Excel hazırlanamadı.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function downloadPdf() {
     if (!validate()) return;
@@ -474,7 +503,7 @@ function MaintenanceOfferPage() {
                 strong
               />
             </dl>
-            <div className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
               <Button
                 variant="outline"
                 className="h-11"
@@ -494,6 +523,14 @@ function MaintenanceOfferPage() {
                   <Download className="mr-2 h-4 w-4" />
                 )}
                 PDF
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11"
+                onClick={() => void downloadExcel()}
+                disabled={busy}
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel
               </Button>
               <Button className="h-11" onClick={openSend} disabled={busy}>
                 <Send className="mr-2 h-4 w-4" /> Gönder
