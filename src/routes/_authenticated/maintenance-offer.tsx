@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Calculator,
+  ClipboardList,
   Download,
   Eye,
   FileSpreadsheet,
@@ -20,16 +22,25 @@ import { htmlToPdf } from "@/lib/html-to-pdf";
 import { NES_COMPANY } from "@/lib/nes-company";
 import {
   EXTRAS,
+  GES_OPTIONS,
+  GES_TIERS,
+  GES_TIER_LABEL,
   KVA_BANDS,
+  SITE_LABEL,
+  SITE_TYPES,
   TIERS,
   TIER_LABEL,
   calculateMaintenanceOffer,
+  optionAvailable,
+  optionSale,
   defaultMaintenanceOffer,
   emptyPrices,
+  gesUnitSale as gesSale,
   maintenanceOfferFileName,
   maintenanceOfferHtml,
   normalizePrices,
   type MaintenanceOfferInput,
+  type GesTier,
   type MaintenancePrices,
   type Tier,
 } from "@/lib/maintenance-offer";
@@ -47,10 +58,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 
-// Bakım paketleri teklifi: GES ve trafo merkezi bakımı (Temel / Standart /
-// Premium) + ayrı kalem elektrik işletme sorumluluğu + ek hizmetler.
-// Fiyat listesi bir kez girilir ve kaydedilir; teklifte tesis bilgisine göre
-// tutar anında hesaplanır. Finansal veri: yalnız yönetici.
+// Bakım paketleri teklifi:
+//  - GES bakımı: Standart / Premium / Premium Plus; çatı veya arazi, kWp başına.
+//    Fiyat = taşeron maliyeti × (1 + NES kârı) ya da elle girilen müşteri fiyatı.
+//  - Trafo merkezi bakımı (Temel / Standart / Premium), ayrı kalem elektrik
+//    işletme sorumluluğu ve ek hizmetler.
+// Çıktılar: müşteri PDF'i (teklif + Ek-1 şartname + Ek-2 sözleşme), müşteri
+// Excel'i, iç maliyet Excel'i ve taşeron fiyat talebi. İç maliyet müşteri
+// dosyalarına hiç girmez. Finansal veri: yalnız yönetici.
 
 export const Route = createFileRoute("/_authenticated/maintenance-offer")({
   component: MaintenanceOfferPage,
@@ -70,7 +85,18 @@ function loadDraft(): MaintenanceOfferInput {
       ...saved,
       // Yeni taslakta teklif no ve tarih güncel kalsın.
       offerNo: saved.offerNo || fresh.offerNo,
-      ges: { ...fresh.ges, ...saved.ges },
+      ges: {
+        ...fresh.ges,
+        ...saved.ges,
+        // Eski taslaklar (Temel/Standart/Premium) yeni paketlere uyarlanır.
+        tier: GES_TIERS.includes(saved.ges?.tier as GesTier)
+          ? (saved.ges?.tier as GesTier)
+          : fresh.ges.tier,
+        site: SITE_TYPES.includes(saved.ges?.site as "cati")
+          ? saved.ges!.site
+          : fresh.ges.site,
+        options: { ...fresh.ges.options, ...saved.ges?.options },
+      },
       trafo: { ...fresh.trafo, ...saved.trafo },
       extras: { ...fresh.extras, ...saved.extras },
     };
@@ -163,6 +189,49 @@ function MaintenanceOfferPage() {
 
   const makePdf = () => htmlToPdf(html(), fileName);
 
+  function saveBlob(blob: Blob, name: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+
+  async function downloadInternal(kind: "cost" | "subcontractor") {
+    if (kind === "subcontractor" && (!form.ges.enabled || form.ges.kwp <= 0)) {
+      toast.error("Taşeron talebi için GES bakımını açıp kWp girin.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const mod = await import("@/lib/maintenance-offer-excel");
+      const base = fileName.replace(/_Bakim_Teklifi\.pdf$/i, "");
+      if (kind === "cost") {
+        const blob = await mod.buildMaintenanceCostWorkbook({
+          form,
+          prices,
+          result,
+          logoUrl: NES_COMPANY.logoPath,
+        });
+        saveBlob(blob, `${base}_IC_MALIYET.xlsx`);
+      } else {
+        const blob = await mod.buildSubcontractorRequestWorkbook({
+          form,
+          prices,
+          logoUrl: NES_COMPANY.logoPath,
+        });
+        saveBlob(blob, `${form.offerNo}-T_Taseron_Fiyat_Talebi.xlsx`);
+      }
+    } catch (e) {
+      toast.error(errorMessage(e) || "Excel hazırlanamadı.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function downloadExcel() {
     if (!validate()) return;
     setBusy(true);
@@ -229,7 +298,7 @@ function MaintenanceOfferPage() {
     <div className="pb-44 lg:pb-8">
       <PageHeader
         title="Bakım Paketleri"
-        description="GES ve trafo merkezi bakım paketleri, ayrı kalem işletme sorumluluğu. Tesis bilgisini girin; tutar fiyat listesinden anında hesaplanır."
+        description="GES bakımı (Standart / Premium / Premium Plus, çatı veya arazi), trafo merkezi bakımı ve ayrı kalem işletme sorumluluğu. Fiyatlar taşeron maliyeti ve kâr oranından hesaplanır; teklif, teknik şartname ve sözleşme tek çıktıda."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setPriceOpen(true)}>
@@ -274,7 +343,15 @@ function MaintenanceOfferPage() {
                 value={form.address}
                 onChange={(e) => set("address", e.target.value)}
                 className="h-11 text-base"
-                placeholder="örn. Yatağan GES, Muğla"
+                placeholder="örn. Yatağan GES-2, Turgutlu mevkii, Yatağan / Muğla"
+              />
+            </Field>
+            <Field label="Taşeron talebinde görünecek konum (müşteri adı olmadan)">
+              <Input
+                value={form.location}
+                onChange={(e) => set("location", e.target.value)}
+                className="h-11 text-base"
+                placeholder="örn. Muğla / Yatağan"
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -315,10 +392,33 @@ function MaintenanceOfferPage() {
             enabled={form.ges.enabled}
             onToggle={(v) => setGes({ enabled: v })}
           >
+            <div className="grid grid-cols-2 gap-2">
+              {SITE_TYPES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={form.ges.site === t}
+                  onClick={() => setGes({ site: t })}
+                  className={`h-11 rounded-xl border text-sm font-semibold transition-colors ${
+                    form.ges.site === t
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:bg-muted"
+                  }`}
+                >
+                  {SITE_LABEL[t]} GES
+                </button>
+              ))}
+            </div>
             <TierPicker
+              tiers={GES_TIERS}
+              labels={GES_TIER_LABEL}
               value={form.ges.tier}
               onChange={(t) => setGes({ tier: t })}
-              amounts={result.gesTiers}
+              amounts={
+                Object.fromEntries(
+                  GES_TIERS.map((t) => [t, result.ges[t].yearly]),
+                ) as Record<GesTier, number>
+              }
             />
             <div className="grid grid-cols-3 gap-3">
               <Field label="Kurulu güç (kWp)">
@@ -333,13 +433,48 @@ function MaintenanceOfferPage() {
                   onChange={(v) => setGes({ inverters: v })}
                 />
               </Field>
-              <Field label="Tesis tipi">
-                <Input
-                  value={form.ges.siteType}
-                  onChange={(e) => setGes({ siteType: e.target.value })}
-                  className="h-11 text-base"
+              <Field label="Panel adedi">
+                <NumInput
+                  value={form.ges.panels}
+                  onChange={(v) => setGes({ panels: v })}
                 />
               </Field>
+            </div>
+            <div className="space-y-1 border-t border-border pt-3">
+              <p className="text-sm font-semibold">Opsiyonel hizmetler</p>
+              {GES_OPTIONS.map((o) => {
+                const available = optionAvailable(o.key, form.ges.tier);
+                return (
+                  <div
+                    key={o.key}
+                    className="flex items-center justify-between gap-3 py-1"
+                  >
+                    <span className="min-w-0 text-sm">
+                      {o.label}
+                      <span className="block text-xs text-muted-foreground">
+                        {available
+                          ? `${formatTRY(optionSale(prices, o.key))} / ${o.unit}`
+                          : "Premium Plus pakete dahil"}
+                      </span>
+                    </span>
+                    {available ? (
+                      <label className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                        {o.qtyLabel}
+                        <NumInput
+                          className="w-20"
+                          value={form.ges.options[o.key]}
+                          aria-label={`${o.label} miktarı`}
+                          onChange={(v) =>
+                            setGes({
+                              options: { ...form.ges.options, [o.key]: v },
+                            })
+                          }
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           </ServiceSection>
 
@@ -349,6 +484,8 @@ function MaintenanceOfferPage() {
             onToggle={(v) => setTrafo({ enabled: v })}
           >
             <TierPicker
+              tiers={TIERS}
+              labels={TIER_LABEL}
               value={form.trafo.tier}
               onChange={(t) => setTrafo({ tier: t })}
               amounts={result.trafoTiers}
@@ -401,7 +538,7 @@ function MaintenanceOfferPage() {
           </ServiceSection>
 
           <section className="surface-panel space-y-1 p-4">
-            <h3 className="mb-2 font-bold">Ek hizmetler</h3>
+            <h3 className="mb-2 font-bold">Trafo / genel ek hizmetler</h3>
             {EXTRAS.map((x) => (
               <div
                 key={x.key}
@@ -536,6 +673,70 @@ function MaintenanceOfferPage() {
                 <Send className="mr-2 h-4 w-4" /> Gönder
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              PDF ve Excel müşteriye gider: teklif, Ek-1 teknik şartname ve Ek-2
+              sözleşme. İç maliyet bunlarda yer almaz.
+            </p>
+          </section>
+
+          <section className="surface-panel space-y-3 border-destructive/30 p-4">
+            <h3 className="font-bold">
+              İç maliyet{" "}
+              <span className="text-xs font-normal text-destructive">
+                müşteriye gitmez
+              </span>
+            </h3>
+            {form.ges.enabled ? (
+              <ul className="space-y-1.5 text-sm">
+                {GES_TIERS.map((t) => {
+                  const g = result.ges[t];
+                  const profit = g.yearly - g.yearlyCost;
+                  return (
+                    <li
+                      key={t}
+                      className={`flex justify-between gap-2 ${t === form.ges.tier ? "font-semibold" : "text-muted-foreground"}`}
+                    >
+                      <span>{GES_TIER_LABEL[t]}</span>
+                      <span className="tabular-nums">
+                        {formatTRY(g.yearlyCost)} → {formatTRY(g.yearly)}
+                        {g.yearly > 0
+                          ? ` · %${Math.round((profit / g.yearly) * 100)}`
+                          : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            <dl className="space-y-1 border-t border-border pt-2 text-sm">
+              <Row
+                label="Taşeron maliyeti (bilinen)"
+                value={formatTRY(result.knownCost)}
+              />
+              <Row
+                label="Brüt kâr"
+                value={formatTRY(result.knownSale - result.knownCost)}
+                strong
+              />
+            </dl>
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+              <Button
+                variant="outline"
+                className="h-11"
+                onClick={() => void downloadInternal("cost")}
+                disabled={busy}
+              >
+                <Calculator className="mr-2 h-4 w-4" /> İç maliyet Excel
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11"
+                onClick={() => void downloadInternal("subcontractor")}
+                disabled={busy}
+              >
+                <ClipboardList className="mr-2 h-4 w-4" /> Taşeron talebi
+              </Button>
+            </div>
           </section>
         </aside>
       </div>
@@ -576,7 +777,14 @@ function MaintenanceOfferPage() {
 
 function isEmptyPriceList(p: MaintenancePrices) {
   const values = [
-    ...TIERS.flatMap((t) => [p.ges[t].perKwp, p.ges[t].min, ...p.trafo[t]]),
+    ...GES_TIERS.flatMap((t) => [
+      p.ges[t].costRoof,
+      p.ges[t].costLand,
+      p.ges[t].saleRoof,
+      p.ges[t].saleLand,
+      p.ges[t].min,
+    ]),
+    ...TIERS.flatMap((t) => p.trafo[t]),
     ...p.isMonthly,
   ];
   return values.every((v) => v === 0);
@@ -620,7 +828,16 @@ function PriceListDialog({
     onError: (e) => toast.error(errorMessage(e)),
   });
 
-  const setGes = (t: Tier, key: "perKwp" | "min", v: number) =>
+  const GES_KEYS = [
+    "costRoof",
+    "costLand",
+    "margin",
+    "saleRoof",
+    "saleLand",
+    "min",
+    "visits",
+  ] as const;
+  const setGes = (t: GesTier, key: (typeof GES_KEYS)[number], v: number) =>
     setDraft((d) => ({
       ...d,
       ges: { ...d.ges, [t]: { ...d.ges[t], [key]: v } },
@@ -646,15 +863,68 @@ function PriceListDialog({
 
         <div className="space-y-5">
           <PriceBlock
-            title="GES bakımı"
-            hint="Yıllık bedel = kurulu güç × ₺/kWp; küçük tesislerde en az asgari bedel."
+            title="GES bakımı (₺ / kWp / yıl, KDV hariç)"
+            hint="Müşteri fiyatı = taşeron fiyatı × (1 + kâr). Elle fiyat girerseniz o kullanılır. Yıllık bedel asgari bedelin altına düşmez."
           >
             <PriceGrid
-              cols={["₺ / kWp / yıl", "Asgari ₺ / yıl"]}
-              rows={TIERS.map((t) => ({
-                label: TIER_LABEL[t],
-                values: [draft.ges[t].perKwp, draft.ges[t].min],
-                onChange: (i, v) => setGes(t, i === 0 ? "perKwp" : "min", v),
+              cols={[
+                "Taşeron çatı",
+                "Taşeron arazi",
+                "Kâr %",
+                "Elle müşteri çatı",
+                "Elle müşteri arazi",
+                "Asgari ₺ / yıl",
+                "Ziyaret / yıl",
+              ]}
+              rows={GES_TIERS.map((t) => ({
+                label: GES_TIER_LABEL[t],
+                values: [
+                  draft.ges[t].costRoof,
+                  draft.ges[t].costLand,
+                  draft.ges[t].margin * 100,
+                  draft.ges[t].saleRoof,
+                  draft.ges[t].saleLand,
+                  draft.ges[t].min,
+                  draft.ges[t].visits,
+                ],
+                onChange: (i, v) =>
+                  setGes(t, GES_KEYS[i], i === 2 ? Math.min(v, 1000) / 100 : v),
+              }))}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Müşteri fiyatı şu an:{" "}
+              {GES_TIERS.map(
+                (t) =>
+                  `${GES_TIER_LABEL[t]} çatı ${formatTRY(gesSale(draft, t, "cati"))} · arazi ${formatTRY(gesSale(draft, t, "arazi"))}`,
+              ).join("  |  ")}
+            </p>
+          </PriceBlock>
+
+          <PriceBlock
+            title="GES opsiyonel hizmetler"
+            hint="Müşteri fiyatı = taşeron fiyatı × (1 + kâr); elle fiyat girilirse o kullanılır."
+          >
+            <PriceGrid
+              cols={["Taşeron fiyatı", "Kâr %", "Elle müşteri fiyatı"]}
+              rows={GES_OPTIONS.map((o) => ({
+                label: `${o.label} (${o.unit})`,
+                values: [
+                  draft.gesOptions[o.key].cost,
+                  draft.gesOptions[o.key].margin * 100,
+                  draft.gesOptions[o.key].sale,
+                ],
+                onChange: (i, v) =>
+                  setDraft((d) => ({
+                    ...d,
+                    gesOptions: {
+                      ...d.gesOptions,
+                      [o.key]: {
+                        ...d.gesOptions[o.key],
+                        [["cost", "margin", "sale"][i]]:
+                          i === 1 ? Math.min(v, 1000) / 100 : v,
+                      },
+                    },
+                  })),
               }))}
             />
           </PriceBlock>
@@ -703,7 +973,7 @@ function PriceListDialog({
             </label>
           </PriceBlock>
 
-          <PriceBlock title="Ek hizmetler (birim fiyat)">
+          <PriceBlock title="Trafo / genel ek hizmetler (müşteri birim fiyatı)">
             <div className="space-y-1">
               {EXTRAS.map((x) => (
                 <label
@@ -779,10 +1049,10 @@ function PriceGrid({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[480px] text-sm">
+      <table className="w-full min-w-[560px] text-sm">
         <thead>
           <tr>
-            <th className="w-24" />
+            <th className="w-28" />
             {cols.map((c) => (
               <th
                 key={c}
@@ -796,7 +1066,9 @@ function PriceGrid({
         <tbody>
           {rows.map((r) => (
             <tr key={r.label}>
-              <td className="py-1 pr-2 font-medium">{r.label}</td>
+              <td className="py-1 pr-2 text-xs font-medium sm:text-sm">
+                {r.label}
+              </td>
               {r.values.map((v, i) => (
                 <td key={i} className="px-1 py-1">
                   <MoneyInput
@@ -838,18 +1110,22 @@ function ServiceSection({
   );
 }
 
-function TierPicker({
+function TierPicker<T extends string>({
+  tiers,
+  labels,
   value,
   onChange,
   amounts,
 }: {
-  value: Tier;
-  onChange: (tier: Tier) => void;
-  amounts: Record<Tier, number>;
+  tiers: readonly T[];
+  labels: Record<T, string>;
+  value: T;
+  onChange: (tier: T) => void;
+  amounts: Record<T, number>;
 }) {
   return (
     <div className="grid grid-cols-3 gap-2">
-      {TIERS.map((t) => (
+      {tiers.map((t) => (
         <button
           key={t}
           type="button"
@@ -861,7 +1137,7 @@ function TierPicker({
               : "border-border hover:bg-muted"
           }`}
         >
-          <span className="block text-sm font-semibold">{TIER_LABEL[t]}</span>
+          <span className="block text-sm font-semibold">{labels[t]}</span>
           <span className="block text-xs tabular-nums text-muted-foreground">
             {amounts[t] > 0 ? `${formatTRY(amounts[t])} / yıl` : "—"}
           </span>
@@ -885,7 +1161,7 @@ function PreviewDialog({
         <DialogHeader>
           <DialogTitle>Bakım teklifi önizleme</DialogTitle>
           <DialogDescription>
-            Kapak, seçilen paketler, işletme sorumluluğu ve fiyat özeti.
+            Kapak, paketler, fiyat özeti, Ek-1 teknik şartname ve Ek-2 sözleşme.
           </DialogDescription>
         </DialogHeader>
         <iframe
