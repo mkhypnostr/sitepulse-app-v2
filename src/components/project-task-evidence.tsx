@@ -1,7 +1,7 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Download,
+  Eye,
   FileText,
   Images,
   Loader2,
@@ -131,13 +131,22 @@ export function ProjectTaskEvidence({
 
   const openEvidence = async (id: string, storagePath: string) => {
     setOpeningId(id);
+    // Sekme dokunma anında açılır; bağlantı sonra yüklenir. Aksi halde iPhone
+    // (Safari / ana ekran uygulaması) beklemeden sonra açılan pencereyi engeller.
+    const tab = window.open("", "_blank");
     try {
       const { data, error } = await supabase.storage
         .from("project-evidence")
         .createSignedUrl(storagePath, 60);
       if (error) throw error;
-      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = data.signedUrl;
+      } else {
+        window.location.assign(data.signedUrl);
+      }
     } catch (error) {
+      tab?.close();
       toast.error(errorMessage(error));
     } finally {
       setOpeningId(null);
@@ -261,6 +270,7 @@ export function ProjectTaskEvidence({
                   className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left transition-colors hover:text-highlight"
                   onClick={() => openEvidence(item.id, item.storage_path)}
                   disabled={openingId === item.id}
+                  aria-label={`${item.file_name} dosyasını görüntüle`}
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {item.evidence_type === "photo" ? (
@@ -275,12 +285,21 @@ export function ProjectTaskEvidence({
                           {item.description}
                         </span>
                       ) : null}
+                      <span className="block text-[11px] font-medium text-highlight">
+                        {openingId === item.id
+                          ? "Açılıyor..."
+                          : item.evidence_type === "photo"
+                            ? "Fotoğrafı görmek için dokunun"
+                            : "Belgeyi görmek için dokunun"}
+                      </span>
                     </span>
                   </span>
                   {openingId === item.id ? (
                     <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                   ) : (
-                    <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-highlight/10 px-2 py-1 text-[11px] font-semibold text-highlight">
+                      <Eye className="h-3.5 w-3.5" /> Aç
+                    </span>
                   )}
                 </button>
                 {canDelete ? (
